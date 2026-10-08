@@ -101,6 +101,14 @@ It isn't perfect yet. Some triggers and effects new in 1.20 are only partly chec
 reports doesn't automatically mean more accurate ones. The [changelog](CHANGELOG.md) has the
 details.
 
+## Roadmap
+
+![The xTiger roadmap: Frankokratia (released), Menorá (next), Vatican (later)](assets/roadmap.svg)
+
+Next is **Menorá**, a mod updater that brings old mods, or a whole mod list, up to the current
+game without cutting their content. After that comes **Vatican**, with much more help for mod
+creators, by hand and through an AI assistant. The details are in [`ROADMAP.md`](ROADMAP.md).
+
 ## Building it yourself
 
 You need Rust (stable).

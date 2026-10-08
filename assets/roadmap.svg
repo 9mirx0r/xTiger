@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 545" width="1200" height="545" role="img" aria-labelledby="t d">
+  <title id="t">xTiger roadmap</title>
+  <desc id="d">Three milestones: 1.0 alpha Frankokratia (released), 2.0 Menorá (mod updater, next), Vatican (help for mod creators, later).</desc>
+  <style>
+    text { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+    .title { font-size: 30px; font-weight: 700; fill: #f4efe0; }
+    .sub { font-size: 15px; fill: #9fb4d9; }
+    .tag { font-size: 13px; font-weight: 700; letter-spacing: 2px; }
+    .ver { font-size: 15px; font-weight: 600; fill: #9fb4d9; }
+    .name { font-size: 30px; font-weight: 700; fill: #f4efe0; }
+    .kind { font-size: 16px; font-weight: 600; fill: #9fc0e8; }
+    .line { font-size: 15px; fill: #dfe6f5; }
+    .note { font-size: 13px; fill: #7f93bd; }
+  </style>
+
+  <rect width="1200" height="545" rx="24" fill="#141c3d"/>
+
+  <text x="60" y="76" class="title">xTiger roadmap</text>
+  <text x="60" y="102" class="sub">Where it is and where it is going. Plans can change.</text>
+
+  <!-- timeline -->
+  <rect x="140" y="178" width="920" height="6" rx="3" fill="#2a3a78"/>
+  <rect x="140" y="178" width="460" height="6" rx="3" fill="#4f7bd9"/>
+
+  <!-- node 1: released -->
+  <circle cx="200" cy="181" r="22" fill="#f4efe0"/>
+  <path d="M189 181 L197 189 L212 172" fill="none" stroke="#141c3d" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- node 2: next -->
+  <circle cx="600" cy="181" r="22" fill="#141c3d" stroke="#4f7bd9" stroke-width="6"/>
+  <circle cx="600" cy="181" r="8" fill="#4f7bd9"/>
+  <!-- node 3: later -->
+  <circle cx="1000" cy="181" r="22" fill="#141c3d" stroke="#5a6ea8" stroke-width="5" stroke-dasharray="7 6"/>
+
+  <!-- card 1 -->
+  <rect x="40" y="240" width="320" height="268" rx="16" fill="#1d2a5e"/>
+  <rect x="40" y="240" width="320" height="8" rx="4" fill="#f4efe0"/>
+  <text x="68" y="282" class="tag" fill="#f4efe0">RELEASED</text>
+  <text x="68" y="312" class="ver">1.0 alpha</text>
+  <text x="68" y="348" class="name">Frankokratia</text>
+  <text x="68" y="378" class="kind">The base</text>
+  <text x="68" y="406" class="line">Validator updated to CK3 1.20</text>
+  <text x="68" y="430" class="line">Desktop app, no terminal needed</text>
+  <text x="68" y="454" class="line">MCP server for AI assistants</text>
+
+  <!-- card 2 -->
+  <rect x="440" y="240" width="320" height="268" rx="16" fill="#1d2a5e"/>
+  <rect x="440" y="240" width="320" height="8" rx="4" fill="#4f7bd9"/>
+  <text x="468" y="282" class="tag" fill="#6f9bf0">NEXT</text>
+  <text x="468" y="312" class="ver">2.0 alpha</text>
+  <text x="468" y="348" class="name">Menorá</text>
+  <text x="468" y="378" class="kind">Mod updater</text>
+  <text x="468" y="406" class="line">Bring an old mod up to the current game</text>
+  <text x="468" y="430" class="line">Works on a whole mod list: orders it,</text>
+  <text x="468" y="454" class="line">finds clashes, patches them</text>
+  <text x="468" y="484" class="note">Keeps the content. CK3 1.20 and later.</text>
+
+  <!-- card 3 -->
+  <rect x="840" y="240" width="320" height="268" rx="16" fill="#1d2a5e"/>
+  <rect x="840" y="240" width="320" height="8" rx="4" fill="#5a6ea8"/>
+  <text x="868" y="282" class="tag" fill="#9fb4d9">LATER</text>
+  <text x="868" y="312" class="ver">3rd milestone</text>
+  <text x="868" y="348" class="name">Vatican</text>
+  <text x="868" y="378" class="kind">Help for mod creators</text>
+  <text x="868" y="406" class="line">Guided, hands-on mod creation</text>
+  <text x="868" y="430" class="line">More MCP tools inside the app</text>
+  <text x="868" y="454" class="line">An AI builds the mod, you watch it work</text>
+</svg>
