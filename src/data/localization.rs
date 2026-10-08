@@ -5,7 +5,6 @@ use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::ffi::OsStr;
 use std::fs::read_to_string;
-#[cfg(any(feature = "ck3", feature = "vic3", feature = "imperator"))]
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -14,7 +13,6 @@ use std::sync::atomic::Ordering::Relaxed;
 
 use bitvec::order::Lsb0;
 use bitvec::{BitArr, bitarr};
-#[cfg(any(feature = "ck3", feature = "vic3", feature = "imperator"))]
 use murmur3::murmur3_32;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rayon::scope;
@@ -22,23 +20,14 @@ use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount, EnumIter, EnumString, FromRepr, IntoStaticStr};
 
 use crate::block::Block;
-#[cfg(feature = "ck3")]
 use crate::ck3::tables::localization::{BUILTIN_MACROS_CK3, COMPLEX_TOOLTIPS_CK3};
 use crate::context::ScopeContext;
 use crate::datacontext::DataContext;
 use crate::datatype::{CodeChain, Datatype, validate_datatypes};
-#[cfg(feature = "eu5")]
-use crate::eu5::tables::localization::BUILTIN_MACROS_EU5;
 use crate::everything::Everything;
 use crate::fileset::{FileEntry, FileHandler, FileKind};
-use crate::game::Game;
-#[cfg(any(feature = "ck3", feature = "vic3", feature = "imperator"))]
 use crate::helpers::TigerHashMapExt;
 use crate::helpers::{TigerHashMap, dup_error, stringify_list};
-#[cfg(feature = "hoi4")]
-use crate::hoi4::tables::localization::BUILTIN_MACROS_HOI4;
-#[cfg(feature = "imperator")]
-use crate::imperator::tables::localization::BUILTIN_MACROS_IMPERATOR;
 use crate::item::{Item, ItemExt};
 use crate::macros::{MACRO_MAP, MacroMapIndex};
 use crate::parse::ParserMemory;
@@ -46,8 +35,6 @@ use crate::parse::localization::{ValueParser, parse_loca};
 use crate::report::{ErrorKey, Severity, err, report, tips, warn};
 use crate::scopes::Scopes;
 use crate::token::Token;
-#[cfg(feature = "vic3")]
-use crate::vic3::tables::localization::BUILTIN_MACROS_VIC3;
 
 #[derive(Debug)]
 pub struct Languages([TigerHashMap<&'static str, LocaEntry>; Language::COUNT]);
@@ -81,7 +68,6 @@ pub struct Localization {
 
 /// List of languages that are supported by the game engine.
 // LAST UPDATED CK3 VERSION 1.15.0
-// LAST UPDATED VIC3 VERSION 1.7.6
 #[derive(
     Debug,
     PartialEq,
@@ -103,17 +89,10 @@ pub enum Language {
     French,
     German,
     Russian,
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
     Korean,
     SimpChinese,
-    #[cfg(any(feature = "vic3", feature = "hoi4", feature = "eu5"))]
-    BrazPor,
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "hoi4", feature = "eu5"))]
     Japanese,
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "hoi4", feature = "eu5"))]
     Polish,
-    #[cfg(any(feature = "vic3", feature = "eu5"))]
-    Turkish,
 }
 
 static L_LANGS: LazyLock<Box<[Box<str>]>> =
@@ -129,6 +108,7 @@ impl Language {
         #[allow(clippy::cast_possible_truncation)]
         Self::from_repr(idx as u8).unwrap()
     }
+
     fn to_idx(self) -> usize {
         self as usize
     }
@@ -139,18 +119,7 @@ impl Language {
 // TODO: maybe make the list more specific about which keys can contain which builtins
 fn is_builtin_macro<S: Borrow<str>>(s: S) -> bool {
     let s = s.borrow();
-    match Game::game() {
-        #[cfg(feature = "ck3")]
-        Game::Ck3 => BUILTIN_MACROS_CK3.contains(&s),
-        #[cfg(feature = "vic3")]
-        Game::Vic3 => BUILTIN_MACROS_VIC3.contains(&s),
-        #[cfg(feature = "imperator")]
-        Game::Imperator => BUILTIN_MACROS_IMPERATOR.contains(&s),
-        #[cfg(feature = "eu5")]
-        Game::Eu5 => BUILTIN_MACROS_EU5.contains(&s),
-        #[cfg(feature = "hoi4")]
-        Game::Hoi4 => BUILTIN_MACROS_HOI4.contains(&s),
-    }
+    BUILTIN_MACROS_CK3.contains(&s)
 }
 
 /// One parsed key: value line from the localization values.
@@ -281,6 +250,8 @@ pub enum LocaValue {
     // The optional token is the formatting
     Code(CodeChain, Option<Token>),
     Icon(Token),
+    // The text format applied to an icon, as in `@icon:frame:format!` (ck3)
+    IconFormat(Token),
     // An Icon with an [ ] expression inside it
     CalculatedIcon(Vec<LocaValue>),
     Flag(Token),
@@ -320,8 +291,7 @@ impl Localization {
     }
 
     // Undocumented; the hash algorithm was revealed by inspecting error.log and reverse
-    // engineering of CK3 binary through magic numbers. CK3 and VIC3 are supported.
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "imperator"))]
+    // engineering of CK3 binary through magic numbers. CK3 is supported.
     fn all_collision_keys(&self, lang: Language) -> TigerHashMap<u32, Vec<&LocaEntry>> {
         let loca_hashes: Vec<_> = self.locas[lang]
             .par_iter()
@@ -358,7 +328,6 @@ impl Localization {
         }
     }
 
-    #[cfg(feature = "ck3")]
     pub fn verify_name_exists(&self, name: &Token, max_sev: Severity) {
         if name.as_str().is_empty() {
             report(ErrorKey::MissingLocalization, Severity::Warning.at_most(max_sev))
@@ -512,9 +481,7 @@ impl Localization {
             // TODO: validate the formatting codes
             LocaValue::Code(chain, format) => {
                 // |E is the formatting used for game concepts in ck3
-                #[cfg(feature = "ck3")]
-                if Game::is_ck3()
-                    && let Some(format) = format
+                if let Some(format) = format
                     && (format.as_str().contains('E') || format.as_str().contains('e'))
                     && let Some(name) = chain.as_gameconcept()
                 {
@@ -539,15 +506,13 @@ impl Localization {
             }
             LocaValue::Tooltip(token) => {
                 // TODO: should this be validated with validate_localization_sc ? (remember to avoid infinite loops)
-                if !(Game::is_vic3() && token.is("BREAKDOWN_TAG")) {
+                {
                     data.localization.verify_exists_lang(token, Some(lang));
                 }
             }
-            #[allow(unused_variables)] // tag only used by ck3
             LocaValue::ComplexTooltip(tag, token) => {
                 // TODO: if any of the three are datatype expressions, validate them.
-                #[cfg(feature = "ck3")]
-                if Game::is_ck3() && !token.starts_with("[") && !is_builtin_macro(token) {
+                if !token.starts_with("[") && !is_builtin_macro(token) {
                     match COMPLEX_TOOLTIPS_CK3.get(&*tag.as_str().to_lowercase()).copied() {
                         None => {
                             // TODO: should this be validated with validate_localization_sc ? (remember to avoid infinite loops)
@@ -557,11 +522,9 @@ impl Localization {
                         Some(Some(itype)) => data.verify_exists(itype, token),
                     }
                 }
-                #[cfg(feature = "vic3")]
-                if Game::is_vic3() && !token.starts_with("[") && !is_builtin_macro(token) {
-                    data.localization.verify_exists_lang(token, Some(lang));
-                }
-                // TODO: - imperator -
+            }
+            LocaValue::IconFormat(token) => {
+                data.verify_exists(Item::TextFormat, token);
             }
             LocaValue::Icon(token) => {
                 if !is_builtin_macro(token) && !token.is("ICONKEY_icon") && !token.is("KEY_icon") {
@@ -572,18 +535,11 @@ impl Localization {
             LocaValue::Flag(token) => {
                 // TODO: Instead of this awkward 'contains TAG' heuristic, mark macros in the text
                 // somehow.
-                #[cfg(feature = "hoi4")]
-                if !is_builtin_macro(token) && !token.as_str().contains("TAG") {
-                    data.verify_exists(Item::CountryTag, token);
-                    let pathname = format!("gfx/flags/{token}.tga");
-                    data.verify_exists_implied(Item::File, &pathname, token);
-                }
             }
             _ => (),
         }
     }
 
-    #[cfg(feature = "ck3")]
     pub fn verify_key_has_options(&self, loca: &str, key: &Token, n: i64, prefix: &str) {
         for lang in self.iter_lang() {
             if let Some(entry) = self.locas[lang].get(loca) {
@@ -648,7 +604,6 @@ impl Localization {
         }
     }
 
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "imperator"))]
     fn check_collisions(&self, lang: Language) {
         for (k, v) in self.all_collision_keys(lang) {
             let mut rep = report(ErrorKey::LocalizationKeyCollision, Severity::Error)
@@ -673,7 +628,6 @@ impl Localization {
             for lang in self.iter_lang() {
                 let loca = &self.locas[lang];
                 // Check localization key collisions
-                #[cfg(any(feature = "ck3", feature = "vic3", feature = "imperator"))]
                 s.spawn(move |_| self.check_collisions(lang));
 
                 // Collect and sort the entries before looping, to create more stable output
@@ -724,7 +678,6 @@ impl Localization {
         }
     }
 
-    #[cfg(feature = "ck3")]
     pub fn check_pod_loca(&self, data: &Everything) {
         for lang in self.iter_lang() {
             for key in data.database.iter_keys(Item::PerkTree) {
@@ -774,7 +727,7 @@ impl FileHandler<(Language, Vec<LocaEntry>)> for Localization {
     }
 
     fn subpath(&self) -> PathBuf {
-        if Game::is_hoi4() { PathBuf::from("localisation") } else { PathBuf::from("localization") }
+        PathBuf::from("localization")
     }
 
     fn load_file(
@@ -884,19 +837,16 @@ fn is_replace_path(path: &Path) -> bool {
 }
 
 /// These are the languages in which it's reasonable to present an ascii name unchanged.
-#[cfg(feature = "ck3")]
 const LATIN_SCRIPT_LANGS: &[&str] =
     &["english", "french", "german", "spanish", "braz_por", "polish", "turkish"];
 
 /// Return true iff `langs` only contains languages in which it's reasonable to present an ascii
 /// name unchanged.
-#[cfg(feature = "ck3")]
 fn only_latin_script(langs: &[&str]) -> bool {
     langs.iter().all(|lang| LATIN_SCRIPT_LANGS.contains(lang))
 }
 
 /// Check that the string only has capital letters at the start or after a space or hyphen
-#[cfg(feature = "ck3")]
 fn normal_capitalization_for_name(name: &str) -> bool {
     let mut expect_cap = true;
     for ch in name.chars() {
@@ -908,7 +858,7 @@ fn normal_capitalization_for_name(name: &str) -> bool {
     true
 }
 
-#[cfg(all(test, feature = "ck3"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::fileset::{FileKind, FileStage};

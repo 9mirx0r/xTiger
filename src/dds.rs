@@ -8,7 +8,6 @@ use crate::fileset::{FileEntry, FileHandler};
 use crate::helpers::TigerHashMap;
 use crate::parse::ParserMemory;
 use crate::report::{ErrorKey, err, tips, warn};
-#[cfg(feature = "ck3")]
 use crate::token::Token;
 
 const DDS_HEADER_SIZE: usize = 124;
@@ -61,7 +60,6 @@ impl DdsFiles {
         }
     }
 
-    #[cfg(feature = "ck3")]
     pub fn validate_frame(&self, key: &Token, width: u32, height: u32, frame: u32) {
         // Note: `frame` is 1-based
         if let Some(info) = self.dds_files.get(key.as_str()) {

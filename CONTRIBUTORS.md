@@ -22,3 +22,6 @@ These are the people that made Tiger what it is.
 ## External contributors
 * unLomTrois (VS Code plugin)
 * kaiser-chris (GitHub action)
+
+## xTiger
+* Qubis (CK3 1.20 update, xTiger app, MCP server)

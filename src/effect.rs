@@ -2,33 +2,23 @@
 
 use crate::block::{BV, Block, Comparator, Eq::*};
 use crate::context::{Reason, ScopeContext};
-#[cfg(feature = "jomini")]
 use crate::data::effect_localization::validate_effect_localization;
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::Game;
-#[cfg(feature = "hoi4")]
-use crate::hoi4::variables::validate_variable;
 use crate::item::Item;
 use crate::lowercase::Lowercase;
 use crate::report::{ErrorKey, Severity, err, fatal, tips, warn};
 use crate::scopes::{Scopes, scope_iterator};
-#[cfg(feature = "jomini")]
 use crate::script_value::validate_script_value;
 use crate::special_tokens::SpecialTokens;
 use crate::token::Token;
 use crate::tooltipped::Tooltipped;
 use crate::trigger::scope_trigger;
-#[cfg(any(feature = "ck3", feature = "imperator"))]
 use crate::trigger::validate_target_ok_this;
 use crate::trigger::{validate_target, validate_trigger};
-#[cfg(any(feature = "ck3", feature = "vic3"))]
 use crate::validate::validate_compare_duration;
-#[cfg(any(feature = "ck3", feature = "imperator", feature = "hoi4"))]
 use crate::validate::validate_modifiers;
-#[cfg(feature = "ck3")]
 use crate::validate::validate_possibly_named_color;
-#[cfg(feature = "jomini")]
 use crate::validate::validate_scripted_modifier_call;
 use crate::validate::{
     ListType, precheck_iterator_fields, validate_identifier, validate_ifelse_sequence,
@@ -39,18 +29,7 @@ use crate::validator::{Validator, ValueValidator};
 /// Look up an effect name token in the effects table.
 /// `name` is the token. `data` is used in special cases to verify the name dynamically.
 pub fn scope_effect(name: &Token, data: &Everything) -> Option<(Scopes, Effect)> {
-    let scope_effect = match Game::game() {
-        #[cfg(feature = "ck3")]
-        Game::Ck3 => crate::ck3::tables::effects::scope_effect,
-        #[cfg(feature = "vic3")]
-        Game::Vic3 => crate::vic3::tables::effects::scope_effect,
-        #[cfg(feature = "imperator")]
-        Game::Imperator => crate::imperator::tables::effects::scope_effect,
-        #[cfg(feature = "eu5")]
-        Game::Eu5 => crate::eu5::tables::effects::scope_effect,
-        #[cfg(feature = "hoi4")]
-        Game::Hoi4 => crate::hoi4::tables::effects::scope_effect,
-    };
+    let scope_effect = crate::ck3::tables::effects::scope_effect;
     scope_effect(name, data)
 }
 
@@ -125,7 +104,7 @@ pub fn validate_effect_internal(
         vd.ban_field("filter", || "lists");
     }
 
-    validate_iterator_fields(caller, list_type, data, sc, vd, &mut tooltipped, false);
+    validate_iterator_fields(caller, list_type, sc, vd, &mut tooltipped, false);
 
     if list_type != ListType::None {
         validate_inside_iterator(caller, list_type, block, data, sc, vd, tooltipped);
@@ -143,7 +122,6 @@ pub fn validate_effect_internal(
 }
 
 /// Validate a single effect field
-#[allow(unused_variables)] // hoi4 does not use `caller`
 #[allow(clippy::too_many_arguments)]
 pub fn validate_effect_field(
     caller: &Lowercase,
@@ -206,10 +184,7 @@ pub fn validate_effect_field(
         return has_tooltip && tooltipped.is_tooltipped();
     }
 
-    #[cfg(feature = "jomini")]
-    if Game::is_jomini()
-        && let Some(modifier) = data.scripted_modifiers.get(key.as_str())
-    {
+    if let Some(modifier) = data.scripted_modifiers.get(key.as_str()) {
         if caller != "random" && caller != "random_list" && caller != "duel" {
             let msg = "cannot use scripted modifier here";
             err(ErrorKey::Validation).msg(msg).loc(key).push();
@@ -221,7 +196,6 @@ pub fn validate_effect_field(
 
     if let Some((inscopes, effect)) = scope_effect(key, data) {
         sc.expect(inscopes, &Reason::Token(key.clone()), data);
-        #[cfg(feature = "jomini")]
         if tooltipped.is_tooltipped() {
             has_tooltip |= data.item_exists(Item::EffectLocalization, key.as_str());
         }
@@ -259,24 +233,13 @@ pub fn validate_effect_field(
                         warn(ErrorKey::Range).msg(msg).loc(token).push();
                     }
                 }
-                #[cfg(feature = "jomini")]
-                if Game::is_jomini() {
-                    validate_script_value(bv, data, sc);
-                }
-                // TODO HOI4
-            }
-            #[cfg(feature = "vic3")]
-            Effect::Date => {
-                if let Some(token) = bv.expect_value() {
-                    token.expect_date();
-                }
+                validate_script_value(bv, data, sc);
             }
             Effect::Scope(outscopes) => {
                 if let Some(token) = bv.expect_value() {
                     validate_target(token, data, sc, outscopes);
                 }
             }
-            #[cfg(any(feature = "ck3", feature = "imperator"))]
             Effect::ScopeOkThis(outscopes) => {
                 if let Some(token) = bv.expect_value() {
                     validate_target_ok_this(token, data, sc, outscopes);
@@ -294,7 +257,6 @@ pub fn validate_effect_field(
                     validate_target(token, data, sc, outscopes);
                 }
             }
-            #[cfg(feature = "ck3")]
             Effect::Target(key, outscopes) => {
                 if let Some(block) = bv.expect_block() {
                     let mut vd = Validator::new(block, data);
@@ -303,7 +265,6 @@ pub fn validate_effect_field(
                     vd.field_target(key, sc, outscopes);
                 }
             }
-            #[cfg(any(feature = "ck3", feature = "vic3"))]
             Effect::TargetValue(key, outscopes, valuekey) => {
                 if let Some(block) = bv.expect_block() {
                     let mut vd = Validator::new(block, data);
@@ -314,7 +275,6 @@ pub fn validate_effect_field(
                     vd.field_script_value(valuekey, sc);
                 }
             }
-            #[cfg(any(feature = "ck3", feature = "hoi4"))]
             Effect::ItemTarget(ikey, itype, tkey, outscopes) => {
                 if let Some(block) = bv.expect_block() {
                     let mut vd = Validator::new(block, data);
@@ -323,7 +283,6 @@ pub fn validate_effect_field(
                     vd.field_target(tkey, sc, outscopes);
                 }
             }
-            #[cfg(any(feature = "ck3", feature = "vic3"))]
             Effect::ItemValue(key, itype, valuekey) => {
                 if let Some(block) = bv.expect_block() {
                     let mut vd = Validator::new(block, data);
@@ -342,9 +301,7 @@ pub fn validate_effect_field(
                     err(ErrorKey::Choice).msg(msg).loc(token).push();
                 }
             }
-            #[cfg(feature = "ck3")]
             Effect::Desc => validate_desc(bv, data, sc),
-            #[cfg(any(feature = "ck3", feature = "vic3"))]
             Effect::Timespan => {
                 if let Some(block) = bv.expect_block() {
                     validate_compare_duration(block, data, sc);
@@ -405,38 +362,11 @@ pub fn validate_effect_field(
                     has_tooltip |= local_has_tooltip;
                 }
             }
-            #[cfg(feature = "hoi4")]
-            Effect::Iterator(ltype, outscope) => {
-                let it_name = key.split_once('_').unwrap().1;
-                if let Some(block) = bv.expect_block() {
-                    precheck_iterator_fields(ltype, it_name.as_str(), block, data, sc);
-                    sc.open_scope(outscope, key.clone());
-                    let mut vd = Validator::new(block, data);
-                    has_tooltip |= validate_effect_internal(
-                        &Lowercase::new(it_name.as_str()),
-                        ltype,
-                        block,
-                        data,
-                        sc,
-                        &mut vd,
-                        tooltipped,
-                        special_tokens,
-                    );
-                    sc.close();
-                }
-            }
             Effect::Identifier(kind) => {
                 if let Some(token) = bv.expect_value() {
                     validate_identifier(token, kind, Severity::Error);
                 }
             }
-            #[cfg(feature = "hoi4")]
-            Effect::Value => {
-                if let Some(token) = bv.expect_value() {
-                    validate_target(token, data, sc, Scopes::Value);
-                }
-            }
-            #[cfg(feature = "ck3")]
             Effect::Color => {
                 validate_possibly_named_color(bv, data);
             }
@@ -444,9 +374,7 @@ pub fn validate_effect_field(
                 let msg = format!("`{key}` was removed in {version}");
                 warn(ErrorKey::Removed).msg(msg).info(explanation).loc(key).push();
             }
-            Effect::Unchecked => (),
-            #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5", feature = "hoi4"))]
-            Effect::UncheckedTodo => (),
+            Effect::Unchecked | Effect::UncheckedTodo => (),
         }
         return has_tooltip && tooltipped.is_tooltipped();
     }
@@ -480,20 +408,7 @@ pub fn validate_effect_field(
         return has_tooltip && tooltipped.is_tooltipped();
     }
 
-    #[cfg(feature = "hoi4")]
-    if Game::is_hoi4() && key.starts_with("var:") {
-        validate_variable(key, data, sc, Severity::Error);
-        if let Some(block) = bv.expect_block() {
-            sc.open_scope(Scopes::all_but_none(), key.clone());
-            has_tooltip |= validate_effect(block, data, sc, tooltipped);
-            sc.close();
-        }
-        return has_tooltip;
-    }
-
-    // skip this check for imperator because it has too many dynamic triggers that get
-    // inappropriately matched.
-    if !Game::is_imperator() && scope_trigger(key, data).is_some() {
+    if scope_trigger(key, data).is_some() {
         let msg = format!("`{key}` is a trigger and can't be used as an effect");
         err(ErrorKey::WrongUse).msg(msg).loc(key).push();
         return false;
@@ -503,7 +418,7 @@ pub fn validate_effect_field(
     sc.open_builder();
     if validate_scope_chain(key, data, sc, matches!(cmp, Comparator::Equals(Question))) {
         sc.finalize_builder();
-        if Game::is_ck3() && key.starts_with("flag:") {
+        if key.starts_with("flag:") {
             let msg = "as of 1.9, flag literals cannot be used on the left-hand side";
             err(ErrorKey::Scopes).msg(msg).loc(key).push();
         }
@@ -530,14 +445,12 @@ pub fn validate_effect_control(
         vd.req_field_warn("limit");
     }
 
-    #[cfg(feature = "jomini")]
-    if Game::is_jomini()
-        && (caller == "custom_description"
-            || caller == "custom_description_no_bullet"
-            || caller == "custom_tooltip"
-            || caller == "custom_tooltip_no_bullet"
-            || caller == "custom_label"
-            || caller == "custom_label_no_bullet")
+    if caller == "custom_description"
+        || caller == "custom_description_no_bullet"
+        || caller == "custom_tooltip"
+        || caller == "custom_tooltip_no_bullet"
+        || caller == "custom_label"
+        || caller == "custom_label_no_bullet"
     {
         vd.req_field("text");
         if caller == "custom_tooltip"
@@ -559,14 +472,11 @@ pub fn validate_effect_control(
         vd.ban_field("subject", || "`custom_description` or `custom_tooltip`");
     }
 
-    #[cfg(feature = "jomini")]
-    if Game::is_jomini() {
-        if caller == "custom_description" || caller == "custom_description_no_bullet" {
-            vd.field_target_ok_this("object", sc, Scopes::non_primitive());
-            vd.field_script_value("value", sc);
-        } else {
-            vd.ban_field("object", || "`custom_description`");
-        }
+    if caller == "custom_description" || caller == "custom_description_no_bullet" {
+        vd.field_target_ok_this("object", sc, Scopes::non_primitive());
+        vd.field_script_value("value", sc);
+    } else {
+        vd.ban_field("object", || "`custom_description`");
     }
 
     if caller == "hidden_effect" || caller == "hidden_effect_new_object" {
@@ -575,42 +485,24 @@ pub fn validate_effect_control(
 
     if caller == "random" {
         vd.req_field("chance");
-        if Game::is_jomini() {
-            #[cfg(feature = "jomini")]
-            vd.field_script_value("chance", sc);
-        } else {
-            // TODO HOI4
-            vd.field_numeric("chance");
-        }
+        vd.field_script_value("chance", sc);
     } else {
         vd.ban_field("chance", || "`random`");
     }
 
     if caller == "while" {
-        // TODO HOI4
         if !(block.has_key("limit") || block.has_key("count")) {
             let msg = "`while` needs one of `limit` or `count`";
             warn(ErrorKey::Validation).msg(msg).loc(block).push();
         }
 
-        if Game::is_jomini() {
-            #[cfg(feature = "jomini")]
-            vd.field_script_value("count", sc);
-        }
+        vd.field_script_value("count", sc);
     } else {
         vd.ban_field("count", || "`while` and `any_` lists");
     }
 
     if caller == "random" || caller == "random_list" || caller == "duel" {
-        #[cfg(feature = "vic3")]
-        if Game::is_vic3() {
-            // docs warn there should not be multiple modifier blocks
-            vd.field_script_value("modifier", sc);
-        }
-        #[cfg(any(feature = "imperator", feature = "ck3", feature = "hoi4"))]
-        if Game::is_imperator() || Game::is_ck3() || Game::is_hoi4() {
-            validate_modifiers(&mut vd, sc);
-        }
+        validate_modifiers(&mut vd, sc);
     } else {
         vd.ban_field("modifier", || "`random`, `random_list` or `duel`");
         vd.ban_field("compare_modifier", || "`random`, `random_list` or `duel`");
@@ -623,11 +515,8 @@ pub fn validate_effect_control(
         vd.field_trigger("trigger", Tooltipped::No, sc);
         vd.field_bool("show_chance");
         vd.field_validated_sc("desc", sc, validate_desc);
-        #[cfg(feature = "jomini")]
-        if Game::is_jomini() {
-            vd.field_script_value("min", sc); // used in vanilla
-            vd.field_script_value("max", sc); // used in vanilla
-        }
+        vd.field_script_value("min", sc); // used in vanilla
+        vd.field_script_value("max", sc); // used in vanilla
     } else {
         vd.ban_field("trigger", || "`random_list` or `duel`");
         vd.ban_field("show_chance", || "`random_list` or `duel`");
@@ -654,7 +543,6 @@ pub fn validate_effect_control(
 /// of the variants that currently have very few users, and it could remove some of the special
 /// cases.
 #[derive(Copy, Clone)]
-#[allow(dead_code)] // TODO: remove when hoi4 is complete
 pub enum Effect {
     /// No special value, just `effect = yes`.
     Yes,
@@ -672,9 +560,6 @@ pub enum Effect {
     /// Just like [`Effect::ScriptValue`], but warns if the argument is a negative literal number.
     #[allow(dead_code)]
     NonNegativeValue,
-    /// The effect takes a literal date.
-    #[cfg(feature = "vic3")]
-    Date,
     /// The effect takes a target value that must evaluate to a scope type in the given [`Scopes`] value.
     ///
     /// * Example: `set_county_culture = root.culture`
@@ -683,7 +568,6 @@ pub enum Effect {
     /// default behavior for targets is to warn about that, because it's usually a mistake.
     ///
     /// * Example: `destroy_artifact = this`
-    #[cfg(any(feature = "ck3", feature = "imperator"))]
     ScopeOkThis(Scopes),
     /// The effect takes a literal string that must exist in the item database for the given [`Item`] type.
     ///
@@ -700,35 +584,29 @@ pub enum Effect {
     /// must evaluate to a scope type in the given [`Scopes`] value.
     ///
     /// * Only example: `becomes_independent = { change = scope:change }`
-    #[cfg(feature = "ck3")]
     Target(&'static str, Scopes),
     /// The effect takes a block with two fields, both named here, where one specifies a target of
     /// the given [`Scopes`] type and the other specifies a script value.
     ///
     /// * Example: `change_de_jure_drift_progress = { target = root.primary_title value = 5 }`
-    #[cfg(any(feature = "ck3", feature = "vic3"))]
     TargetValue(&'static str, Scopes, &'static str),
     /// The effect takes a block with two fields, both named here, where one specifies a key for
     /// the given [`Item`] type and the other specifies a target of the given [`Scopes`] type.
     ///
     /// * Example: `remove_hook = { type = indebted_hook target = scope:old_caliph }`
-    #[cfg(any(feature = "ck3", feature = "hoi4"))]
     ItemTarget(&'static str, Item, &'static str, Scopes),
     /// The effect takes a block with two fields, both named here, where one specifies a key for
     /// the given [`Item`] type and the other specifies a script value.
     ///
     /// * Example: `set_amenity_level = { type = court_food_quality value = 3 }`
-    #[cfg(any(feature = "ck3", feature = "vic3"))]
     ItemValue(&'static str, Item, &'static str),
     /// The effect takes either a localization key or a description block with `first_valid` etc.
     ///
     /// * Example: `set_artifact_name = relic_weapon_name`
-    #[cfg(feature = "ck3")]
     Desc,
     /// The effect takes a duration, with a `days`, `weeks`, `months`, or `years` script value.
     ///
     /// * Example: `add_destination_progress = { days = 5 }`
-    #[cfg(any(feature = "ck3", feature = "vic3"))]
     Timespan,
     /// The effect takes a block that contains other effects.
     ///
@@ -737,16 +615,12 @@ pub enum Effect {
     /// The effect takes either a localization key, or a block that contains other effects.
     /// This variant is used by `custom_tooltip`.
     ControlOrLabel,
-    /// The effect is an iterator that does not fit the regular pattern
-    #[cfg(feature = "hoi4")]
-    Iterator(ListType, Scopes),
     /// This variant is for effects that can take any argument and it's not validated.
     /// The effect is too unusual, or not worth checking, or really any argument is fine.
     ///
     /// * Examples: `assert_if`, `debug_log`, `remove_variable`
     Unchecked,
     /// This variant is for effects that we haven't gotten around to validating yet.
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5", feature = "hoi4"))]
     UncheckedTodo,
     /// The effect takes a literal string that is one of the options given here.
     ///
@@ -778,11 +652,6 @@ pub enum Effect {
     /// The effect takes a single word.
     /// The parameter is a description of what kind of identifier is expected.
     Identifier(&'static str),
-    /// The effect takes a number or an expression that produces a value.
-    /// This is for Hoi4 which doesn't have script values.
-    #[cfg(feature = "hoi4")]
-    Value,
     /// The effect takes a possibly named color value
-    #[cfg(feature = "ck3")]
     Color,
 }

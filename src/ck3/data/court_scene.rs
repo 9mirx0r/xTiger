@@ -6,7 +6,6 @@ use crate::ck3::tables::misc::SUPPORT_TYPES;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader, LoadAsFile, Recursive};
 use crate::pdxfile::PdxEncoding;
 use crate::report::{ErrorKey, warn};
@@ -19,7 +18,7 @@ use crate::validator::Validator;
 pub struct CourtSceneGroup {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CourtSceneGroup, CourtSceneGroup::add)
+    ItemLoader::Normal(Item::CourtSceneGroup, CourtSceneGroup::add)
 }
 
 impl CourtSceneGroup {
@@ -43,7 +42,7 @@ impl DbKind for CourtSceneGroup {
 pub struct CourtSceneRole {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CourtSceneRole, CourtSceneRole::add)
+    ItemLoader::Normal(Item::CourtSceneRole, CourtSceneRole::add)
 }
 
 impl CourtSceneRole {
@@ -56,12 +55,14 @@ impl DbKind for CourtSceneRole {
     fn validate(&self, key: &Token, block: &Block, data: &Everything) {
         let mut vd = Validator::new(block, data);
         let mut sc = ScopeContext::new(Scopes::Character, key);
+        // As documented in the game's `_roles.info`: `scope:ruler` is the owner of the court, and
+        // the animation triggers also get the `scope:character` it is chosen for.
         sc.define_name("ruler", Scopes::Character, key);
+        vd.field_effect("effect", Tooltipped::No, &mut sc);
 
+        sc.define_name("character", Scopes::Character, key);
         vd.field_validated_sc("scripted_animation", &mut sc, validate_scripted_animation);
         vd.field_item("camera", Item::PortraitCamera);
-
-        vd.field_effect_rooted("effect", Tooltipped::No, Scopes::Character);
 
         vd.field_bool("is_low_priority");
         vd.field_item("group", Item::CourtSceneGroup);
@@ -72,7 +73,7 @@ impl DbKind for CourtSceneRole {
 pub struct CourtSceneCulture {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CourtSceneCulture, CourtSceneCulture::add)
+    ItemLoader::Normal(Item::CourtSceneCulture, CourtSceneCulture::add)
 }
 
 impl CourtSceneCulture {
@@ -94,7 +95,7 @@ impl DbKind for CourtSceneCulture {
 pub struct CourtSceneSetting {}
 
 inventory::submit! {
-    ItemLoader::Full(GameFlags::Ck3, Item::CourtSceneSetting, PdxEncoding::Utf8OptionalBom, ".txt", LoadAsFile::Yes, Recursive::No, CourtSceneSetting::add)
+    ItemLoader::Full(Item::CourtSceneSetting, PdxEncoding::Utf8OptionalBom, ".txt", LoadAsFile::Yes, Recursive::No, CourtSceneSetting::add)
 }
 
 impl CourtSceneSetting {
@@ -113,6 +114,7 @@ impl DbKind for CourtSceneSetting {
         vd.field_value("name");
         vd.field_item("culture", Item::CourtSceneCulture);
         vd.field_integer("visual_culture_level");
+        vd.field_item("requires_dlc_flag", Item::DlcFeature);
         vd.field_item("cubemap", Item::File);
         vd.field_item("environment", Item::File);
         vd.field_precise_numeric("audio_culture");

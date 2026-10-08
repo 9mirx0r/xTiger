@@ -4,7 +4,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::scopes::Scopes;
 use crate::token::Token;
@@ -16,7 +15,7 @@ use crate::validator::Validator;
 pub struct CasusBelli {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CasusBelli, CasusBelli::add)
+    ItemLoader::Normal(Item::CasusBelli, CasusBelli::add)
 }
 
 impl CasusBelli {
@@ -86,6 +85,7 @@ impl DbKind for CasusBelli {
         vd.field_validated_block_sc("cost", &mut sc, validate_cost);
 
         vd.field_bool("attacker_capital_gives_war_score");
+        vd.field_list("same_faith_defenders_allowed_parameter");
         vd.field_bool("defender_capital_gives_war_score");
         vd.field_bool("imprisonment_by_attacker_give_war_score");
         vd.field_bool("imprisonment_by_defender_give_war_score");
@@ -93,6 +93,7 @@ impl DbKind for CasusBelli {
         let sc_effect_builder = |key: &Token| {
             let mut sc = sc_builder(key);
             sc.define_name("war", Scopes::War, key);
+            sc.define_name("target", Scopes::LandedTitle, key);
             sc.define_list("attackers", Scopes::LandedTitle, key);
             sc.define_list("defenders", Scopes::LandedTitle, key);
             sc
@@ -230,7 +231,7 @@ impl DbKind for CasusBelli {
 pub struct CasusBelliGroup {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CasusBelliGroup, CasusBelliGroup::add)
+    ItemLoader::Normal(Item::CasusBelliGroup, CasusBelliGroup::add)
 }
 
 impl CasusBelliGroup {

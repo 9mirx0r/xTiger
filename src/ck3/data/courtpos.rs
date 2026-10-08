@@ -4,7 +4,6 @@ use crate::ck3::validate::validate_cost;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::report::{ErrorKey, err};
@@ -18,7 +17,7 @@ use crate::validator::Validator;
 pub struct CourtPosition {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CourtPosition, CourtPosition::add)
+    ItemLoader::Normal(Item::CourtPosition, CourtPosition::add)
 }
 
 impl CourtPosition {
@@ -83,6 +82,11 @@ impl DbKind for CourtPosition {
             validate_modifs(block, data, ModifKinds::Character, vd);
         });
         vd.field_validated_block("faith_modifier", |block, data| {
+            let mut vd = Validator::new(block, data);
+            vd.field_item("parameter", Item::DoctrineParameter);
+            validate_modifs(block, data, ModifKinds::Character, vd);
+        });
+        vd.field_validated_block("rite_modifier", |block, data| {
             let mut vd = Validator::new(block, data);
             vd.field_item("parameter", Item::DoctrineParameter);
             validate_modifs(block, data, ModifKinds::Character, vd);
@@ -203,7 +207,7 @@ fn validate_scaling_employer_modifiers(block: &Block, data: &Everything) {
 pub struct CourtPositionTask {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CourtPositionTask, CourtPositionTask::add)
+    ItemLoader::Normal(Item::CourtPositionTask, CourtPositionTask::add)
 }
 
 impl CourtPositionTask {

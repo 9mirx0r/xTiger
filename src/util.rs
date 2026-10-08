@@ -30,6 +30,7 @@ impl SmartJoin for Path {
         }
         result
     }
+
     fn smart_join_parent(&self, with: &str) -> PathBuf {
         if let Some(parent) = self.parent() {
             parent.smart_join(with)

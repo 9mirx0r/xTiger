@@ -2,7 +2,6 @@ use crate::block::Block;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::scopes::Scopes;
 use crate::token::Token;
@@ -13,7 +12,7 @@ use crate::validator::Validator;
 pub struct PointOfInterest {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::PointOfInterest, PointOfInterest::add)
+    ItemLoader::Normal(Item::PointOfInterest, PointOfInterest::add)
 }
 
 impl PointOfInterest {
@@ -37,5 +36,7 @@ impl DbKind for PointOfInterest {
             sc.define_name("province", Scopes::Province, key);
             sc
         });
+        vd.field_effect_rooted("on_added", Tooltipped::No, Scopes::Province);
+        vd.field_effect_rooted("on_removed", Tooltipped::No, Scopes::Province);
     }
 }

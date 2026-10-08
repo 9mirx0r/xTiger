@@ -4,7 +4,6 @@ use crate::ck3::validate::validate_cost;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::report::{ErrorKey, warn};
@@ -18,7 +17,7 @@ use crate::validator::Validator;
 pub struct DomicileType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::DomicileType, DomicileType::add)
+    ItemLoader::Normal(Item::DomicileType, DomicileType::add)
 }
 
 impl DomicileType {
@@ -123,7 +122,7 @@ fn validate_map_entity(bv: &BV, data: &Everything) {
 pub struct DomicileBuilding {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::DomicileBuilding, DomicileBuilding::add)
+    ItemLoader::Normal(Item::DomicileBuilding, DomicileBuilding::add)
 }
 
 impl DomicileBuilding {

@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::report::{ErrorKey, err};
 use crate::token::Token;
@@ -11,7 +10,7 @@ use crate::validator::Validator;
 pub struct GameRule {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::GameRule, GameRule::add)
+    ItemLoader::Normal(Item::GameRule, GameRule::add)
 }
 
 impl GameRule {

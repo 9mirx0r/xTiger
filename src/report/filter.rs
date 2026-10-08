@@ -133,6 +133,7 @@ impl FilterRule {
             }
         }
     }
+
     pub fn file_from_token(token: &Token) -> Option<FilterRule> {
         let pattern = Pattern::new(token.as_str());
         match pattern {

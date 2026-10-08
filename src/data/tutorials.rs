@@ -1,11 +1,8 @@
 use crate::block::Block;
-#[cfg(feature = "vic3")]
-use crate::context::ScopeContext;
 use crate::datacontext::DataContext;
 use crate::datatype::Datatype;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::{Game, GameFlags};
 use crate::gui::validate_datatype_field;
 use crate::item::{Item, ItemLoader};
 use crate::scopes::Scopes;
@@ -17,7 +14,7 @@ use crate::validator::{Validator, ValueValidator};
 pub struct TutorialLesson {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3.union(GameFlags::Vic3), Item::TutorialLesson, TutorialLesson::add)
+    ItemLoader::Normal(Item::TutorialLesson, TutorialLesson::add)
 }
 
 impl TutorialLesson {
@@ -41,8 +38,7 @@ impl DbKind for TutorialLesson {
         }
     }
 
-    #[allow(unused_variables)] // for `key` when not vic3
-    fn validate(&self, key: &Token, block: &Block, data: &Everything) {
+    fn validate(&self, _key: &Token, block: &Block, data: &Everything) {
         let mut vd = Validator::new(block, data);
 
         vd.field_item("chain", Item::TutorialLessonChain);
@@ -67,11 +63,6 @@ impl DbKind for TutorialLesson {
                 false,
             );
         });
-        #[cfg(feature = "vic3")]
-        {
-            let mut sc = ScopeContext::new(Scopes::JournalEntry, key);
-            vd.multi_field_target("highlight_target", &mut sc, Scopes::all());
-        }
 
         vd.multi_field_validated_block("trigger_transition", validate_trigger_transition);
 
@@ -93,7 +84,7 @@ pub struct TutorialLessonChain {
 }
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3.union(GameFlags::Vic3), Item::TutorialLessonChain, TutorialLessonChain::add)
+    ItemLoader::Normal(Item::TutorialLessonChain, TutorialLessonChain::add)
 }
 
 impl TutorialLessonChain {
@@ -162,11 +153,6 @@ impl DbKind for TutorialLessonStep {
                 false,
             );
         });
-        #[cfg(feature = "vic3")]
-        {
-            let mut sc = ScopeContext::new(Scopes::JournalEntry, key);
-            vd.multi_field_target("highlight_target", &mut sc, Scopes::all());
-        }
 
         // TODO: These two are not used in vanilla and the docs are a bit unclear
         vd.field_item("soundeffect", Item::Sound);
@@ -187,7 +173,6 @@ impl DbKind for TutorialLessonStep {
         });
         vd.multi_field_validated_block("trigger_transition", validate_trigger_transition);
 
-        // TODO: verify this works in Vic3 too
         // TODO: need a general way to restrict effects to interface effects only
         vd.field_effect_rooted("interface_effect", Tooltipped::No, Scopes::None);
 
@@ -203,7 +188,6 @@ impl DbKind for TutorialLessonStep {
             vd.ban_field("effect", || "gamestate tutorial chains");
         }
 
-        #[cfg(feature = "ck3")]
         vd.field_validated_block("highlight_widget_with_index", |block, data| {
             let mut vd = Validator::new(block, data);
             vd.unknown_value_fields(|_, value| {
@@ -212,7 +196,6 @@ impl DbKind for TutorialLessonStep {
                 vvd.integer();
             });
         });
-        #[cfg(feature = "ck3")]
         vd.field_validated_block("highlight_child_widget_of", |block, data| {
             let mut vd = Validator::new(block, data);
             vd.unknown_value_fields(|_, _| {
@@ -238,14 +221,5 @@ fn validate_lesson_target(_key: &Token, mut vd: ValueValidator) {
 }
 
 fn game_tutorial_scope() -> Scopes {
-    match Game::game() {
-        #[cfg(feature = "ck3")]
-        Game::Ck3 => Scopes::Character,
-        #[cfg(feature = "vic3")]
-        Game::Vic3 => Scopes::Country,
-        #[cfg(feature = "imperator")]
-        Game::Imperator => unimplemented!(),
-        #[cfg(feature = "hoi4")]
-        Game::Hoi4 => unimplemented!(),
-    }
+    Scopes::Character
 }

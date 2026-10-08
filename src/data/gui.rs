@@ -8,7 +8,6 @@ use crate::block::{BV, Block, BlockItem, Field};
 use crate::datacontext::DataContext;
 use crate::everything::Everything;
 use crate::fileset::{FileEntry, FileHandler};
-use crate::game::Game;
 use crate::gui::{BuiltinWidget, GuiBlock, GuiBlockFrom};
 use crate::helpers::{TigerHashMap, TigerHashSet, dup_error};
 use crate::item::Item;
@@ -276,7 +275,7 @@ impl Gui {
 
 impl FileHandler<Block> for Gui {
     fn subpath(&self) -> PathBuf {
-        if Game::is_hoi4() { PathBuf::from("interface") } else { PathBuf::from("gui") }
+        PathBuf::from("gui")
     }
 
     fn load_file(&self, entry: &FileEntry, parser: &ParserMemory) -> Option<Block> {

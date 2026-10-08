@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::token::Token;
 use crate::validator::Validator;
@@ -10,7 +9,7 @@ use crate::validator::Validator;
 pub struct NameList {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::NameList, NameList::add)
+    ItemLoader::Normal(Item::NameList, NameList::add)
 }
 
 impl NameList {

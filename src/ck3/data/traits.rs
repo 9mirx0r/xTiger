@@ -18,7 +18,6 @@ use crate::script_value::validate_script_value;
 use crate::token::Token;
 use crate::tooltipped::Tooltipped;
 use crate::validator::Validator;
-use crate::variables::Variables;
 
 #[derive(Clone, Debug, Default)]
 #[allow(clippy::struct_field_names)]
@@ -44,12 +43,6 @@ impl Traits {
         }
         self.traits_lc.insert(Lowercase::new(key.as_str()), key.as_str());
         self.traits.insert(key.as_str(), Trait::new(key, block));
-    }
-
-    pub fn scan_variables(&self, registry: &mut Variables) {
-        for item in self.traits.values() {
-            registry.scan(&item.block);
-        }
     }
 
     pub fn exists(&self, key: &str) -> bool {
@@ -198,6 +191,7 @@ impl Trait {
         vd.field_item("category", Item::TraitCategory);
         vd.multi_field_validated_block("culture_modifier", validate_culture_modifier);
         vd.multi_field_validated_block("faith_modifier", validate_faith_modifier);
+        vd.multi_field_validated_block("rite_modifier", validate_faith_modifier);
         vd.field_item("culture_succession_prio", Item::CultureParameter);
         vd.multi_field_validated_block("triggered_opinion", validate_triggered_opinion);
 
@@ -241,6 +235,7 @@ impl Trait {
         vd.replaced_field("childhood", "`category = childhood`");
         vd.field_integer("ruler_designer_cost");
         vd.field_bool("shown_in_ruler_designer");
+        vd.field_bool("clergy");
         vd.field_bool("add_commander_trait");
         vd.replaced_field("fame", "`category = fame`");
         vd.replaced_field("lifestyle", "`category = lifestyle`");
@@ -354,6 +349,7 @@ fn validate_trait_track(key: &Token, block: &Block, data: &Everything, warn_key:
         let mut vd = Validator::new(block, data);
         vd.multi_field_validated_block("culture_modifier", validate_culture_modifier);
         vd.multi_field_validated_block("faith_modifier", validate_faith_modifier);
+        vd.multi_field_validated_block("rite_modifier", validate_faith_modifier);
         validate_modifs(block, data, ModifKinds::Character, vd);
     });
     // let modif = format!("{key}_xp_degradation_mult");

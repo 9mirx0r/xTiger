@@ -5,7 +5,6 @@ use crate::ck3::tables::misc::OUTBREAK_INTENSITIES;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::report::{ErrorKey, warn};
@@ -20,7 +19,7 @@ use crate::validator::Validator;
 pub struct EpidemicType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::EpidemicType, EpidemicType::add)
+    ItemLoader::Normal(Item::EpidemicType, EpidemicType::add)
 }
 
 impl EpidemicType {
@@ -134,6 +133,17 @@ fn build_province_epidemic_sc(key: &Token) -> ScopeContext {
 fn validate_outbreak_level(block: &Block, data: &Everything) {
     let mut vd = Validator::new(block, data);
     vd.field_bool("global_notification");
+    vd.field_validated_block("notification", |block, data| {
+        let mut vd = Validator::new(block, data);
+        vd.field_bool("global");
+        for field in &["holder_event", "liege_event", "realm_event"] {
+            if let Some(token) = vd.field_value(field)
+                && !token.is("")
+            {
+                data.verify_exists(Item::Event, token);
+            }
+        }
+    });
     vd.field_script_value_no_breakdown_builder("outbreak_chance", |key| {
         let mut sc = ScopeContext::new(Scopes::Province, key);
         sc.define_name("epidemic_type", Scopes::EpidemicType, key);

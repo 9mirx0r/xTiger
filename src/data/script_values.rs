@@ -1,21 +1,18 @@
 use std::path::PathBuf;
-use std::sync::RwLock;
 
 use crate::block::{BV, Block};
 use crate::context::ScopeContext;
 use crate::everything::Everything;
 use crate::fileset::{FileEntry, FileHandler};
-use crate::helpers::{
-    BANNED_NAMES, PrefixShould, TigerHashMap, dup_error, exact_dup_error, item_prefix_should,
-};
+use crate::helpers::{BANNED_NAMES, TigerHashMap, check_dup_item, dup_error, exact_dup_error};
 use crate::item::Item;
+use crate::macros::ValidationCache;
 use crate::parse::ParserMemory;
 use crate::pdxfile::PdxFile;
 use crate::report::{ErrorKey, err, warn};
 use crate::scopes::Scopes;
 use crate::script_value::{validate_non_dynamic_script_value, validate_script_value};
 use crate::token::{Loc, Token};
-use crate::variables::Variables;
 
 #[derive(Debug, Default)]
 pub struct ScriptValues {
@@ -38,48 +35,12 @@ impl ScriptValues {
             let msg = "scriptedvalue has the same name as an important builtin";
             err(ErrorKey::NameConflict).strong().msg(msg).loc(key).push();
         } else {
-            match item_prefix_should(Item::ScriptValue, key, |key| {
+            check_dup_item(Item::ScriptValue, key, |key| {
                 self.script_values.get(key).map(|entry| &entry.key)
-            }) {
-                PrefixShould::Insert(name) => {
-                    let scope_override = self.scope_overrides.get(name.as_str()).copied();
-                    self.script_values
-                        .insert(name.as_str(), ScriptValue::new(name, bv.clone(), scope_override));
-                }
-                #[cfg(any(feature = "vic3", feature = "eu5"))]
-                PrefixShould::Inject(name) => match bv {
-                    BV::Value(value) => {
-                        let msg = "cannot inject a simple value";
-                        err(ErrorKey::Prefixes).msg(msg).loc(value).push();
-                    }
-                    BV::Block(block) => {
-                        self.script_values.entry(name.as_str()).and_modify(
-                            |entry| match &mut entry.bv {
-                                BV::Value(value) => {
-                                    let msg = "cannot inject into a simple value";
-                                    err(ErrorKey::Prefixes)
-                                        .msg(msg)
-                                        .loc(name)
-                                        .loc_msg(&*value, "into here")
-                                        .push();
-                                }
-                                BV::Block(old_block) => {
-                                    old_block.append(&mut block.clone());
-                                }
-                            },
-                        );
-                    }
-                },
-                PrefixShould::Ignore => (),
-            }
-        }
-    }
-
-    pub fn scan_variables(&self, registry: &mut Variables) {
-        for item in self.script_values.values() {
-            if let Some(block) = &item.bv.get_block() {
-                registry.scan(block);
-            }
+            });
+            let scope_override = self.scope_overrides.get(key.as_str()).copied();
+            self.script_values
+                .insert(key.as_str(), ScriptValue::new(key.clone(), bv.clone(), scope_override));
         }
     }
 
@@ -155,22 +116,17 @@ impl FileHandler<Block> for ScriptValues {
 pub struct ScriptValue {
     key: Token,
     bv: BV,
-    cache: RwLock<TigerHashMap<Loc, ScopeContext>>,
+    cache: ValidationCache<Loc, ScopeContext>,
     scope_override: Option<Scopes>,
 }
 
 impl ScriptValue {
     pub fn new(key: Token, bv: BV, scope_override: Option<Scopes>) -> Self {
-        Self { key, bv, cache: RwLock::new(TigerHashMap::default()), scope_override }
+        Self { key, bv, cache: ValidationCache::default(), scope_override }
     }
 
     pub fn cached_compat(&self, key: &Token, sc: &mut ScopeContext, data: &Everything) -> bool {
-        if let Some(our_sc) = self.cache.read().unwrap().get(&key.loc) {
-            sc.expect_compatibility(our_sc, key, data);
-            true
-        } else {
-            false
-        }
+        self.cache.perform(&key.loc, |our_sc| sc.expect_compatibility(our_sc, key, data))
     }
 
     pub fn validate(&self, data: &Everything) {
@@ -195,14 +151,14 @@ impl ScriptValue {
             if self.scope_override.is_some() {
                 our_sc.set_no_warn(true);
             }
-            self.cache.write().unwrap().insert(key.loc, our_sc.clone());
+            self.cache.insert_pending(key.loc, our_sc.clone());
             validate_script_value(&self.bv, data, &mut our_sc);
             if let Some(scopes) = self.scope_override {
                 our_sc = ScopeContext::new_unrooted(scopes, key);
                 our_sc.set_strict_scopes(false);
             }
             sc.expect_compatibility(&our_sc, key, data);
-            self.cache.write().unwrap().insert(key.loc, our_sc);
+            self.cache.insert(key.loc, our_sc);
         }
     }
 

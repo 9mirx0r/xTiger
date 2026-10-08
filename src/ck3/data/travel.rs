@@ -5,7 +5,6 @@ use crate::ck3::validate::validate_cost;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::scopes::Scopes;
@@ -17,7 +16,7 @@ use crate::validator::Validator;
 pub struct TravelOption {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::TravelOption, TravelOption::add)
+    ItemLoader::Normal(Item::TravelOption, TravelOption::add)
 }
 
 impl TravelOption {
@@ -41,6 +40,7 @@ impl DbKind for TravelOption {
             validate_modifs(block, data, ModifKinds::TravelPlan, vd);
         });
 
+        vd.field_item("owner_modifier_description", Item::Localization);
         vd.multi_field_validated_block("owner_modifier", |block, data| {
             let vd = Validator::new(block, data);
             validate_modifs(block, data, ModifKinds::Character, vd);

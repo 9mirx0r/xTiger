@@ -6,9 +6,7 @@ use crate::context::ScopeContext;
 use crate::effect::validate_effect_internal;
 use crate::everything::Everything;
 use crate::fileset::{FileEntry, FileHandler};
-#[cfg(feature = "hoi4")]
-use crate::game::Game;
-use crate::helpers::{BANNED_NAMES, TigerHashMap, limited_item_prefix_should_insert};
+use crate::helpers::{BANNED_NAMES, TigerHashMap, check_dup_item};
 use crate::item::Item;
 use crate::lowercase::Lowercase;
 use crate::macros::{MACRO_MAP, MacroCache};
@@ -21,7 +19,6 @@ use crate::token::Token;
 use crate::tooltipped::Tooltipped;
 use crate::validate::ListType;
 use crate::validator::Validator;
-use crate::variables::Variables;
 
 #[derive(Debug, Default)]
 pub struct Effects {
@@ -34,22 +31,16 @@ impl Effects {
         if BANNED_NAMES.contains(&key.as_str()) {
             let msg = "scripted effect has the same name as an important builtin";
             err(ErrorKey::NameConflict).strong().msg(msg).loc(key).push();
-        } else if let Some(name) =
-            limited_item_prefix_should_insert(Item::ScriptedEffect, key, |key| {
+        } else {
+            check_dup_item(Item::ScriptedEffect, &key, |key| {
                 self.effects.get(key).map(|entry| &entry.key)
-            })
-        {
+            });
+            let name = key;
             let scope_override = self.scope_overrides.get(name.as_str()).copied();
             if block.source.is_some() {
                 MACRO_MAP.insert_or_get_loc(name.loc);
             }
             self.effects.insert(name.as_str(), Effect::new(name, block, scope_override));
-        }
-    }
-
-    pub fn scan_variables(&self, registry: &mut Variables) {
-        for item in self.effects.values() {
-            registry.scan(&item.block);
         }
     }
 
@@ -103,10 +94,6 @@ impl FileHandler<Block> for Effects {
             return None;
         }
 
-        #[cfg(feature = "hoi4")]
-        if Game::is_hoi4() {
-            return PdxFile::read_no_bom(entry, parser);
-        }
         PdxFile::read(entry, parser)
     }
 
@@ -162,7 +149,7 @@ impl Effect {
             if self.scope_override.is_some() {
                 our_sc.set_no_warn(true);
             }
-            self.cache.insert(
+            self.cache.insert_pending(
                 key,
                 &[],
                 tooltipped,
@@ -236,7 +223,7 @@ impl Effect {
             }
             // Insert the dummy sc before continuing. That way, if we recurse, we'll hit
             // that dummy context instead of macro-expanding again.
-            self.cache.insert(
+            self.cache.insert_pending(
                 key,
                 args,
                 tooltipped,

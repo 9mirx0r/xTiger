@@ -10,7 +10,7 @@ use crate::report::{ErrorKey, err, fatal};
 use crate::scopes::Scopes;
 use crate::tooltipped::Tooltipped;
 use crate::trigger::{validate_target, validate_target_ok_this};
-use crate::validate::{validate_modifiers_with_base, validate_scope_chain};
+use crate::validate::{validate_color, validate_modifiers_with_base, validate_scope_chain};
 use crate::validator::Validator;
 
 pub fn validate_theme_background(bv: &BV, data: &Everything, sc: &mut ScopeContext) {
@@ -136,7 +136,17 @@ pub fn validate_compare_modifier(block: &Block, data: &Everything, sc: &mut Scop
     sc.open_builder();
     let mut valid_target = false;
     vd.field_validated_value("target", |_, mut vd| {
-        valid_target = validate_scope_chain(vd.value(), data, sc, false);
+        let token = vd.value();
+        // The game also accepts a value as the target, as in
+        // `target = scope:story.var:steward.ai_compassion`
+        let last = token.split('.').pop();
+        if last.is_some_and(|last| crate::trigger::trigger_comparevalue(&last, data).is_some()) {
+            validate_target_ok_this(token, data, sc, Scopes::Value);
+            sc.replace(Scopes::Value, token.clone());
+            valid_target = true;
+        } else {
+            valid_target = validate_scope_chain(token, data, sc, false);
+        }
         vd.accept();
     });
     sc.finalize_builder();
@@ -277,6 +287,12 @@ pub fn validate_portrait_modifier_overrides(block: &Block, data: &Everything) {
             err(ErrorKey::MissingItem).msg(msg).loc(value).push();
         }
     });
+}
+
+/// The `colors` block of a portrait override, in bookmark portraits and character history.
+pub fn validate_portrait_colors(block: &Block, data: &Everything) {
+    let mut vd = Validator::new(block, data);
+    vd.field_validated_block("hair", validate_color);
 }
 
 pub fn validate_quick_trigger(block: &Block, data: &Everything) {

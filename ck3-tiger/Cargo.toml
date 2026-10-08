@@ -1,12 +1,12 @@
 [package]
 name = "ck3-tiger"
-version = "1.19.0"
+version = "1.0.0-alpha"
 edition = "2024"
 license = "GPL-3.0-or-later"
 default-run = "ck3-tiger"
 description = "Validator that checks Crusader Kings 3 user mod files for mistakes and warns about them. For example: missing localizations, or using a faith trigger on a character. Crusader Kings 3 is a grand strategy game made by Paradox Interactive, and user mods are made by the players to enhance or change their game experience. This tool is for the people who make the mods."
-homepage = "https://github.com/amtep/tiger"
-repository = "https://github.com/amtep/tiger"
+homepage = "https://github.com/9mirx0r/xTiger"
+repository = "https://github.com/9mirx0r/xTiger"
 readme = "../README.md"
 keywords = [ "ck3", "linter", "mods", "validator", "paradox" ]
 categories = ["command-line-utilities", "development-tools", "game-development"]
@@ -15,8 +15,8 @@ rust-version = "1.88"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tiger-lib = { path = "..", version = "1.19.0", features = ["ck3"] }
-tiger-bin-shared = { path = "../tiger-bin-shared", version = "1.19.0", features = ["ck3"] }
+tiger-lib = { path = "..", version = "1.0.0-alpha" }
+tiger-bin-shared = { path = "../tiger-bin-shared", version = "1.0.0-alpha" }
 
 anyhow = "1"
 clap = { version = "4.5", features = ["derive"] }

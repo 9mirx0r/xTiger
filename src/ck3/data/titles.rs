@@ -18,7 +18,6 @@ use crate::token::Token;
 use crate::tooltipped::Tooltipped;
 use crate::validate::validate_possibly_named_color;
 use crate::validator::Validator;
-use crate::variables::Variables;
 
 #[derive(Clone, Debug, Default)]
 pub struct Titles {
@@ -126,15 +125,6 @@ impl Titles {
         }
     }
 
-    pub fn scan_variables(&self, registry: &mut Variables) {
-        for item in self.titles.values() {
-            // Title blocks are nested, so the parent check is to avoid re-scanning subordinate titles.
-            if item.parent.is_none() {
-                registry.scan(&item.block);
-            }
-        }
-    }
-
     pub fn exists(&self, key: &str) -> bool {
         self.titles.contains_key(key)
     }
@@ -223,18 +213,18 @@ impl Title {
         // NOTE: There used to be a check that non-barony titles existed in the
         // title history, but that seems to be optional.
         data.verify_exists(Item::Localization, &self.key);
-        let loca = format!("{}_adj", &self.key);
+        let loca = format!("{}_adj", self.key);
         if self.tier > Tier::Barony {
             data.verify_exists_implied(Item::Localization, &loca, &self.key);
         } else {
             data.mark_used(Item::Localization, &loca);
         }
         // The _pre is rarely defined even in vanilla
-        let loca = format!("{}_pre", &self.key);
+        let loca = format!("{}_pre", self.key);
         data.mark_used(Item::Localization, &loca);
         let definite_form = self.block.field_value_is("definite_form", "yes");
         if definite_form {
-            data.localization.suggest(&format!("{}_article", &self.key), &self.key);
+            data.localization.suggest(&format!("{}_article", self.key), &self.key);
         }
 
         let mut vd = Validator::new(&self.block, data);
@@ -248,6 +238,7 @@ impl Title {
         vd.field_bool("ruler_uses_title_name");
         vd.field_bool("can_be_named_after_dynasty");
         vd.field_bool("landless");
+        vd.field_item("dlc_feature", Item::DlcFeature);
         vd.field_bool("require_landless");
         vd.field_bool("no_automatic_claims");
         vd.field_bool("always_follows_primary_heir");

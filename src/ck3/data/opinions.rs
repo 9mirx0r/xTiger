@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::token::Token;
 use crate::validator::Validator;
@@ -10,7 +9,7 @@ use crate::validator::Validator;
 pub struct OpinionModifier {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::OpinionModifier, OpinionModifier::add)
+    ItemLoader::Normal(Item::OpinionModifier, OpinionModifier::add)
 }
 
 impl OpinionModifier {

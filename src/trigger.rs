@@ -6,30 +6,19 @@ use std::str::FromStr;
 
 use crate::block::{BV, Block, Comparator, Eq::*, Field};
 use crate::context::{Reason, ScopeContext, Temporary};
-#[cfg(feature = "jomini")]
 use crate::data::genes::Gene;
-#[cfg(feature = "jomini")]
 use crate::data::trigger_localization::validate_trigger_localization;
 use crate::date::Date;
 use crate::desc::validate_desc;
 use crate::effect::scope_effect;
 use crate::everything::Everything;
-use crate::game::Game;
-use crate::helpers::is_country_tag;
 use crate::helpers::stringify_choices;
-#[cfg(feature = "hoi4")]
-use crate::hoi4::effect_validation::validate_flag_name;
-#[cfg(feature = "hoi4")]
-use crate::hoi4::variables::validate_variable;
 use crate::item::Item;
 use crate::lowercase::Lowercase;
-#[cfg(any(feature = "vic3", feature = "imperator"))]
-use crate::modif::verify_modif_exists;
 use crate::report::{ErrorKey, Severity, err, fatal, tips, warn};
 use crate::scopes::{
     ArgumentValue, Scopes, needs_prefix, scope_iterator, scope_prefix, scope_to_scope,
 };
-#[cfg(feature = "jomini")]
 use crate::script_value::validate_script_value;
 use crate::token::{Loc, Token};
 use crate::tooltipped::Tooltipped;
@@ -47,18 +36,7 @@ use crate::validator::Validator;
 ///
 /// Returns the inscopes valid for the trigger and the output trigger value type.
 pub fn scope_trigger(name: &Token, data: &Everything) -> Option<(Scopes, Trigger)> {
-    let scope_trigger = match Game::game() {
-        #[cfg(feature = "ck3")]
-        Game::Ck3 => crate::ck3::tables::triggers::scope_trigger,
-        #[cfg(feature = "vic3")]
-        Game::Vic3 => crate::vic3::tables::triggers::scope_trigger,
-        #[cfg(feature = "imperator")]
-        Game::Imperator => crate::imperator::tables::triggers::scope_trigger,
-        #[cfg(feature = "eu5")]
-        Game::Eu5 => crate::eu5::tables::triggers::scope_trigger,
-        #[cfg(feature = "hoi4")]
-        Game::Hoi4 => crate::hoi4::tables::triggers::scope_trigger,
-    };
+    let scope_trigger = crate::ck3::tables::triggers::scope_trigger;
     scope_trigger(name, data)
 }
 
@@ -142,13 +120,6 @@ pub fn validate_trigger_internal(
     let max_sev = vd.max_severity();
     vd.set_case_sensitive(false);
 
-    #[cfg(feature = "hoi4")]
-    let caller = if Game::is_hoi4() && tooltipped == Tooltipped::Inner {
-        &Lowercase::new_unchecked("custom_override_tooltip")
-    } else {
-        caller
-    };
-
     // If this condition looks weird, it's because the negation from for example NOR has already
     // been applied to the `negated` value.
     if tooltipped == Tooltipped::FailuresOnly
@@ -179,11 +150,7 @@ pub fn validate_trigger_internal(
         }
     }
 
-    if caller == "trigger_if"
-        || caller == "trigger_else_if"
-        || caller == "trigger_else"
-        || (Game::is_hoi4() && (caller == "if" || caller == "else_if" || caller == "else"))
-    {
+    if caller == "trigger_if" || caller == "trigger_else_if" || caller == "trigger_else" {
         if caller != "trigger_else" && caller != "else" {
             vd.req_field_warn("limit");
         }
@@ -199,7 +166,6 @@ pub fn validate_trigger_internal(
         vd.ban_field("limit", || "`trigger_if`, `trigger_else_if` or `trigger_else`");
     }
 
-    #[cfg(feature = "jomini")]
     if ltype == ListType::None {
         vd.ban_field("filter", || "lists");
     } else {
@@ -208,27 +174,24 @@ pub fn validate_trigger_internal(
         });
     }
 
-    validate_iterator_fields(caller, ltype, data, sc, &mut vd, &mut tooltipped, false);
+    validate_iterator_fields(caller, ltype, sc, &mut vd, &mut tooltipped, false);
 
     if ltype != ListType::None {
         validate_inside_iterator(caller, ltype, block, data, sc, &mut vd, tooltipped);
     }
 
     // TODO: the custom_description and custom_tooltip logic is duplicated for effects
-    #[cfg(feature = "jomini")]
-    if Game::is_jomini() {
-        if caller == "custom_description" || caller == "custom_tooltip" {
-            vd.req_field("text");
-            if caller == "custom_tooltip" {
-                vd.field_item("text", Item::Localization);
-            } else if let Some(token) = vd.field_value("text") {
-                validate_trigger_localization(token, data, tooltipped, negated);
-            }
-            vd.field_target_ok_this("subject", sc, Scopes::non_primitive());
-        } else {
-            vd.ban_field("text", || "`custom_description` or `custom_tooltip`");
-            vd.ban_field("subject", || "`custom_description` or `custom_tooltip`");
+    if caller == "custom_description" || caller == "custom_tooltip" {
+        vd.req_field("text");
+        if caller == "custom_tooltip" {
+            vd.field_item("text", Item::Localization);
+        } else if let Some(token) = vd.field_value("text") {
+            validate_trigger_localization(token, data, tooltipped, negated);
         }
+        vd.field_target_ok_this("subject", sc, Scopes::non_primitive());
+    } else {
+        vd.ban_field("text", || "`custom_description` or `custom_tooltip`");
+        vd.ban_field("subject", || "`custom_description` or `custom_tooltip`");
     }
 
     if caller == "custom_description" {
@@ -263,8 +226,7 @@ pub fn validate_trigger_internal(
     validate_ifelse_sequence(block, "trigger_if", "trigger_else_if", "trigger_else");
 
     vd.unknown_fields_any_cmp(|key, cmp, bv| {
-        #[cfg(feature = "jomini")]
-        if Game::is_jomini() && key.is("value") {
+        if key.is("value") {
             validate_script_value(bv, data, sc);
             side_effects = true;
             return;
@@ -326,27 +288,13 @@ pub fn validate_trigger_internal(
         // check add and factor at the end, accounting for any temporary scope saved
         // elsewhere in the block.
         vd.multi_field_validated("add", |bv, data| {
-            if Game::is_jomini() {
-                #[cfg(feature = "jomini")]
-                validate_script_value(bv, data, sc);
-                side_effects = true;
-            } else {
-                // TODO HOI4
-                let _ = &bv;
-                let _ = &data;
-            }
+            validate_script_value(bv, data, sc);
+            side_effects = true;
         });
 
         vd.multi_field_validated("factor", |bv, data| {
-            if Game::is_jomini() {
-                #[cfg(feature = "jomini")]
-                validate_script_value(bv, data, sc);
-                side_effects = true;
-            } else {
-                // TODO HOI4
-                let _ = &bv;
-                let _ = &data;
-            }
+            validate_script_value(bv, data, sc);
+            side_effects = true;
         });
     }
 
@@ -419,23 +367,22 @@ pub fn validate_trigger_key_bv(
         return side_effects;
     }
 
-    // `10 < script value` is a valid trigger
-    if key.is_number() {
-        if Game::is_jomini() {
-            #[cfg(feature = "jomini")]
-            validate_script_value(bv, data, sc);
-        } else {
-            // TODO HOI4
+    // Quoted value link with an argument used as a trigger key, such as
+    // "divergence(scope:x.rite)" >= 1. Both sides must resolve to values.
+    if key.as_str().ends_with(')')
+        && key.as_str().contains('(')
+        && !matches!(cmp, Comparator::Equals(Single | Question))
+    {
+        validate_target_ok_this(key, data, sc, Scopes::Value);
+        if let Some(token) = bv.get_value() {
+            validate_target_ok_this(token, data, sc, Scopes::Value);
         }
         return side_effects;
     }
 
-    #[cfg(feature = "hoi4")]
-    if Game::is_hoi4() && key.starts_with("var:") {
-        validate_variable(key, data, sc, Severity::Error);
-        sc.open_builder();
-        sc.replace(Scopes::all_but_none(), key.clone());
-        side_effects |= validate_trigger_rhs(key, cmp, bv, data, sc, tooltipped, negated, max_sev);
+    // `10 < script value` is a valid trigger
+    if key.is_number() {
+        validate_script_value(bv, data, sc);
         return side_effects;
     }
 
@@ -477,45 +424,17 @@ pub fn validate_trigger_key_bv(
                 } else if part_lc == "root" {
                     sc.replace_root();
                 } else if part_lc == "prev" {
-                    if !part_flags.contains(PartFlags::First) && !Game::is_imperator() {
+                    if !part_flags.contains(PartFlags::First) {
                         warn_not_first(part);
                     }
                     sc.replace_prev();
                 } else if part_lc == "this" {
                     sc.replace_this();
-                } else if Game::is_hoi4() && part_lc == "from" {
-                    #[cfg(feature = "hoi4")]
-                    sc.replace_from();
                 } else if data.script_value_exists(part.as_str()) {
                     // TODO: check side_effects
-                    #[cfg(feature = "jomini")]
                     data.script_values.validate_call(part, data, sc);
                     sc.replace(Scopes::Value, part.clone());
-                } else if let Some((inscopes, outscope)) = scope_to_scope(part, sc.scopes(data)) {
-                    #[cfg(feature = "imperator")]
-                    if let Some((inscopes, trigger)) = scope_trigger(part, data) {
-                        // If a trigger of the same name exists, and it's compatible with this
-                        // location and scope context, then that trigger takes precedence.
-                        if part_flags.contains(PartFlags::Last)
-                            && (inscopes.contains(Scopes::None)
-                                || sc.scopes(data).intersects(inscopes))
-                        {
-                            validate_inscopes(part_flags, part, inscopes, sc, data);
-                            sc.close();
-                            side_effects |= match_trigger_bv(
-                                &trigger,
-                                &part.clone(),
-                                cmp,
-                                bv,
-                                data,
-                                sc,
-                                tooltipped,
-                                negated,
-                                max_sev,
-                            );
-                            return side_effects;
-                        }
-                    }
+                } else if let Some((inscopes, outscope)) = scope_to_scope(part) {
                     validate_inscopes(part_flags, part, inscopes, sc, data);
                     sc.replace(outscope, part.clone());
                 } else if let Some((inscopes, trigger)) = scope_trigger(part, data) {
@@ -547,17 +466,6 @@ pub fn validate_trigger_key_bv(
                         max_sev,
                     );
                     return side_effects;
-                } else if Game::is_hoi4() && is_country_tag(part.as_str()) {
-                    if !part_flags.contains(PartFlags::First) {
-                        warn_not_first(part);
-                    }
-                    #[cfg(feature = "hoi4")]
-                    data.verify_exists(Item::CountryTag, part);
-                    #[cfg(feature = "hoi4")]
-                    sc.replace(Scopes::Country, part.clone());
-                } else if Game::is_hoi4() && is_character_token(part.as_str(), data) {
-                    #[cfg(feature = "hoi4")]
-                    sc.replace(Scopes::Character, part.clone());
                 } else if scope_effect(part, data).is_some() {
                     let msg = format!("`{part}` is an effect, and can't be used in a trigger");
                     err(ErrorKey::WrongUse).msg(msg).loc(part).push();
@@ -606,7 +514,6 @@ pub fn validate_trigger_rhs(
         } else if sc.can_be(Scopes::Value, data) {
             sc.close();
             // TODO: check side_effects
-            #[cfg(feature = "jomini")]
             validate_script_value(bv, data, sc);
         } else {
             let msg = format!("unexpected comparator {cmp}");
@@ -722,10 +629,7 @@ fn match_trigger_bv(
     // True iff the comparator must be Comparator::Equals
     let mut must_be_eq = true;
     // True iff it's probably a mistake if the comparator is Comparator::Equals
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "hoi4", feature = "eu5"))]
     let mut warn_if_eq = false;
-    #[cfg(not(any(feature = "ck3", feature = "vic3", feature = "hoi4", feature = "eu5")))]
-    let warn_if_eq = false;
 
     match trigger {
         Trigger::Boolean => {
@@ -735,27 +639,35 @@ fn match_trigger_bv(
         }
         Trigger::CompareValue => {
             must_be_eq = false;
-            // TODO: check side_effects
-            if Game::is_jomini() {
-                #[cfg(feature = "jomini")]
-                validate_script_value(bv, data, sc);
-            } else {
-                #[cfg(feature = "hoi4")]
-                if let Some(token) = bv.expect_value() {
-                    validate_target(token, data, sc, Scopes::Value);
-                }
+            // rarity_level also accepts rarity names (1.20): `rarity_level >= masterwork`
+            if name.is("rarity_level")
+                && bv.get_value().is_some_and(|v| {
+                    crate::ck3::tables::misc::ARTIFACT_RARITIES.contains(&v.as_str())
+                })
+            {
+                return side_effects;
             }
+            // `current_year < 868.1.1` loads without error in the game (vanilla has one), but it takes a year
+            if name.is("current_year")
+                && bv
+                    .get_value()
+                    .is_some_and(|v| v.as_str().matches('.').count() == 2 && v.is_date())
+            {
+                let msg = "`current_year` takes a year, not a date";
+                let info = "the game loads this without complaint, but how it reads the date is unclear; write just the year";
+                warn(ErrorKey::Validation).msg(msg).info(info).loc(bv).push();
+                return side_effects;
+            }
+            // TODO: check side_effects
+            validate_script_value(bv, data, sc);
         }
-        #[cfg(any(feature = "ck3", feature = "vic3", feature = "hoi4", feature = "eu5"))]
         Trigger::CompareValueWarnEq => {
             must_be_eq = false;
             warn_if_eq = true;
             // TODO: check side_effects
-            #[cfg(feature = "jomini")]
             validate_script_value(bv, data, sc);
             // TODO HOI4
         }
-        #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
         Trigger::SetValue => {
             // TODO: check side_effects
             validate_script_value(bv, data, sc);
@@ -769,21 +681,11 @@ fn match_trigger_bv(
                 warn(ErrorKey::Validation).msg(msg).loc(token).push();
             }
         }
-        #[cfg(any(feature = "vic3", feature = "eu5"))]
-        Trigger::ItemOrCompareValue(i) => {
-            if let Some(token) = bv.expect_value()
-                && !data.item_exists(*i, token.as_str())
-            {
-                must_be_eq = false;
-                validate_target(token, data, sc, Scopes::Value);
-            }
-        }
         Trigger::Scope(s) => {
             if let Some(token) = bv.get_value() {
                 validate_target(token, data, sc, *s);
             } else if s.contains(Scopes::Value) {
                 // TODO: check side_effects
-                #[cfg(feature = "jomini")]
                 validate_script_value(bv, data, sc);
                 // TODO HOI4
             } else {
@@ -795,7 +697,6 @@ fn match_trigger_bv(
                 validate_target_ok_this(token, data, sc, *s);
             } else if s.contains(Scopes::Value) {
                 // TODO: check side_effects
-                #[cfg(feature = "jomini")]
                 validate_script_value(bv, data, sc);
                 // TODO HOI4
             } else {
@@ -823,7 +724,6 @@ fn match_trigger_bv(
                 warn(ErrorKey::Validation).msg(msg).info(info).loc(token).push();
             }
         }
-        #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
         Trigger::CompareChoice(choices) => {
             must_be_eq = false;
             if let Some(token) = bv.expect_value()
@@ -833,23 +733,12 @@ fn match_trigger_bv(
                 warn(ErrorKey::Validation).msg(msg).loc(token).push();
             }
         }
-        #[cfg(any(feature = "vic3", feature = "eu5"))]
-        Trigger::CompareChoiceOrNumber(choices) => {
-            must_be_eq = false;
-            if let Some(token) = bv.expect_value()
-                && !token.is_number()
-                && !choices.contains(&token.as_str())
-            {
-                validate_target(token, data, sc, Scopes::Value);
-            }
-        }
         Trigger::Block(fields) => {
             if let Some(block) = bv.expect_block() {
                 side_effects |=
                     match_trigger_fields(fields, block, data, sc, tooltipped, negated, max_sev);
             }
         }
-        #[cfg(feature = "ck3")]
         Trigger::ScopeOrBlock(s, fields) => match bv {
             BV::Value(token) => {
                 validate_target(token, data, sc, *s);
@@ -859,7 +748,6 @@ fn match_trigger_bv(
                     match_trigger_fields(fields, block, data, sc, tooltipped, negated, max_sev);
             }
         },
-        #[cfg(feature = "ck3")]
         Trigger::ItemOrBlock(i, fields) => match bv {
             BV::Value(token) => data.verify_exists_max_sev(*i, token, max_sev),
             BV::Block(block) => {
@@ -867,7 +755,6 @@ fn match_trigger_bv(
                     match_trigger_fields(fields, block, data, sc, tooltipped, negated, max_sev);
             }
         },
-        #[cfg(feature = "ck3")]
         Trigger::IdentifierOrBlock(kind, fields) => match bv {
             BV::Value(token) => validate_identifier(token, kind, Severity::Error),
             BV::Block(block) => {
@@ -875,7 +762,6 @@ fn match_trigger_bv(
                     match_trigger_fields(fields, block, data, sc, tooltipped, negated, max_sev);
             }
         },
-        #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
         Trigger::BlockOrCompareValue(fields) => match bv {
             BV::Value(t) => {
                 validate_target(t, data, sc, Scopes::Value);
@@ -886,7 +772,6 @@ fn match_trigger_bv(
                     match_trigger_fields(fields, b, data, sc, tooltipped, negated, max_sev);
             }
         },
-        #[cfg(feature = "ck3")]
         Trigger::ScopeList(s) => {
             if let Some(block) = bv.expect_block() {
                 let mut vd = Validator::new(block, data);
@@ -896,7 +781,6 @@ fn match_trigger_bv(
                 }
             }
         }
-        #[cfg(feature = "ck3")]
         Trigger::ScopeCompare(s) => {
             if let Some(block) = bv.expect_block() {
                 if block.iter_items().count() != 1 {
@@ -911,7 +795,6 @@ fn match_trigger_bv(
                 }
             }
         }
-        #[cfg(feature = "ck3")]
         Trigger::CompareToScope(s) => {
             must_be_eq = false;
             if let Some(token) = bv.expect_value() {
@@ -1019,7 +902,6 @@ fn match_trigger_bv(
                     }
                 }
             } else if name.is("is_target_in_global_variable_list") {
-                #[cfg(feature = "jomini")]
                 if let Some(block) = bv.expect_block() {
                     let mut vd = Validator::new(block, data);
                     vd.set_max_severity(max_sev);
@@ -1037,7 +919,6 @@ fn match_trigger_bv(
                     }
                 }
             } else if name.is("is_target_in_variable_list") {
-                #[cfg(feature = "jomini")]
                 if let Some(block) = bv.expect_block() {
                     let mut vd = Validator::new(block, data);
                     vd.set_max_severity(max_sev);
@@ -1055,7 +936,6 @@ fn match_trigger_bv(
                     }
                 }
             } else if name.is("local_variable_list_size") {
-                #[cfg(feature = "jomini")]
                 if let Some(block) = bv.expect_block() {
                     let mut vd = Validator::new(block, data);
                     vd.set_max_severity(max_sev);
@@ -1087,7 +967,6 @@ fn match_trigger_bv(
                     }
                 }
             } else if name.is("has_gene") {
-                #[cfg(feature = "jomini")]
                 if let Some(block) = bv.expect_block() {
                     let mut vd = Validator::new(block, data);
                     vd.set_max_severity(max_sev);
@@ -1111,7 +990,6 @@ fn match_trigger_bv(
                     }
                 }
             } else if name.is("save_temporary_scope_value_as") {
-                #[cfg(feature = "jomini")]
                 if let Some(block) = bv.expect_block() {
                     let mut vd = Validator::new(block, data);
                     vd.set_max_severity(max_sev);
@@ -1209,71 +1087,14 @@ fn match_trigger_bv(
                     sc.expect_list(value, data);
                 }
             } else if name.is("is_researching_technology") {
-                #[cfg(feature = "vic3")]
-                if let Some(value) = bv.expect_value()
-                    && !value.is("any")
-                {
-                    data.verify_exists(Item::Technology, value);
-                }
             }
             // TODO: time_of_year
-        }
-        #[cfg(feature = "hoi4")]
-        Trigger::Iterator(ltype, outscope) => {
-            let it_name = name.split_once('_').unwrap().1;
-            if let Some(block) = bv.expect_block() {
-                precheck_iterator_fields(*ltype, it_name.as_str(), block, data, sc);
-                sc.open_scope(*outscope, name.clone());
-                let mut vd = Validator::new(block, data);
-                vd.set_max_severity(max_sev);
-                side_effects |= validate_trigger_internal(
-                    &Lowercase::new(it_name.as_str()),
-                    *ltype,
-                    block,
-                    data,
-                    sc,
-                    vd,
-                    tooltipped,
-                    negated,
-                );
-                sc.close();
-            }
         }
         Trigger::Identifier(kind) => {
             if let Some(token) = bv.expect_value() {
                 validate_identifier(token, kind, Severity::Error);
             }
         }
-        #[cfg(feature = "hoi4")]
-        Trigger::Flag => {
-            if let Some(token) = bv.expect_value() {
-                if tooltipped.is_tooltipped() && !token.as_str().contains('@') {
-                    data.verify_exists(Item::Localization, token);
-                }
-                validate_flag_name(token);
-            }
-        }
-        #[cfg(feature = "hoi4")]
-        Trigger::FlagOrBlock(fields) => {
-            if name.is("has_unit_leader_flag") {
-                let msg = "deprecated in favor of has_character_flag";
-                warn(ErrorKey::Deprecated).msg(msg).loc(name).push();
-            }
-
-            match bv {
-                BV::Value(token) => {
-                    if tooltipped.is_tooltipped() && !token.as_str().contains('@') {
-                        data.verify_exists(Item::Localization, token);
-                    }
-                    validate_flag_name(token);
-                }
-                BV::Block(block) => {
-                    side_effects |=
-                        match_trigger_fields(fields, block, data, sc, tooltipped, negated, max_sev);
-                }
-            }
-        }
-        #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
         Trigger::Removed(msg, info) => {
             err(ErrorKey::Removed).msg(*msg).info(*info).loc(name).push();
         }
@@ -1314,32 +1135,12 @@ pub fn validate_target_ok_this(
     outscopes: Scopes,
 ) -> Scopes {
     if token.is_number() {
-        #[allow(unused_mut)] // only needs mut for hoi4
-        let mut number_scope = Scopes::Value;
-        #[cfg(feature = "hoi4")]
-        if Game::is_hoi4() && data.item_exists(Item::State, token.as_str()) {
-            number_scope |= Scopes::State;
-        }
+        let number_scope = Scopes::Value;
         if !outscopes.intersects(number_scope | Scopes::None) {
             let msg = format!("expected {outscopes}");
             warn(ErrorKey::Scopes).msg(msg).loc(token).push();
         }
         return number_scope;
-    }
-    #[cfg(feature = "hoi4")]
-    if Game::is_hoi4() {
-        if token.starts_with("var:")
-            || token.starts_with("global.")
-            || token.as_str().contains('^')
-            || token.as_str().contains('@')
-            || token.as_str().contains('?')
-        {
-            validate_variable(token, data, sc, Severity::Error);
-            return Scopes::all_but_none();
-        }
-        if data.variables.variable_exists(token.as_str()) {
-            return Scopes::all_but_none();
-        }
     }
     let part_vec = partition(token);
     sc.open_builder();
@@ -1376,34 +1177,17 @@ pub fn validate_target_ok_this(
                 } else if part_lc == "root" {
                     sc.replace_root();
                 } else if part_lc == "prev" {
-                    if !part_flags.contains(PartFlags::First) && !Game::is_imperator() {
+                    if !part_flags.contains(PartFlags::First) {
                         warn_not_first(part);
                     }
                     sc.replace_prev();
                 } else if part_lc == "this" {
                     sc.replace_this();
-                } else if Game::is_hoi4() && part_lc == "from" {
-                    #[cfg(feature = "hoi4")]
-                    sc.replace_from();
                 } else if data.script_value_exists(part.as_str()) {
                     // TODO: check side_effects
-                    #[cfg(feature = "jomini")]
                     data.script_values.validate_call(part, data, sc);
                     sc.replace(Scopes::Value, part.clone());
-                } else if let Some((inscopes, outscope)) = scope_to_scope(part, sc.scopes(data)) {
-                    #[cfg(feature = "imperator")]
-                    if let Some(inscopes) = trigger_comparevalue(part, data) {
-                        // If a trigger of the same name exists, and it's compatible with this
-                        // location and scope context, then that trigger takes precedence.
-                        if part_flags.contains(PartFlags::Last)
-                            && (inscopes.contains(Scopes::None)
-                                || sc.scopes(data).intersects(inscopes))
-                        {
-                            validate_inscopes(part_flags, part, inscopes, sc, data);
-                            sc.replace(Scopes::Value, part.clone());
-                            continue;
-                        }
-                    }
+                } else if let Some((inscopes, outscope)) = scope_to_scope(part) {
                     validate_inscopes(part_flags, part, inscopes, sc, data);
                     sc.replace(outscope, part.clone());
                 } else if let Some(inscopes) = trigger_comparevalue(part, data) {
@@ -1415,22 +1199,7 @@ pub fn validate_target_ok_this(
                     }
                     validate_inscopes(part_flags, part, inscopes, sc, data);
                     sc.replace(Scopes::Value, part.clone());
-                } else if Game::is_hoi4() && is_country_tag(part.as_str()) {
-                    if !part_flags.contains(PartFlags::First) {
-                        warn_not_first(part);
-                    }
-                    #[cfg(feature = "hoi4")]
-                    data.verify_exists(Item::CountryTag, part);
-                    #[cfg(feature = "hoi4")]
-                    sc.replace(Scopes::Country, part.clone());
                 } else if is_character_token(part.as_str(), data) {
-                    #[cfg(feature = "hoi4")]
-                    sc.replace(Scopes::Character, part.clone());
-                } else if Game::is_hoi4() && part.is_integer() {
-                    #[cfg(feature = "hoi4")]
-                    data.verify_exists(Item::State, part);
-                    #[cfg(feature = "hoi4")]
-                    sc.replace(Scopes::State, part.clone());
                 } else {
                     // See if the user forgot a prefix like `faith:` or `culture:`
                     let mut opt_info = None;
@@ -1532,12 +1301,6 @@ pub fn partition(token: &Token) -> Vec<Part> {
                         part_loc.column += part_col;
                         #[allow(unused_mut)]
                         let mut part_token = token.subtoken(part_idx..idx, part_loc);
-                        #[cfg(feature = "imperator")]
-                        // Imperator has a `hidden:` prefix that can go before other prefixes so it
-                        // has to be handled specially.
-                        if let Some(hidden_arg) = part_token.strip_prefix("hidden:") {
-                            part_token = hidden_arg;
-                        }
                         parts.push(Part::Token(part_token));
                     }
                     has_part_argument = false;
@@ -1629,11 +1392,6 @@ pub fn partition(token: &Token) -> Vec<Part> {
         // SAFETY: part_idx < token.as_str.len()
         #[allow(unused_mut)]
         let mut part_token = token.subtoken(part_idx.., part_loc);
-        #[cfg(feature = "imperator")]
-        // see above
-        if let Some(hidden_arg) = part_token.strip_prefix("hidden:") {
-            part_token = hidden_arg;
-        }
         parts.push(Part::Token(part_token));
     }
     parts
@@ -1670,7 +1428,6 @@ pub fn validate_inscopes(
     sc.expect(inscopes, &Reason::Token(name.clone()), data);
 }
 
-#[allow(unused_variables)] // imperator does not use sc
 fn validate_argument_internal(
     arg: &Token,
     validation: ArgumentValue,
@@ -1679,13 +1436,11 @@ fn validate_argument_internal(
 ) {
     match validation {
         ArgumentValue::Item(item) => data.verify_exists(item, arg),
-        #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
         ArgumentValue::Scope(scope) => {
             let stash = sc.stash_builder();
             validate_target_ok_this(arg, data, sc, scope);
             sc.unstash_builder(stash);
         }
-        #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
         ArgumentValue::ScopeOrItem(scope, item) => {
             if !data.item_exists(item, arg.as_str()) {
                 let stash = sc.stash_builder();
@@ -1693,7 +1448,6 @@ fn validate_argument_internal(
                 sc.unstash_builder(stash);
             }
         }
-        #[cfg(feature = "ck3")]
         ArgumentValue::TraitTrack => {
             if let Some((traitname, track)) = arg.split_once('|') {
                 // TODO: verify that the track belongs to this trait
@@ -1705,49 +1459,10 @@ fn validate_argument_internal(
                 sc.unstash_builder(stash);
             }
         }
-        #[cfg(feature = "eu5")]
-        ArgumentValue::Multiple(specs) => {
-            let args = arg.split('|');
-            // TODO: EU5 if the arguments are all mandatory, also check for not enough arguments
-            if args.len() > specs.len() {
-                let msg = format!("too many arguments for trigger; expected {}", specs.len());
-                warn(ErrorKey::Validation).msg(msg).loc(&args[specs.len()]).push();
-            } else if args.len() < specs.len() {
-                let msg = format!("too few arguments for trigger; expected {}", specs.len());
-                warn(ErrorKey::Validation).msg(msg).loc(arg).push();
-            }
-            for (arg, spec) in args.into_iter().zip(specs) {
-                validate_argument_internal(&arg, *spec, data, sc);
-            }
-        }
-        #[cfg(any(feature = "vic3", feature = "imperator", feature = "eu5"))]
-        ArgumentValue::Modif => {
-            // TODO: deduce the ModifKinds from the `this` scope
-            match Game::game() {
-                #[cfg(feature = "vic3")]
-                Game::Vic3 => verify_modif_exists(
-                    arg,
-                    data,
-                    crate::vic3::modif::ModifKinds::all(),
-                    Severity::Warning,
-                ),
-                #[cfg(feature = "imperator")]
-                Game::Imperator => verify_modif_exists(
-                    arg,
-                    data,
-                    crate::imperator::modif::ModifKinds::all(),
-                    Severity::Warning,
-                ),
-                #[allow(unreachable_patterns)]
-                _ => unreachable!(),
-            }
-        }
-        #[cfg(any(feature = "vic3", feature = "ck3", feature = "eu5"))]
         ArgumentValue::Identifier(kind) => {
             validate_identifier(arg, kind, Severity::Error);
         }
         ArgumentValue::UncheckedValue => (),
-        #[cfg(feature = "ck3")]
         ArgumentValue::Removed(version, info) => {
             let msg = format!("removed in {version}");
             err(ErrorKey::Removed).msg(msg).info(info).loc(arg).push();
@@ -1779,10 +1494,8 @@ pub fn validate_argument_scope(
         }
         sc.replace_local_variable(arg.as_str(), part);
     } else if func.lowercase_is("global_var") {
-        #[cfg(feature = "jomini")]
         sc.replace_global_variable(arg.as_str(), part);
     } else if func.lowercase_is("var") {
-        #[cfg(feature = "jomini")]
         sc.replace_variable(arg.as_str(), part);
     } else {
         sc.replace(outscopes, part.clone());
@@ -1800,38 +1513,8 @@ pub fn validate_argument(
     data: &Everything,
     sc: &mut ScopeContext,
 ) {
-    #[cfg(feature = "imperator")]
-    if Game::is_imperator() {
-        // Imperator does not use `()`
-        let msg = "imperator does not support the `()` syntax";
-        let mut opening_paren_loc = arg.loc;
-        opening_paren_loc.column -= 1;
-        err(ErrorKey::WrongGame).msg(msg).loc(opening_paren_loc).push();
-        return;
-    }
-
-    #[cfg(feature = "hoi4")]
-    if Game::is_hoi4() {
-        let msg = "hoi4 does not support the `()` syntax";
-        let mut opening_paren_loc = arg.loc;
-        opening_paren_loc.column -= 1;
-        err(ErrorKey::WrongGame).msg(msg).loc(opening_paren_loc).push();
-        return;
-    }
-
     let scope_trigger_complex: fn(&str) -> Option<(Scopes, ArgumentValue, Scopes)> =
-        match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => crate::ck3::tables::triggers::scope_trigger_complex,
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => crate::vic3::tables::triggers::scope_trigger_complex,
-            #[cfg(feature = "imperator")]
-            Game::Imperator => unreachable!(),
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => crate::eu5::tables::triggers::scope_trigger_complex,
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => unreachable!(),
-        };
+        crate::ck3::tables::triggers::scope_trigger_complex;
 
     let func_lc = func.as_str().to_ascii_lowercase();
     if let Some((inscopes, validation, outscopes)) = scope_trigger_complex(&func_lc) {
@@ -1859,18 +1542,7 @@ pub fn validate_prefix(
     sc: &mut ScopeContext,
 ) -> bool {
     fn scope_trigger_complex(prefix: &str) -> Option<(Scopes, ArgumentValue, Scopes)> {
-        match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => crate::ck3::tables::triggers::scope_trigger_complex(prefix),
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => crate::vic3::tables::triggers::scope_trigger_complex(prefix),
-            #[cfg(feature = "imperator")]
-            Game::Imperator => None,
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => crate::eu5::tables::triggers::scope_trigger_complex(prefix),
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => None,
-        }
+        crate::ck3::tables::triggers::scope_trigger_complex(prefix)
     }
 
     let prefix_lc = prefix.as_str().to_ascii_lowercase();
@@ -1895,23 +1567,17 @@ pub fn validate_prefix(
 /// It is used recursively in variants like [`Trigger::Block`], where each of the sub fields have
 /// their own `Trigger`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[allow(dead_code)] // TODO: remove when hoi4 is complete
 pub enum Trigger {
     /// trigger = no or trigger = yes
     Boolean,
     /// can be a script value
     CompareValue,
     /// can be a script value; warn if =
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5", feature = "hoi4"))]
     CompareValueWarnEq,
     /// can be a script value; no < or >
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
     SetValue,
     /// value must be a valid date
     CompareDate,
-    /// trigger is either = item or compared to another trigger
-    #[cfg(any(feature = "vic3", feature = "eu5"))]
-    ItemOrCompareValue(Item),
     /// trigger is compared to a scope object
     Scope(Scopes),
     /// trigger is compared to a scope object which may be `this`
@@ -1922,48 +1588,27 @@ pub enum Trigger {
     /// value is chosen from a list given here
     Choice(&'static [&'static str]),
     /// value is from a list given here that can be compared
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
     CompareChoice(&'static [&'static str]),
-    /// like `CompareChoice` but value can also be just a number
-    #[cfg(any(feature = "vic3", feature = "eu5"))]
-    CompareChoiceOrNumber(&'static [&'static str]),
     /// For Block, if a field name in the array starts with ? it means that field is optional
     /// trigger takes a block with these fields
     Block(&'static [(&'static str, Trigger)]),
     /// trigger takes a block with these fields
-    #[cfg(feature = "ck3")]
     ScopeOrBlock(Scopes, &'static [(&'static str, Trigger)]),
     /// trigger takes a block with these fields
-    #[cfg(feature = "ck3")]
     ItemOrBlock(Item, &'static [(&'static str, Trigger)]),
     /// trigger takes a single identifier or a block with these fields
-    #[cfg(feature = "ck3")]
     IdentifierOrBlock(&'static str, &'static [(&'static str, Trigger)]),
     /// can be part of a scope chain but also a standalone trigger
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
     BlockOrCompareValue(&'static [(&'static str, Trigger)]),
     /// trigger takes a block of values of this scope type
-    #[cfg(feature = "ck3")]
     ScopeList(Scopes),
     /// trigger takes a block comparing two scope objects
-    #[cfg(feature = "ck3")]
     ScopeCompare(Scopes),
     /// this is for inside a Block, where a key is compared to a scope object
-    #[cfg(feature = "ck3")]
     CompareToScope(Scopes),
-    /// trigger is an iterator that does not follow the regular pattern
-    #[cfg(feature = "hoi4")]
-    Iterator(ListType, Scopes),
     /// trigger takes a single word
     Identifier(&'static str),
-    /// trigger takes a flag name
-    #[cfg(feature = "hoi4")]
-    Flag,
-    /// trigger takes a flag name or a block
-    #[cfg(feature = "hoi4")]
-    FlagOrBlock(&'static [(&'static str, Trigger)]),
 
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
     Removed(&'static str, &'static str),
 
     /// this key opens another trigger block
@@ -1979,56 +1624,17 @@ pub enum Trigger {
 /// This function checks if the trigger is one that can be used at the end of a scope chain on the
 /// right-hand side of a comparator.
 pub fn trigger_comparevalue(name: &Token, data: &Everything) -> Option<Scopes> {
-    match (Game::game(), scope_trigger(name, data)) {
-        #[cfg(feature = "ck3")]
-        (
-            Game::Ck3,
-            Some((
-                s,
-                Trigger::CompareValue
-                | Trigger::CompareValueWarnEq
-                | Trigger::CompareDate
-                | Trigger::SetValue
-                | Trigger::BlockOrCompareValue(_)
-                | Trigger::CompareChoice(_),
-            )),
-        ) => Some(s),
-        #[cfg(feature = "vic3")]
-        (
-            Game::Vic3,
-            Some((
-                s,
-                Trigger::CompareValue
-                | Trigger::CompareValueWarnEq
-                | Trigger::CompareDate
-                | Trigger::BlockOrCompareValue(_)
-                | Trigger::ItemOrCompareValue(_)
-                | Trigger::CompareChoice(_)
-                | Trigger::CompareChoiceOrNumber(_),
-            )),
-        ) => Some(s),
-        #[cfg(feature = "eu5")]
-        (
-            Game::Eu5,
-            Some((
-                s,
-                Trigger::CompareValue
-                | Trigger::CompareValueWarnEq
-                | Trigger::CompareDate
-                | Trigger::BlockOrCompareValue(_)
-                | Trigger::ItemOrCompareValue(_)
-                | Trigger::CompareChoice(_)
-                | Trigger::CompareChoiceOrNumber(_),
-            )),
-        ) => Some(s),
-        #[cfg(feature = "imperator")]
-        (Game::Imperator, Some((s, Trigger::CompareValue | Trigger::CompareDate))) => Some(s),
-        #[cfg(feature = "hoi4")]
-        (
-            Game::Hoi4,
-            Some((s, Trigger::CompareValue | Trigger::CompareValueWarnEq | Trigger::CompareDate)),
-        ) => Some(s),
-        _ => std::option::Option::None,
+    match scope_trigger(name, data) {
+        Some((
+            s,
+            Trigger::CompareValue
+            | Trigger::CompareValueWarnEq
+            | Trigger::CompareDate
+            | Trigger::SetValue
+            | Trigger::BlockOrCompareValue(_)
+            | Trigger::CompareChoice(_),
+        )) => Some(s),
+        _ => None,
     }
 }
 
@@ -2036,9 +1642,5 @@ pub fn trigger_comparevalue(name: &Token, data: &Everything) -> Option<Scopes> {
 #[inline]
 #[allow(unused_variables)]
 pub fn is_character_token(part: &str, data: &Everything) -> bool {
-    #[cfg(feature = "hoi4")]
-    if Game::is_hoi4() {
-        return data.item_exists(Item::Character, part);
-    }
     false
 }

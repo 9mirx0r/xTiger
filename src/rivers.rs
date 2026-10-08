@@ -6,12 +6,8 @@ use std::fs;
 use std::ops::{RangeInclusive, RangeToInclusive};
 use std::path::PathBuf;
 
-#[cfg(feature = "jomini")]
 use png::{ColorType, Decoder};
-#[cfg(feature = "hoi4")]
-use tinybmp::{Bpp, CompressionMethod, RawBmp};
 
-use crate::Game;
 use crate::everything::Everything;
 use crate::fileset::{FileEntry, FileHandler};
 use crate::helpers::{TigerHashMap, TigerHashSet};
@@ -21,7 +17,7 @@ use crate::report::{ErrorKey, err, warn, will_maybe_log};
 #[inline]
 fn river_image_path() -> &'static str {
     // TODO: for Imperator, CK3 and Vic3, instead of hardcoded rivers.png file name, get it from map_data/default.map
-    if Game::is_hoi4() { "map/rivers.bmp" } else { "map_data/rivers.png" }
+    "map_data/rivers.png"
 }
 
 /// The `rivers.png/bmp` has an indexed palette where the colors don't matter, only the index values
@@ -60,99 +56,54 @@ pub struct Rivers {
 
 impl Rivers {
     pub fn handle_image(&mut self, loaded: &[u8], entry: &FileEntry) {
-        #[cfg(feature = "jomini")]
-        if Game::is_jomini() {
-            let decoder = Decoder::new(std::io::Cursor::new(loaded));
-            let mut reader = match decoder.read_info() {
-                Ok(r) => r,
-                Err(e) => {
-                    err(ErrorKey::ImageFormat)
-                        .msg(format!("image format error: {e:#}"))
-                        .loc(entry)
-                        .push();
-                    return;
-                }
-            };
-
-            let info = reader.info();
-
-            if info.color_type != ColorType::Indexed {
-                let msg = "image should be in indexed color format (with 8-bit palette)";
-                err(ErrorKey::ImageFormat).msg(msg).loc(entry).push();
+        let decoder = Decoder::new(std::io::Cursor::new(loaded));
+        let mut reader = match decoder.read_info() {
+            Ok(r) => r,
+            Err(e) => {
+                err(ErrorKey::ImageFormat)
+                    .msg(format!("image format error: {e:#}"))
+                    .loc(entry)
+                    .push();
                 return;
             }
+        };
 
-            if info.palette.as_ref().is_none() {
-                let msg = "image must have an 8-bit palette";
-                err(ErrorKey::ImageFormat).msg(msg).loc(entry).push();
-                return;
-            }
+        let info = reader.info();
 
-            self.width = info.width;
-            self.height = info.height;
-            let color_type = info.color_type;
-
-            self.pixels = vec![0; reader.output_buffer_size().unwrap()];
-            let frame_info = match reader.next_frame(&mut self.pixels) {
-                Ok(i) => i,
-                Err(e) => {
-                    err(ErrorKey::ImageFormat)
-                        .msg(format!("image frame error: {e:#}"))
-                        .loc(entry)
-                        .push();
-                    return;
-                }
-            };
-
-            if frame_info.width != self.width
-                || frame_info.height != self.height
-                || frame_info.color_type != color_type
-            {
-                let msg = "image frame did not match image info";
-                err(ErrorKey::ImageFormat).msg(msg).loc(entry).push();
-            }
+        if info.color_type != ColorType::Indexed {
+            let msg = "image should be in indexed color format (with 8-bit palette)";
+            err(ErrorKey::ImageFormat).msg(msg).loc(entry).push();
+            return;
         }
 
-        #[cfg(feature = "hoi4")]
-        #[allow(clippy::cast_possible_truncation)]
-        if Game::is_hoi4() {
-            let bmp = match RawBmp::from_slice(loaded) {
-                Ok(b) => b,
-                Err(e) => {
-                    err(ErrorKey::ImageFormat)
-                        .msg(format!("image format error: {e:#?}"))
-                        .loc(entry)
-                        .push();
-                    return;
-                }
-            };
+        if info.palette.as_ref().is_none() {
+            let msg = "image must have an 8-bit palette";
+            err(ErrorKey::ImageFormat).msg(msg).loc(entry).push();
+            return;
+        }
 
-            if loaded[14] != 40 {
-                let msg = "bitmap has wrong DIB header format, should be BITMAPINFOHEADER";
-                let info = "see https://hoi4.paradoxwikis.com/Map_modding#BMP_format";
-                err(ErrorKey::ImageFormat).msg(msg).info(info).loc(entry).push();
+        self.width = info.width;
+        self.height = info.height;
+        let color_type = info.color_type;
+
+        self.pixels = vec![0; reader.output_buffer_size().unwrap()];
+        let frame_info = match reader.next_frame(&mut self.pixels) {
+            Ok(i) => i,
+            Err(e) => {
+                err(ErrorKey::ImageFormat)
+                    .msg(format!("image frame error: {e:#}"))
+                    .loc(entry)
+                    .push();
                 return;
             }
+        };
 
-            let header = bmp.header();
-
-            if header.bpp != Bpp::Bits8 || header.compression_method != CompressionMethod::Rgb {
-                let msg =
-                    "image should be in indexed, uncompressed color format (with 8-bit palette)";
-                err(ErrorKey::ImageFormat).msg(msg).loc(entry).push();
-                return;
-            }
-
-            if bmp.color_table().is_none() {
-                let msg = "image must have an 8-bit palette";
-                err(ErrorKey::ImageFormat).msg(msg).loc(entry).push();
-                return;
-            }
-
-            self.width = header.image_size.width;
-            self.height = header.image_size.height;
-            // SAFETY: Known to be 8bpp
-            self.pixels = bmp.pixels().map(|p| p.color as u8).collect();
+        if frame_info.width != self.width
+            || frame_info.height != self.height
+            || frame_info.color_type != color_type
+        {
+            let msg = "image frame did not match image info";
+            err(ErrorKey::ImageFormat).msg(msg).loc(entry).push();
         }
     }
 

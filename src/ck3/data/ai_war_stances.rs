@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::report::{ErrorKey, err};
 use crate::scopes::Scopes;
@@ -51,7 +50,7 @@ const AI_WAR_AREAS: &[&str] = &[
 pub struct AiWarStance {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::AiWarStance, AiWarStance::add)
+    ItemLoader::Normal(Item::AiWarStance, AiWarStance::add)
 }
 
 impl AiWarStance {

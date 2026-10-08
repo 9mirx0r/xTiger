@@ -4,7 +4,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::scopes::Scopes;
@@ -19,10 +18,10 @@ pub struct SubjectContract {}
 pub struct SubjectContractGroup {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::SubjectContract, SubjectContract::add)
+    ItemLoader::Normal(Item::SubjectContract, SubjectContract::add)
 }
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::SubjectContractGroup, SubjectContractGroup::add)
+    ItemLoader::Normal(Item::SubjectContractGroup, SubjectContractGroup::add)
 }
 
 impl SubjectContract {

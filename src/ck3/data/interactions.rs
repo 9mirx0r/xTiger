@@ -7,7 +7,6 @@ use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::effect::validate_effect;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::report::{ErrorKey, warn};
 use crate::scopes::Scopes;
@@ -21,7 +20,7 @@ use crate::validator::Validator;
 pub struct CharacterInteraction {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CharacterInteraction, CharacterInteraction::add)
+    ItemLoader::Normal(Item::CharacterInteraction, CharacterInteraction::add)
 }
 
 impl CharacterInteraction {
@@ -43,6 +42,9 @@ impl DbKind for CharacterInteraction {
         sc.define_name("secondary_actor", Scopes::Character, key);
         sc.define_name("secondary_recipient", Scopes::Character, key);
         sc.define_name("intermediary", Scopes::Character, key);
+        sc.define_name("puppet_or_actor", Scopes::Character, key);
+        sc.define_name("is_puppet_action", Scopes::Bool, key);
+        sc.define_list("target_titles", Scopes::LandedTitle, key);
         // TODO: figure out if there's a better way than exhaustively matching on "interface" and "special_interaction"
         if let Some(target_type) = block.get_field_value("target_type") {
             if target_type.is("artifact") {
@@ -343,6 +345,12 @@ impl DbKind for CharacterInteraction {
             &["artifact", "title", "men_at_arms", "court_position_type", "count"],
         );
         vd.field_value("target_filter"); // TODO
+        vd.field_choice(
+            "target_source",
+            &["actor", "secondary_actor", "recipient", "secondary_recipient", "puppet_or_actor"],
+        );
+        vd.field_bool("show_all_targets");
+        vd.field_bool("show_two_characters");
 
         // root is the character being picked
         vd.field_validated_block_rerooted(

@@ -49,12 +49,6 @@ pub fn log_report_json<O: Write + Send>(
 
 fn stage_desc(stage: FileStage) -> Option<&'static str> {
     match stage {
-        #[cfg(feature = "eu5")]
-        FileStage::LoadingScreen => Some("loading_screen"),
-        #[cfg(feature = "eu5")]
-        FileStage::MainMenu => Some("main_menu"),
-        #[cfg(feature = "eu5")]
-        FileStage::InGame => Some("in_game"),
         FileStage::NoStage => None,
     }
 }

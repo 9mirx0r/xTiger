@@ -10,9 +10,6 @@ pub enum Tooltipped {
     FailuresOnly,
     /// for effects
     Past,
-    #[cfg(feature = "hoi4")]
-    /// for triggers that pretend to be inside a `custom_override_tooltip`
-    Inner,
 }
 
 impl Tooltipped {

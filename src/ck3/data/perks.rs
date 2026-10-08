@@ -4,7 +4,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::scopes::Scopes;
@@ -16,7 +15,7 @@ use crate::validator::Validator;
 pub struct Perk {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Perk, Perk::add)
+    ItemLoader::Normal(Item::Perk, Perk::add)
 }
 
 impl Perk {
@@ -69,9 +68,10 @@ impl DbKind for Perk {
             let vd = Validator::new(block, data);
             validate_modifs(block, data, ModifKinds::Character, vd);
         });
-        vd.multi_field_validated_block("doctrine_character_modifier", |block, data| {
+        vd.multi_field_validated_block("faith_character_modifier", |block, data| {
             let mut vd = Validator::new(block, data);
             vd.field_item("doctrine", Item::Doctrine);
+            vd.field_item("parameter", Item::DoctrineParameter);
             validate_modifs(block, data, ModifKinds::Character, vd);
         });
         vd.multi_field_validated_block("culture_character_modifier", |block, data| {

@@ -14,6 +14,6 @@ cargo bench -p ck3-tiger -- --baseline my_baseline
 
 Internal benchmarks are run with:
 ```
-cargo bench --no-default-features --features="ck3,internal_benches"
+cargo bench --features internal_benches
 ```
 They do not support baselines

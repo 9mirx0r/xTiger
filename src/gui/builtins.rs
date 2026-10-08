@@ -130,7 +130,7 @@ impl BuiltinWidget {
 
     pub fn builtin_current_game(s: &Lowercase) -> Option<BuiltinWidget> {
         if let Ok(builtin) = Self::try_from(s)
-            && builtin.to_game_flags().contains(GameFlags::game())
+            && builtin.to_game_flags().contains(GameFlags::Ck3)
         {
             return Some(builtin);
         }

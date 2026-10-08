@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader, LoadAsFile, Recursive};
 use crate::pdxfile::PdxEncoding;
 use crate::token::Token;
@@ -12,7 +11,7 @@ use crate::validator::Validator;
 pub struct MapEnvironment {}
 
 inventory::submit! {
-    ItemLoader::Full(GameFlags::Ck3, Item::MapEnvironment, PdxEncoding::Utf8OptionalBom, ".txt", LoadAsFile::Yes, Recursive::No, MapEnvironment::add)
+    ItemLoader::Full(Item::MapEnvironment, PdxEncoding::Utf8OptionalBom, ".txt", LoadAsFile::Yes, Recursive::No, MapEnvironment::add)
 }
 
 impl MapEnvironment {

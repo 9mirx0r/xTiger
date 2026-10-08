@@ -616,6 +616,7 @@ pub fn validate_create_character(
     vd.field_target_ok_this("template_character", sc, Scopes::Character);
     vd.field_item_or_target("faith", sc, Item::Faith, Scopes::Faith);
     vd.field_validated_block_sc("random_faith", sc, validate_random_faith);
+    vd.field_item_or_target("rite", sc, Item::Rite, Scopes::Rite);
     vd.field_item_or_target("random_faith_in_religion", sc, Item::Religion, Scopes::Faith);
     vd.field_item_or_target("culture", sc, Item::Culture, Scopes::Culture);
     vd.field_validated_block_sc("random_culture", sc, validate_random_culture);
@@ -743,8 +744,10 @@ pub fn validate_create_holy_order(
     vd.req_field("capital");
     vd.field_target("leader", sc, Scopes::Character);
     vd.field_target("capital", sc, Scopes::LandedTitle);
+    vd.field_target("founder", sc, Scopes::Character);
     vd.field_item("name", Item::Localization);
     vd.field_item("coat_of_arms", Item::Coa);
+    vd.field_choice("random_holy_order_type", &["military", "monastic", "religious"]);
     if let Some(name) = vd.field_identifier("save_scope_as", "scope name") {
         sc.define_name_token(name.as_str(), Scopes::HolyOrder, name, Temporary::No);
     }
@@ -993,6 +996,23 @@ pub fn validate_pay_income(
     vd.req_field("target");
     vd.field_target("target", sc, Scopes::Character);
     validate_optional_duration(&mut vd, sc);
+}
+
+/// The game also reads `gold` in place of `treasury` here, as vanilla's `pam_effects` does.
+pub fn validate_pay_short_term_treasury(
+    _key: &Token,
+    _block: &Block,
+    _data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.set_case_sensitive(false);
+    vd.req_field("target");
+    vd.req_field_one_of(&["treasury", "gold"]);
+    vd.field_target("target", sc, Scopes::Character);
+    vd.field_script_value("treasury", sc);
+    vd.field_script_value("gold", sc);
 }
 
 pub fn validate_current_phase_guest_subset(
@@ -1963,6 +1983,13 @@ pub fn validate_start_best_war(
 
     vd.field_list_items("cb", Item::CasusBelli);
     vd.field_bool("recalculate_cb_targets");
+    vd.field_bool("first_valid_cb_type");
+    vd.field_validated_block("multi_target", |block, data| {
+        let mut vd = Validator::new(block, data);
+        vd.field_integer("count");
+        vd.advice_field("max_accumulative_strength", "vanilla uses `max_cumulative_strength`");
+        vd.field_numeric("max_cumulative_strength");
+    });
     vd.field_trigger_builder("is_valid", Tooltipped::No, sc_builder);
     vd.field_effect_builder("on_success", Tooltipped::No, sc_builder);
     vd.field_effect_builder("on_failure", Tooltipped::No, sc_builder);
@@ -2508,4 +2535,150 @@ pub fn validate_set_regnal_name(
             vd.field_target("character", sc, Scopes::Character);
         }
     }
+}
+
+pub fn validate_set_tenet_status(
+    _key: &Token,
+    _block: &Block,
+    data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.req_field("tenet");
+    vd.req_field("status");
+    if let Some(token) = vd.field_value("tenet")
+        && !data.item_exists(Item::Tenet, token.as_str())
+    {
+        validate_target(token, data, sc, Scopes::Tenet);
+    }
+    vd.field_choice("status", &["unknown", "known", "permitted", "prohibited", "core"]);
+}
+
+/// `name`, `desc`, `adjective` and `adherent` of `set_faith_name` and `set_rite_name`.
+pub fn validate_set_religious_name(
+    _key: &Token,
+    _block: &Block,
+    _data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    for field in &["name", "desc", "adjective", "adherent", "adherent_plural"] {
+        vd.field_validated_sc(field, sc, validate_desc);
+    }
+}
+
+/// The holy site effects take a holy site, or a block with the holy site and the character acting.
+pub fn validate_holy_site_target(
+    _key: &Token,
+    bv: &BV,
+    data: &Everything,
+    sc: &mut ScopeContext,
+    _tooltipped: Tooltipped,
+) {
+    match bv {
+        BV::Value(value) => {
+            validate_target(value, data, sc, Scopes::HolySite);
+        }
+        BV::Block(block) => {
+            let mut vd = Validator::new(block, data);
+            vd.req_field("target");
+            vd.field_target("target", sc, Scopes::HolySite);
+            vd.field_target("actor", sc, Scopes::Character);
+        }
+    }
+}
+
+pub fn validate_holy_site_artifact(
+    key: &Token,
+    _block: &Block,
+    _data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.req_field("holy_site");
+    vd.req_field("artifact");
+    vd.field_target("holy_site", sc, Scopes::HolySite);
+    vd.field_target("artifact", sc, Scopes::Artifact);
+    if key.is("enshrine_holy_site_artifact") {
+        vd.field_value("slot");
+    }
+}
+
+pub fn validate_create_rite_from_type(
+    _key: &Token,
+    _block: &Block,
+    _data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.req_field("type");
+    vd.field_item("type", Item::Rite);
+    vd.field_bool("convert");
+    if let Some(name) = vd.field_identifier("save_scope_as", "scope name") {
+        sc.define_name_token(name.as_str(), Scopes::Rite, name, Temporary::No);
+    }
+}
+
+pub fn validate_set_parent_faith(
+    _key: &Token,
+    _block: &Block,
+    _data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.req_field("target");
+    vd.field_target("target", sc, Scopes::Faith);
+    vd.field_bool("main");
+    vd.field_bool("include_derived");
+}
+
+pub fn validate_add_saint(
+    _key: &Token,
+    _block: &Block,
+    _data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.req_field("character");
+    vd.field_target("character", sc, Scopes::Character);
+    vd.field_target("burial_province", sc, Scopes::Province);
+}
+
+pub fn validate_set_holy_site_owner(
+    _key: &Token,
+    _block: &Block,
+    _data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.req_field("target");
+    vd.field_target("target", sc, Scopes::HolySite);
+    vd.field_validated_block_sc("history", sc, validate_artifact_history);
+    vd.field_bool("generate_history");
+    vd.field_bool("equip_artifact_to_owner");
+}
+
+pub fn validate_change_tenet_popularity(
+    _key: &Token,
+    _block: &Block,
+    data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.req_field("target");
+    vd.req_field("change");
+    if let Some(token) = vd.field_value("target")
+        && !data.item_exists(Item::Tenet, token.as_str())
+    {
+        validate_target(token, data, sc, Scopes::Tenet);
+    }
+    vd.field_script_value("change", sc);
 }

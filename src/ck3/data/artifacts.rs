@@ -4,7 +4,6 @@ use crate::ck3::tables::misc::{ARTIFACT_RARITIES, SUPPORT_TYPES};
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::{validate_modifs, verify_modif_exists};
 use crate::report::{ErrorKey, Severity, warn};
@@ -17,7 +16,7 @@ use crate::validator::Validator;
 pub struct ArtifactSlot {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ArtifactSlot, ArtifactSlot::add)
+    ItemLoader::Normal(Item::ArtifactSlot, ArtifactSlot::add)
 }
 
 impl ArtifactSlot {
@@ -38,6 +37,10 @@ impl DbKind for ArtifactSlot {
         data.verify_exists(Item::Localization, key);
         vd.field_item("type", Item::ArtifactSlotType);
         vd.field_choice("category", &["inventory", "court"]);
+        vd.field_bool("allow_any_type_or_category");
+        vd.field_bool("holy_site");
+        vd.field_trigger_rooted("available", Tooltipped::No, Scopes::Character);
+        vd.field_trigger_rooted("available_holy_site", Tooltipped::No, Scopes::HolySite);
         if let Some(category) = block.get_field_value("category") {
             // TODO: this can probably be simplified
             if category.is("inventory") {
@@ -54,7 +57,7 @@ impl DbKind for ArtifactSlot {
 pub struct ArtifactType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ArtifactType, ArtifactType::add)
+    ItemLoader::Normal(Item::ArtifactType, ArtifactType::add)
 }
 
 impl ArtifactType {
@@ -81,7 +84,7 @@ impl DbKind for ArtifactType {
 pub struct ArtifactTemplate {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ArtifactTemplate, ArtifactTemplate::add)
+    ItemLoader::Normal(Item::ArtifactTemplate, ArtifactTemplate::add)
 }
 
 impl ArtifactTemplate {
@@ -108,6 +111,9 @@ impl DbKind for ArtifactTemplate {
 
         vd.field_script_value("ai_score", &mut sc);
         vd.field_bool("unique");
+        let mut sc = ScopeContext::new(Scopes::Faith, key);
+        sc.define_name("artifact", Scopes::Artifact, key);
+        vd.field_trigger("is_holy_relic", Tooltipped::No, &mut sc);
     }
 }
 
@@ -115,7 +121,7 @@ impl DbKind for ArtifactTemplate {
 pub struct ArtifactVisual {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ArtifactVisual, ArtifactVisual::add)
+    ItemLoader::Normal(Item::ArtifactVisual, ArtifactVisual::add)
 }
 
 impl ArtifactVisual {
@@ -184,7 +190,7 @@ impl DbKind for ArtifactVisual {
 pub struct ArtifactFeature {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ArtifactFeature, ArtifactFeature::add)
+    ItemLoader::Normal(Item::ArtifactFeature, ArtifactFeature::add)
 }
 
 impl ArtifactFeature {
@@ -216,7 +222,7 @@ impl DbKind for ArtifactFeature {
 pub struct ArtifactFeatureGroup {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ArtifactFeatureGroup, ArtifactFeatureGroup::add)
+    ItemLoader::Normal(Item::ArtifactFeatureGroup, ArtifactFeatureGroup::add)
 }
 
 impl ArtifactFeatureGroup {
@@ -235,7 +241,7 @@ impl DbKind for ArtifactFeatureGroup {
 pub struct ArtifactBlueprint {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ArtifactBlueprint, ArtifactBlueprint::add)
+    ItemLoader::Normal(Item::ArtifactBlueprint, ArtifactBlueprint::add)
 }
 
 impl ArtifactBlueprint {

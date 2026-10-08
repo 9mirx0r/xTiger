@@ -4,8 +4,6 @@ use crate::data::localization::LocaValue;
 use crate::datacontext::DataContext;
 use crate::datatype::{CodeArg, Datatype, validate_datatypes};
 use crate::everything::Everything;
-#[cfg(feature = "ck3")]
-use crate::game::Game;
 use crate::game::GameFlags;
 use crate::gui::properties::{ALIGN, BLENDMODES};
 use crate::gui::{GuiCategories, GuiValidation, PropertyContainer, WidgetProperty};
@@ -25,9 +23,8 @@ pub fn validate_property(
     data: &Everything,
     dc: &mut DataContext,
 ) {
-    let game = GameFlags::game();
     let gameflags = property.to_game_flags();
-    if !gameflags.contains(game) {
+    if !gameflags.contains(GameFlags::Ck3) {
         if property == WidgetProperty::tooltip_enabled {
             let msg = "tooltip_enabled has been renamed to tooltip_visible";
             err(ErrorKey::Removed).msg(msg).loc(key).push();
@@ -435,9 +432,7 @@ fn validate_gui_loca(key: &Token, loca_value: LocaValue, data: &Everything) {
         }
         LocaValue::Code(chain, format) => {
             // |E is the formatting used for game concepts in ck3
-            #[cfg(feature = "ck3")]
-            if Game::is_ck3()
-                && let Some(ref format) = format
+            if let Some(ref format) = format
                 && (format.as_str().contains('E') || format.as_str().contains('e'))
                 && let Some(concept) = chain.as_gameconcept()
             {
@@ -461,8 +456,6 @@ fn validate_gui_loca(key: &Token, loca_value: LocaValue, data: &Everything) {
             data.verify_exists(Item::TextIcon, &token);
         }
         LocaValue::Flag(token) => {
-            #[cfg(feature = "hoi4")]
-            data.verify_exists(Item::CountryTag, &token);
             let pathname = format!("gfx/flags/{token}.tga");
             data.verify_exists_implied(Item::File, &pathname, &token);
         }

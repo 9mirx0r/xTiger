@@ -4,7 +4,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::report::{ErrorKey, warn};
 use crate::scopes::Scopes;
@@ -17,7 +16,7 @@ use crate::validator::Validator;
 pub struct Decision {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Decision, Decision::add)
+    ItemLoader::Normal(Item::Decision, Decision::add)
 }
 
 impl Decision {
@@ -44,6 +43,13 @@ impl DbKind for Decision {
                     sc.define_name("ruler", Scopes::Character, controller);
                 } else if controller.is("revoke_holy_order_lease") {
                     sc.define_name("barony", Scopes::LandedTitle, controller);
+                } else if controller.is("select_scope_object") {
+                    sc.define_name("selected_item", Scopes::all_but_none(), controller);
+                } else if controller.as_str().starts_with("select_")
+                    && controller.as_str().contains("_title")
+                {
+                    sc.define_name("title", Scopes::LandedTitle, controller);
+                    sc.define_name("ruler", Scopes::Character, controller);
                 }
             }
         }
@@ -143,6 +149,19 @@ impl DbKind for Decision {
                             "decision_option_list_controller",
                             "create_holy_order",
                             "revoke_holy_order_lease", // undocumented
+                            "select_scope_object",
+                            "select_barony_title",
+                            "select_county_title",
+                            "select_duchy_title",
+                            "select_kingdom_title",
+                            "select_empire_title",
+                            "select_hegemony_title",
+                            "select_barony_title_in_realm",
+                            "select_county_title_in_realm",
+                            "select_duchy_title_in_realm",
+                            "select_kingdom_title_in_realm",
+                            "select_empire_title_in_realm",
+                            "select_hegemony_title_in_realm",
                         ],
                     );
                     vd.field_bool("show_from_start");
@@ -185,12 +204,51 @@ impl DbKind for Decision {
                                 );
                             });
                         }
-                        Some("create_holy_order" | "revoke_holy_order_lease") => {
-                            vd.field_trigger_builder("barony_valid", Tooltipped::No, |key| {
+                        Some("select_scope_object") => {
+                            let builder = |key: &Token| {
+                                let mut sc = ScopeContext::new(Scopes::None, key);
+                                sc.define_name("actor", Scopes::Character, key);
+                                sc.define_list("item_list", Scopes::all_but_none(), key);
+                                sc
+                            };
+                            vd.field_effect_builder("setup_items", Tooltipped::No, builder);
+                            vd.field_effect_builder("default_item", Tooltipped::No, builder);
+                            vd.field_effect_builder("ai_select_item", Tooltipped::No, builder);
+                            let item_builder = |key: &Token| {
+                                let mut sc = ScopeContext::new(Scopes::all_but_none(), key);
+                                sc.define_name("actor", Scopes::Character, key);
+                                sc
+                            };
+                            vd.field_script_value_builder("ai_item_will_do", item_builder);
+                            vd.field_trigger_builder(
+                                "is_item_valid",
+                                Tooltipped::FailuresOnly,
+                                item_builder,
+                            );
+                        }
+                        Some(
+                            "create_holy_order"
+                            | "revoke_holy_order_lease"
+                            | "select_barony_title"
+                            | "select_county_title"
+                            | "select_duchy_title"
+                            | "select_kingdom_title"
+                            | "select_empire_title"
+                            | "select_hegemony_title"
+                            | "select_barony_title_in_realm"
+                            | "select_county_title_in_realm"
+                            | "select_duchy_title_in_realm"
+                            | "select_kingdom_title_in_realm"
+                            | "select_empire_title_in_realm"
+                            | "select_hegemony_title_in_realm",
+                        ) => {
+                            let builder = |key: &Token| {
                                 let mut sc = ScopeContext::new(Scopes::LandedTitle, key);
                                 sc.define_name("ruler", Scopes::Character, key);
                                 sc
-                            });
+                            };
+                            vd.field_trigger_builder("barony_valid", Tooltipped::No, builder);
+                            vd.field_trigger_builder("title_valid", Tooltipped::No, builder);
                         }
                         _ => (),
                     }
@@ -235,7 +293,7 @@ fn check_cost(blocks: &[&Block]) {
 pub struct DecisionGroup {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::DecisionGroup, DecisionGroup::add)
+    ItemLoader::Normal(Item::DecisionGroup, DecisionGroup::add)
 }
 
 impl DecisionGroup {

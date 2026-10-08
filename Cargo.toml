@@ -1,35 +1,26 @@
 [workspace]
 members = [
     "ck3-tiger",
-    "vic3-tiger",
-    "imperator-tiger",
-    "eu5-tiger",
-    "hoi4-tiger",
     "tiger-bin-shared",
     "tiger-tables",
     "utils",
+    "xtiger-mcp",
     ".",
 ]
 
 [package]
 name = "tiger-lib"
-version = "1.19.0"
+version = "1.0.0-alpha"
 edition = "2024"
 license = "GPL-3.0-or-later"
-description = "Library used by the tools ck3-tiger, vic3-tiger, and imperator-tiger. This library holds the bulk of the code for them. It can be built either for ck3-tiger with the feature ck3, or for vic3-tiger with the feature vic3, or for imperator-tiger with the feature imperator, but not both at the same time."
-homepage = "https://github.com/amtep/tiger"
-repository = "https://github.com/amtep/tiger"
+description = "Library used by ck3-tiger, the xTiger validator for Crusader Kings III mods. This library holds the bulk of the code."
+homepage = "https://github.com/9mirx0r/xTiger"
+repository = "https://github.com/9mirx0r/xTiger"
 readme = "README.md"
 rust-version = "1.88"
 
 [features]
-default = ["ck3"]
-ck3 = ["jomini", "tiger-tables/ck3"]
-vic3 = ["jomini", "tiger-tables/vic3"]
-imperator = ["jomini", "tiger-tables/imperator"]
-eu5 = ["jomini", "tiger-tables/eu5"]
-jomini = ["image/png", "dep:png"]
-hoi4 = ["image/bmp", "dep:tinybmp", "tiger-tables/hoi4"]
+default = []
 internal_benches = ["dep:divan", "dep:toml"]
 
 [build-dependencies]
@@ -53,18 +44,17 @@ bitflags = "2.10"
 bitvec = "1.0"
 bumpalo = "3.16"
 encoding_rs = "0.8.32"
-image = { version = "0.25", features = ["dds"], default-features = false, optional = true }
+image = { version = "0.25", features = ["dds", "png"], default-features = false }
 inventory = "0.3.11"
 lalrpop-util = { version = "0.22.0", features = ["unicode", "lexer"] }
 phf = { version = "0.13", features = ["macros"] }
-png = { version = "0.18", optional = true }
+png = "0.18"
 rayon = "1.7.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 strum = { version = "0.28", features = ["phf"] }
 strum_macros = "0.28"
 thiserror = "2"
-tinybmp = { version = "0.6", optional = true }
 unicode-width = "0.2"
 walkdir = "2"
 ahash = "0.8"
@@ -73,7 +63,7 @@ glob = "0.3.2"
 itertools = "0.14.0"
 scc = "3.6.8"
 
-tiger-tables = { path = "tiger-tables", version = "1.19.0", default-features = false }
+tiger-tables = { path = "tiger-tables", version = "1.0.0-alpha" }
 
 [[bench]]
 name = "internals"

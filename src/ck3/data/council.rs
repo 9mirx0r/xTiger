@@ -4,7 +4,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::report::{ErrorKey, err, warn};
@@ -18,7 +17,7 @@ use crate::validator::Validator;
 pub struct CouncilPosition {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CouncilPosition, CouncilPosition::add)
+    ItemLoader::Normal(Item::CouncilPosition, CouncilPosition::add)
 }
 
 impl CouncilPosition {
@@ -126,7 +125,7 @@ impl DbKind for CouncilPosition {
 pub struct CouncilTask {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CouncilTask, CouncilTask::add)
+    ItemLoader::Normal(Item::CouncilTask, CouncilTask::add)
 }
 
 impl CouncilTask {

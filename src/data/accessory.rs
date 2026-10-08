@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::report::{ErrorKey, err, warn};
 use crate::token::Token;
@@ -11,7 +10,7 @@ use crate::validator::Validator;
 pub struct Accessory {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::jomini(), Item::Accessory, Accessory::add)
+    ItemLoader::Normal(Item::Accessory, Accessory::add)
 }
 
 impl Accessory {
@@ -26,11 +25,6 @@ impl DbKind for Accessory {
             for tag in token.split(',') {
                 db.add_flag(Item::AccessoryTag, tag);
             }
-        }
-        // For some reason I can't get the tags to load from common/genes properly for imperator, so im hacking them in here instead for now.
-        #[cfg(feature = "imperator")]
-        for tag in &["no_hair", "fat2_normal", "fat2_max", "fat1_normal", "fat1_max", "no_fat"] {
-            db.add_flag(Item::AccessoryTag, Token::new(tag, block.loc));
         }
     }
 
@@ -65,7 +59,7 @@ impl DbKind for Accessory {
 pub struct AccessoryVariation {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::all(), Item::AccessoryVariation, AccessoryVariation::add)
+    ItemLoader::Normal(Item::AccessoryVariation, AccessoryVariation::add)
 }
 
 impl AccessoryVariation {

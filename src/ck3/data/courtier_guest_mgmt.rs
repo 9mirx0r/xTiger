@@ -4,7 +4,6 @@ use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::effect::validate_effect;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::report::{ErrorKey, err};
 use crate::scopes::Scopes;
@@ -17,7 +16,7 @@ use crate::validator::Validator;
 pub struct CourtierGuestManagement {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CourtierGuestManagement, CourtierGuestManagement::add)
+    ItemLoader::Normal(Item::CourtierGuestManagement, CourtierGuestManagement::add)
 }
 
 impl CourtierGuestManagement {
@@ -82,7 +81,7 @@ impl DbKind for CourtierGuestManagement {
 pub struct GuestSystem {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::GuestSystem, GuestSystem::add)
+    ItemLoader::Normal(Item::GuestSystem, GuestSystem::add)
 }
 
 impl GuestSystem {

@@ -2,7 +2,6 @@ use crate::block::Block;
 use crate::date::Date;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader, LoadAsFile, Recursive};
 use crate::pdxfile::PdxEncoding;
 use crate::token::Token;
@@ -12,7 +11,7 @@ use crate::validator::Validator;
 pub struct CultureHistory {}
 
 inventory::submit! {
-    ItemLoader::Full(GameFlags::Ck3, Item::CultureHistory, PdxEncoding::Detect, ".txt", LoadAsFile::Yes, Recursive::No, CultureHistory::add)
+    ItemLoader::Full(Item::CultureHistory, PdxEncoding::Detect, ".txt", LoadAsFile::Yes, Recursive::No, CultureHistory::add)
 }
 
 impl CultureHistory {

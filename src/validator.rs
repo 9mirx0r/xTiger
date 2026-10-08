@@ -9,15 +9,11 @@ use crate::date::Date;
 use crate::effect::validate_effect_internal;
 use crate::everything::Everything;
 use crate::helpers::{AllowInject, TigerHashSet, dup_assign_error};
-#[cfg(feature = "hoi4")]
-use crate::hoi4::variables::validate_variable;
 use crate::item::Item;
 use crate::lowercase::Lowercase;
-#[cfg(feature = "ck3")]
 use crate::report::fatal;
 use crate::report::{ErrorKey, Severity, report};
 use crate::scopes::Scopes;
-#[cfg(feature = "jomini")]
 use crate::script_value::{validate_script_value, validate_script_value_no_breakdown};
 use crate::special_tokens::SpecialTokens;
 use crate::token::Token;
@@ -100,6 +96,25 @@ impl<'a> Validator<'a> {
 
     /// Control whether the fields in this `Block` will be matched case-sensitively or not.
     /// Whether this should be on or off depends on what the game engine allows, which is not always known.
+    /// Check whether a field key matches the expected field name.
+    /// CK3 itself matches field names case-insensitively, so a differently-cased key is accepted
+    /// there with an untidy report instead of being treated as an unknown field.
+    fn key_matches(&self, key: &Token, name: &str) -> bool {
+        if key.is(name) {
+            return true;
+        }
+        if !key.as_str().eq_ignore_ascii_case(name) {
+            return false;
+        }
+        if !self.case_sensitive {
+            return true;
+        }
+        let msg = format!("`{key}` should be written `{name}`");
+        let info = "the game matches field names case-insensitively, so this works";
+        report(ErrorKey::UnknownField, Severity::Untidy).msg(msg).info(info).loc(key).push();
+        true
+    }
+
     pub fn set_case_sensitive(&mut self, cs: bool) {
         self.case_sensitive = cs;
     }
@@ -113,6 +128,7 @@ impl<'a> Validator<'a> {
     pub fn set_max_severity(&mut self, max_severity: Severity) {
         self.max_severity = max_severity;
     }
+
     pub fn max_severity(&self) -> Severity {
         self.max_severity
     }
@@ -180,7 +196,6 @@ impl<'a> Validator<'a> {
 
     /// Require field `name` to be present in the block, and warn if it isn't there.
     /// Returns true iff the field is present. Warns at [`Severity::Fatal`] level.
-    #[cfg(feature = "ck3")] // vic3 happens not to use; silence dead code warning
     pub fn req_field_fatal(&mut self, name: &str) -> bool {
         let found = self.check_key(name);
         if !found {
@@ -208,7 +223,6 @@ impl<'a> Validator<'a> {
 
     /// Require field `name` to not be in the block. If it is found, warn that it has been replaced by `replaced_by`.
     /// This is used to adapt to and warn about changes in the game engine.
-    #[cfg(any(feature = "ck3", feature = "vic3"))]
     pub fn replaced_field(&mut self, name: &str, replaced_by: &str) {
         let sev = Severity::Error.at_most(self.max_severity);
         self.multi_field_check(name, |key, _| {
@@ -219,9 +233,7 @@ impl<'a> Validator<'a> {
 
     fn check_key(&mut self, name: &str) -> bool {
         for Field(key, _, _) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 return true;
             }
@@ -235,9 +247,7 @@ impl<'a> Validator<'a> {
     {
         let mut found = None;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 if let Some(other) = found {
                     dup_assign_error(key, other, allow_inject);
@@ -256,9 +266,7 @@ impl<'a> Validator<'a> {
     {
         let mut found = false;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 self.expect_eq_qeq(key, *cmp);
                 f(key, bv);
@@ -287,9 +295,7 @@ impl<'a> Validator<'a> {
     pub fn field_any_cmp(&mut self, name: &str) -> Option<&BV> {
         let mut found = None;
         for Field(key, _, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 if let Some((other, _)) = found {
                     dup_assign_error(key, other, AllowInject::Yes);
@@ -307,9 +313,7 @@ impl<'a> Validator<'a> {
         let mut found = None;
         let mut result = None;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 if let Some(other) = found {
                     dup_assign_error(key, other, AllowInject::Yes);
@@ -332,9 +336,7 @@ impl<'a> Validator<'a> {
         let mut found = None;
         let mut result = None;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 if let Some(other) = found {
                     dup_assign_error(key, other, AllowInject::Yes);
@@ -354,7 +356,6 @@ impl<'a> Validator<'a> {
     /// Expect no more than one `name` field in the block.
     /// `kind` is the kind of identifier expected here (for display to the user).
     /// Returns the field's value if the field is present.
-    #[cfg(feature = "jomini")]
     pub fn field_identifier_or_flag(
         &mut self,
         name: &str,
@@ -363,9 +364,7 @@ impl<'a> Validator<'a> {
         let mut found = None;
         let mut result = None;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 if let Some(other) = found {
                     dup_assign_error(key, other, AllowInject::Yes);
@@ -431,35 +430,6 @@ impl<'a> Validator<'a> {
         })
     }
 
-    /// Expect field `name`, if present, to be a variable reference.
-    /// Expect no more than one `name` field in the block.
-    /// Returns true iff the field is present.
-    #[cfg(feature = "hoi4")]
-    pub fn field_variable(&mut self, name: &str, sc: &mut ScopeContext) -> bool {
-        let sev = Severity::Error.at_most(self.max_severity);
-        self.field_check(name, AllowInject::Yes, |_, bv| {
-            if let Some(token) = bv.expect_value() {
-                validate_variable(token, self.data, sc, sev);
-            }
-        })
-    }
-
-    /// Expect field `name`, if present, to be a variable reference or an integer.
-    /// Expect no more than one `name` field in the block.
-    /// Returns true iff the field is present.
-    #[cfg(feature = "hoi4")]
-    pub fn field_variable_or_integer(&mut self, name: &str, sc: &mut ScopeContext) -> bool {
-        let sev = Severity::Error.at_most(self.max_severity);
-        self.field_check(name, AllowInject::Yes, |_, bv| {
-            if let Some(token) = bv.expect_value() {
-                if token.is_number() {
-                    token.expect_integer();
-                } else {
-                    validate_variable(token, self.data, sc, sev);
-                }
-            }
-        })
-    }
     /// Expect field `name`, if present, to be set to the key of an `on_action`.
     /// The action is looked up and must exist.
     /// If it would be useful, validate the action with the given `ScopeContext`.
@@ -709,19 +679,6 @@ impl<'a> Validator<'a> {
         })
     }
 
-    /// Expect field `name`, if present, to be set to a number with up to 5 decimals.
-    /// (5 decimals is the limit accepted by the game engine in most contexts).
-    /// Expect any number of `name` fields.
-    /// Returns true iff the field is present.
-    #[cfg(feature = "hoi4")]
-    pub fn multi_field_numeric(&mut self, name: &str) -> bool {
-        self.multi_field_check(name, |_, bv| {
-            if let Some(token) = bv.expect_value() {
-                token.expect_number();
-            }
-        })
-    }
-
     /// Expect field `name`, if present, to be set to a number with any number of decimals.
     /// Expect no more than one `name` field.
     /// Returns true iff the field is present.
@@ -733,7 +690,6 @@ impl<'a> Validator<'a> {
         })
     }
 
-    #[cfg(any(feature = "ck3", feature = "vic3"))]
     pub fn field_numeric_range_internal<R: RangeBounds<f64>>(
         &mut self,
         name: &str,
@@ -777,14 +733,12 @@ impl<'a> Validator<'a> {
     /// Expect field `name`, if present, to be set to a number within the `range` provided.
     /// Accept at most 5 decimals. (5 decimals is the limit accepted by the game engine in most contexts).
     /// Expect no more than one `name` field.
-    #[cfg(any(feature = "ck3", feature = "vic3"))]
     pub fn field_numeric_range<R: RangeBounds<f64>>(&mut self, name: &str, range: R) {
         self.field_numeric_range_internal(name, range, false);
     }
 
     /// Expect field `name`, if present, to be set to a number within the `range` provided.
     /// Expect no more than one `name` field.
-    #[cfg(feature = "ck3")]
     pub fn field_precise_numeric_range<R: RangeBounds<f64>>(&mut self, name: &str, range: R) {
         self.field_numeric_range_internal(name, range, true);
     }
@@ -996,7 +950,6 @@ impl<'a> Validator<'a> {
     ///
     /// Expect no more than one `name` field in the block.
     /// Returns true iff the field is present.
-    #[cfg(feature = "jomini")]
     pub fn field_script_value(&mut self, name: &str, sc: &mut ScopeContext) -> bool {
         self.field_check(name, AllowInject::Yes, |_, bv| {
             // TODO: pass max_severity value down
@@ -1007,7 +960,6 @@ impl<'a> Validator<'a> {
     /// Just like [`Validator::field_script_value`], but does not warn if it is an inline script value and the `desc` fields
     /// in it do not contain valid localizations. This is generally used for script values that will never be shown to
     /// the user except in debugging contexts, such as `ai_will_do`.
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
     pub fn field_script_value_no_breakdown(&mut self, name: &str, sc: &mut ScopeContext) -> bool {
         self.field_check(name, AllowInject::Yes, |_, bv| {
             // TODO: pass max_severity value down
@@ -1021,7 +973,6 @@ impl<'a> Validator<'a> {
     /// with a key that is further away.
     ///
     /// Does not warn if it is an inline script value and the `desc` fields in it do not contain valid localizations.
-    #[cfg(feature = "jomini")]
     pub fn field_script_value_rooted(&mut self, name: &str, scopes: Scopes) -> bool {
         self.field_check(name, AllowInject::Yes, |key, bv| {
             let mut sc = ScopeContext::new(scopes, key);
@@ -1034,7 +985,6 @@ impl<'a> Validator<'a> {
     /// to be used for the `root` of a `ScopeContext` that is made on the spot. This is a convenient way to associate the
     /// `root` type with the key of this field, for clearer warnings. A passed-in `ScopeContext` would have to be associated
     /// with a key that is further away.
-    #[cfg(feature = "jomini")]
     #[allow(dead_code)]
     pub fn field_script_value_no_breakdown_rooted(&mut self, name: &str, scopes: Scopes) -> bool {
         self.field_check(name, AllowInject::Yes, |key, bv| {
@@ -1047,7 +997,6 @@ impl<'a> Validator<'a> {
     /// Just like [`Validator::field_script_value`], but it takes a closure that uses the field key token
     /// as the input to build and output a [`ScopeContext`]. This is a convenient way to associate the `root` type with the key
     /// of this field, for clearer warnings. A passed-in `ScopeContext` would have to be associated with a key that is further away.
-    #[cfg(feature = "jomini")]
     #[allow(dead_code)]
     pub fn field_script_value_builder<F>(&mut self, name: &str, mut f: F) -> bool
     where
@@ -1065,7 +1014,6 @@ impl<'a> Validator<'a> {
     /// of this field, for clearer warnings. A passed-in `ScopeContext` would have to be associated with a key that is further away.
     ///
     /// Does not warn if it is an inline script value and the `desc` fields in it do not contain valid localizations.
-    #[cfg(feature = "jomini")]
     #[allow(dead_code)]
     pub fn field_script_value_no_breakdown_builder<F>(&mut self, name: &str, mut f: F) -> bool
     where
@@ -1079,7 +1027,6 @@ impl<'a> Validator<'a> {
     }
 
     /// Just like [`Validator::field_script_value`], but it can accept a literal `flag:something` value as well as a script value.
-    #[cfg(feature = "jomini")]
     pub fn field_script_value_or_flag(&mut self, name: &str, sc: &mut ScopeContext) -> bool {
         self.field_check(name, AllowInject::Yes, |_, bv| {
             // TODO: pass max_severity value down
@@ -1092,7 +1039,6 @@ impl<'a> Validator<'a> {
     }
 
     /// Just like [`Validator::field_script_value`], but it it expects any number of `name` fields.
-    #[cfg(feature = "jomini")]
     pub fn multi_field_script_value(&mut self, name: &str, sc: &mut ScopeContext) -> bool {
         self.multi_field_check(name, |_, bv| {
             // TODO: pass max_severity value down
@@ -1135,7 +1081,7 @@ impl<'a> Validator<'a> {
         let mut found = false;
         let sev = Severity::Error.at_most(self.max_severity);
         for Field(key, _, bv) in self.block.iter_fields() {
-            if key.is(name) {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 found = true;
                 if let Some(token) = bv.expect_value()
@@ -1199,7 +1145,6 @@ impl<'a> Validator<'a> {
         })
     }
 
-    #[cfg(feature = "ck3")]
     pub fn field_icon(&mut self, name: &str, define: &str, suffix: &str) -> bool {
         self.field_check(name, AllowInject::Yes, |_, bv| {
             if let Some(token) = bv.expect_value() {
@@ -1224,7 +1169,6 @@ impl<'a> Validator<'a> {
     }
 
     /// Just like [`Validator::field_list_items`], but expect any number of `name` fields in the block.
-    #[cfg(any(feature = "ck3", feature = "hoi4", feature = "vic3"))]
     pub fn multi_field_list_items(&mut self, name: &str, item: Item) -> bool {
         let sev = self.max_severity;
         self.multi_field_validated_list(name, |token, data| {
@@ -1248,7 +1192,7 @@ impl<'a> Validator<'a> {
     pub fn multi_field_value(&mut self, name: &str) -> Vec<&Token> {
         let mut vec = Vec::new();
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if key.is(name) {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 self.expect_eq_qeq(key, *cmp);
                 if let Some(token) = bv.expect_value() {
@@ -1262,7 +1206,7 @@ impl<'a> Validator<'a> {
     /// Just like [`Validator::field_item`], but expect any number of `name` fields in the block.
     pub fn multi_field_item(&mut self, name: &str, itype: Item) {
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if key.is(name) {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 self.expect_eq_qeq(key, *cmp);
                 if let Some(token) = bv.expect_value() {
@@ -1276,7 +1220,7 @@ impl<'a> Validator<'a> {
     pub fn multi_field_any_cmp(&mut self, name: &str) -> bool {
         let mut found = false;
         for Field(key, _, _) in self.block.iter_fields() {
-            if key.is(name) {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 found = true;
             }
@@ -1292,7 +1236,7 @@ impl<'a> Validator<'a> {
     {
         let mut found = false;
         for Field(key, _, bv) in self.block.iter_fields() {
-            if key.is(name) {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 f(bv, self.data);
                 found = true;
@@ -1311,7 +1255,7 @@ impl<'a> Validator<'a> {
     {
         let mut found = None;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if key.is(name) {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 self.expect_eq_qeq(key, *cmp);
                 if let Some(other) = found {
@@ -1331,7 +1275,7 @@ impl<'a> Validator<'a> {
     {
         let mut found = None;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if key.is(name) {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 self.expect_eq_qeq(key, *cmp);
                 if let Some(other) = found {
@@ -1359,7 +1303,6 @@ impl<'a> Validator<'a> {
     /// to be used for the `root` of a [`ScopeContext`] that is made on the spot. This is a convenient way to associate the
     /// `root` type with the key of this field, for clearer warnings. A passed-in [`ScopeContext`] would have to be associated
     /// with a key that is further away.
-    #[cfg(feature = "ck3")] // vic3 happens not to use; silence dead code warning
     pub fn field_validated_rooted<F>(&mut self, name: &str, scopes: Scopes, f: F) -> bool
     where
         F: FnMut(&BV, &Everything, &mut ScopeContext),
@@ -1367,7 +1310,6 @@ impl<'a> Validator<'a> {
         self.field_validated_build_sc(name, |key| ScopeContext::new(scopes, key), f)
     }
 
-    #[cfg(feature = "ck3")]
     pub fn field_validated_build_sc<B, F>(&mut self, name: &str, mut b: B, mut f: F) -> bool
     where
         B: FnMut(&Token) -> ScopeContext,
@@ -1386,7 +1328,7 @@ impl<'a> Validator<'a> {
     {
         let mut found = false;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if key.is(name) {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 self.expect_eq_qeq(key, *cmp);
                 f(bv, self.data);
@@ -1397,14 +1339,13 @@ impl<'a> Validator<'a> {
     }
 
     /// Just like [`Validator::field_validated_key`], but expect any number of `name` fields in the block.
-    #[cfg(any(feature = "ck3", feature = "eu5"))] // vic3 happens not to use; silence dead code warning
     pub fn multi_field_validated_key<F>(&mut self, name: &str, mut f: F) -> bool
     where
         F: FnMut(&Token, &BV, &Everything),
     {
         let mut found = false;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if key.is(name) {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 self.expect_eq_qeq(key, *cmp);
                 f(key, bv, self.data);
@@ -1435,9 +1376,7 @@ impl<'a> Validator<'a> {
     {
         let mut found = false;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 self.expect_eq_qeq(key, *cmp);
                 if let Some(block) = bv.expect_block() {
@@ -1473,38 +1412,10 @@ impl<'a> Validator<'a> {
     {
         let mut found = None;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 if let Some(other) = found {
                     dup_assign_error(key, other, AllowInject::No);
-                }
-                self.expect_eq_qeq(key, *cmp);
-                if let Some(block) = bv.expect_block() {
-                    f(block, self.data);
-                }
-                found = Some(key);
-            }
-        }
-        found.is_some()
-    }
-
-    /// Just like [`Validator::multi_field_validated_block`], but warn if the field is redefined in
-    /// the same file.
-    #[cfg(feature = "vic3")]
-    pub fn multi_warn_field_validated_block<F>(&mut self, name: &str, mut f: F) -> bool
-    where
-        F: FnMut(&Block, &Everything),
-    {
-        let mut found: Option<&Token> = None;
-        for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
-                self.known_fields.push(key.as_str());
-                if let Some(other) = found {
-                    dup_assign_error(key, other, AllowInject::Yes);
                 }
                 self.expect_eq_qeq(key, *cmp);
                 if let Some(block) = bv.expect_block() {
@@ -1523,9 +1434,7 @@ impl<'a> Validator<'a> {
     {
         let mut found = None;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 if let Some(other) = found {
                     dup_assign_error(key, other, AllowInject::No);
@@ -1548,9 +1457,7 @@ impl<'a> Validator<'a> {
     {
         let mut found = None;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 if let Some(other) = found {
                     dup_assign_error(key, other, AllowInject::No);
@@ -1573,9 +1480,7 @@ impl<'a> Validator<'a> {
     {
         let mut found = false;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 self.expect_eq_qeq(key, *cmp);
                 if let Some(block) = bv.expect_block() {
@@ -1613,15 +1518,12 @@ impl<'a> Validator<'a> {
     }
 
     /// Just like [`Validator::field_validated_block_rooted`], but expect any number of `name` fields in the block.
-    #[cfg(feature = "ck3")] // vic3 happens not to use; silence dead code warning
     pub fn multi_field_validated_block_rooted<F>(&mut self, name: &str, scopes: Scopes, mut f: F)
     where
         F: FnMut(&Block, &Everything, &mut ScopeContext),
     {
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 self.expect_eq_qeq(key, *cmp);
                 if let Some(block) = bv.expect_block() {
@@ -1636,7 +1538,6 @@ impl<'a> Validator<'a> {
     /// root with this field's key instead of whatever it was associated with before. This is purely to get better warnings.
     ///
     /// TODO: get rid of this in favor of making proper `ScopeContext` to begin with.
-    #[cfg(feature = "ck3")] // vic3 happens not to use; silence dead code warning
     pub fn field_validated_block_rerooted<F>(
         &mut self,
         name: &str,
@@ -1649,9 +1550,7 @@ impl<'a> Validator<'a> {
     {
         let mut found = None;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 if let Some(other) = found {
                     dup_assign_error(key, other, AllowInject::No);
@@ -1669,13 +1568,10 @@ impl<'a> Validator<'a> {
     }
 
     /// Just like [`Validator::field_block`], but expect any number of `name` fields in the block.
-    #[cfg(feature = "ck3")] // vic3 happens not to use; silence dead code warning
     pub fn multi_field_block(&mut self, name: &str) -> bool {
         let mut found = false;
         for Field(key, cmp, bv) in self.block.iter_fields() {
-            if (self.case_sensitive && key.is(name))
-                || (!self.case_sensitive && key.lowercase_is(name))
-            {
+            if self.key_matches(key, name) {
                 self.known_fields.push(key.as_str());
                 self.expect_eq_qeq(key, *cmp);
                 bv.expect_block();
@@ -1791,19 +1687,6 @@ impl<'a> Validator<'a> {
         self.block.iter_blocks().collect()
     }
 
-    /// Expect the block to contain any number of loose sub-blocks (possibly in addition to other things).
-    /// Run the closure `f(block, data)` for every sub-block.
-    #[cfg(any(feature = "vic3", feature = "imperator"))] // ck3 happens not to use; silence dead code warning
-    pub fn validated_blocks<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&Block, &Everything),
-    {
-        self.accepted_blocks = true;
-        for block in self.block.iter_blocks() {
-            f(block, self.data);
-        }
-    }
-
     /// Expect the block to contain any number of `key = { block }` fields where the key is an integer.
     /// Return them as a vector of (key, block) pairs.
     /// TODO: make this take a closure.
@@ -1850,23 +1733,8 @@ impl<'a> Validator<'a> {
         }
     }
 
-    /// Expect the block to contain any number of `key = value` or `key = { block }` fields where the key is a number with up to 5 decimals.
-    /// Return them as a vector of (key, bv) pairs.
-    /// TODO: make this take a closure.
-    #[cfg(feature = "vic3")] // ck3 happens not to use; silence dead code warning
-    pub fn numeric_keys<F: FnMut(&Token, &BV)>(&mut self, mut f: F) {
-        for Field(key, cmp, bv) in self.block.iter_fields() {
-            if key.is_number() {
-                self.known_fields.push(key.as_str());
-                self.expect_eq_qeq(key, *cmp);
-                f(key, bv);
-            }
-        }
-    }
-
     /// Expect the block to contain any number of `key = { block }` fields where the key is a date.
     /// Run the closure `f(date, block, data)` for every matching field.
-    #[cfg(any(feature = "ck3", feature = "hoi4"))]
     pub fn validate_history_blocks<F>(&mut self, mut f: F)
     where
         F: FnMut(Date, &Token, &Block, &Everything),

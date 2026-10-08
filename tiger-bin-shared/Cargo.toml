@@ -1,16 +1,16 @@
 [package]
 name = "tiger-bin-shared"
-version = "1.19.0"
+version = "1.0.0-alpha"
 edition = "2024"
 license = "GPL-3.0-or-later"
-description = "Shared binary library for ck3-tiger, vic3-tiger, and imperator-tiger."
-homepage = "https://github.com/amtep/tiger"
-repository = "https://github.com/amtep/tiger"
+description = "Shared binary library for ck3-tiger."
+homepage = "https://github.com/9mirx0r/xTiger"
+repository = "https://github.com/9mirx0r/xTiger"
 readme = "../README.md"
 rust-version = "1.88"
 
 [dependencies]
-tiger-lib = { path = "..", version = "1.19.0", default-features = false }
+tiger-lib = { path = "..", version = "1.0.0-alpha" }
 
 anyhow = "1"
 cfg-if = "1"
@@ -24,14 +24,6 @@ thiserror = "2.0"
 
 [target.'cfg(windows)'.dependencies]
 ansiterm = "0.12.2"
-
-[features]
-default = ["ck3"]
-ck3 = ["tiger-lib/ck3"]
-vic3 = ["tiger-lib/vic3"]
-imperator = ["tiger-lib/imperator"]
-eu5 = ["tiger-lib/eu5"]
-hoi4 = ["tiger-lib/hoi4"]
 
 [target.'cfg(target_os = "windows")'.dependencies]
 self_update = { version = "0.42", features = [

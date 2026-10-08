@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::report::{ErrorKey, warn};
 use crate::token::Token;
@@ -11,7 +10,7 @@ use crate::validator::Validator;
 pub struct GraphicalUnitType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::GraphicalUnitType, GraphicalUnitType::add)
+    ItemLoader::Normal(Item::GraphicalUnitType, GraphicalUnitType::add)
 }
 
 impl GraphicalUnitType {

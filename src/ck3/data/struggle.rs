@@ -3,7 +3,6 @@ use crate::ck3::modif::ModifKinds;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader, LoadAsFile, Recursive};
 use crate::modif::validate_modifs;
 use crate::pdxfile::PdxEncoding;
@@ -19,7 +18,7 @@ use crate::validator::Validator;
 pub struct Struggle {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Struggle, Struggle::add)
+    ItemLoader::Normal(Item::Struggle, Struggle::add)
 }
 
 impl Struggle {
@@ -193,8 +192,7 @@ fn validate_phase_effects(block: &Block, data: &Everything) {
         });
     }
 
-    for field in &["involved_doctrine_character_modifier", "interloper_doctrine_character_modifier"]
-    {
+    for field in &["involved_faith_character_modifier", "interloper_faith_character_modifier"] {
         vd.field_validated_block(field, |block, data| {
             let mut vd = Validator::new(block, data);
             vd.field_item("doctrine", Item::Doctrine);
@@ -232,7 +230,7 @@ fn validate_struggle_parameters(block: &Block, data: &Everything) {
 pub struct Catalyst {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Catalyst, Catalyst::add)
+    ItemLoader::Normal(Item::Catalyst, Catalyst::add)
 }
 
 impl Catalyst {
@@ -251,7 +249,7 @@ impl DbKind for Catalyst {
 pub struct StruggleHistory {}
 
 inventory::submit! {
-    ItemLoader::Full(GameFlags::Ck3, Item::StruggleHistory, PdxEncoding::Utf8Bom, ".txt", LoadAsFile::Yes, Recursive::No, StruggleHistory::add)
+    ItemLoader::Full(Item::StruggleHistory, PdxEncoding::Utf8Bom, ".txt", LoadAsFile::Yes, Recursive::No, StruggleHistory::add)
 }
 
 impl StruggleHistory {

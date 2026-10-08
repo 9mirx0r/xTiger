@@ -1212,6 +1212,31 @@ const MODIF_TABLE: &[(&str, ModifKinds)] = &[
     ("winter_advantage", ModifKinds::Character),
     ("winter_movement_speed", ModifKinds::Character),
     ("years_of_fertility", ModifKinds::Character),
+    // Added from the CK3 1.20 modifiers.log
+    ("character_spiritual_fulfillment_gain_mult", ModifKinds::Character),
+    ("character_spiritual_fulfillment_loss_mult", ModifKinds::Character),
+    ("character_starting_spiritual_fulfillment_add", ModifKinds::Character),
+    ("influence_standalone_gain_mult", ModifKinds::Character),
+    ("influence_standalone_loss_mult", ModifKinds::Character),
+    ("merit_standalone_gain_mult", ModifKinds::Character),
+    ("merit_standalone_loss_mult", ModifKinds::Character),
+    ("monthly_treasury_from_cardinal_budget_base", ModifKinds::Character),
+    ("monthly_treasury_from_cardinal_budget_mult", ModifKinds::Character),
+    ("personal_tenet_slot_add", ModifKinds::Character),
+    ("piety_standalone_gain_mult", ModifKinds::Character),
+    ("piety_standalone_loss_mult", ModifKinds::Character),
+    ("prestige_standalone_gain_mult", ModifKinds::Character),
+    ("prestige_standalone_loss_mult", ModifKinds::Character),
+    ("rite_creation_piety_cost_add", ModifKinds::Character),
+    ("rite_creation_piety_cost_mult", ModifKinds::Character),
+    (
+        "same_faith_different_rite_county_opinion_add",
+        ModifKinds::Character.union(ModifKinds::County),
+    ),
+    ("same_faith_different_rite_opinion", ModifKinds::Character),
+    ("same_rite_county_opinion_add", ModifKinds::Character.union(ModifKinds::County)),
+    ("same_rite_opinion", ModifKinds::Character),
+    ("treasury_cardinal_budget_allocation", ModifKinds::Character),
 ];
 
 static SPECIAL_MODIF_LOC_MAP: LazyLock<TigerHashMap<Lowercase<'static>, &'static str>> =

@@ -7,34 +7,29 @@ massif.out*
 flamegraph*.svg
 *.swp
 benches/ck3.toml
-benches/vic3.toml
 
 # Random testing stuff not useful to anyone else in its current form
 cerr1
 cerr2
 error-collection.txt
-ierr1
-ierr2
-impv.sh
 gameconcepts.txt
 munch_bank.py
 munch_effects.py
 new-logs/
-new-vic3/
 old-logs/
-old-vic3/
 pitch
 test.sh
 test.txt
 testmod.sh
-verr1
-verr2
-vic3test.sh
-vic3v.sh
-herr1
-herr2
-herrmod1
-herrmod2
-htest.sh
-htestmod.sh
 
+
+# Python tools
+__pycache__/
+.venv/
+
+# xTiger desktop app
+xtiger-app/src-tauri/target/
+xtiger-app/src-tauri/binaries/
+xtiger-app/src-tauri/gen/
+xtiger-app/setup/target/
+xtiger-app/setup/gen/

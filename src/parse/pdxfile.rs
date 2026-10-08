@@ -10,7 +10,6 @@ use lalrpop_util::{ParseError, lalrpop_mod};
 
 use crate::block::{Block, Comparator, Eq};
 use crate::fileset::{FileEntry, FileKind, FileStage};
-use crate::game::Game;
 use crate::parse::ParserMemory;
 use crate::parse::cob::Cob;
 use crate::parse::pdxfile::lexer::{LexError, Lexeme, Lexer};
@@ -79,7 +78,6 @@ pub fn parse_pdx_file(
 }
 
 /// Parse the content associated with the [`FileEntry`], and update the global parser memory.
-#[cfg(feature = "ck3")]
 pub fn parse_reader_export(
     entry: &FileEntry,
     content: String,
@@ -189,7 +187,7 @@ fn define_var(memory: &mut CombinedMemory, token: &Token, cmp: Comparator, value
     if memory.has_variable(name) {
         let msg = format!("`{name}` is already defined as a reader variable");
         err(ErrorKey::ReaderDirectives).msg(msg).loc(token).push();
-    } else if Game::is_jomini() && !name.starts_with(|c: char| c.is_ascii_alphabetic()) {
+    } else if !name.starts_with(|c: char| c.is_ascii_alphabetic()) {
         let msg = "reader variable names must start with an ascii letter";
         err(ErrorKey::ReaderDirectives).msg(msg).loc(token).push();
     } else {
@@ -260,7 +258,6 @@ impl CharExt for char {
             || self.is_ascii_digit()
             // %, [, ] added for parsing .gui files
             || matches!(self, '.' | ':' | '_' | '-' | '&' | '/' | '|' | '\'' | '%' | '[' | ']')
-            || (Game::is_hoi4() && (self == '?' || self == '@' || self == '^'))
     }
 
     fn is_local_value_char(self) -> bool {

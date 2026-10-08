@@ -8,9 +8,9 @@ use crate::block::{Block, BlockItem, Field};
 use crate::context::{Reason, ScopeContext, Signature};
 use crate::data::scripted_effects::Effect;
 use crate::data::scripted_triggers::Trigger;
+use crate::deferred::DeferredCalls;
 use crate::everything::Everything;
 use crate::fileset::{FileEntry, FileHandler};
-use crate::game::Game;
 use crate::helpers::{TigerHashMap, TigerHashSet, dup_error};
 use crate::item::Item;
 use crate::parse::ParserMemory;
@@ -19,7 +19,6 @@ use crate::pdxfile::PdxFile;
 use crate::report::{ErrorKey, err, warn};
 use crate::scopes::Scopes;
 use crate::token::Token;
-use crate::variables::Variables;
 
 #[derive(Debug, Default)]
 #[allow(clippy::struct_field_names)]
@@ -28,6 +27,8 @@ pub struct Events {
     namespaces: TigerHashSet<Token>,
     triggers: TigerHashMap<(PathTableIndex, &'static str), Trigger>,
     effects: TigerHashMap<(PathTableIndex, &'static str), Effect>,
+    /// Calls to events from other script, validated after everything else.
+    calls: DeferredCalls,
 }
 
 impl Events {
@@ -37,14 +38,7 @@ impl Events {
         {
             if let Some(other) = self.get_event(key.as_str()) {
                 #[allow(clippy::redundant_else)]
-                if Game::is_vic3() {
-                    // Earlier events override later ones in vic3.
-                    // The game will complain but it does work, so don't warn unless warranted.
-                    if other.key.loc.kind <= key.loc.kind {
-                        dup_error(&other.key, &key, "event");
-                    }
-                    return;
-                } else {
+                {
                     // In the other games, overriding events is always an error.
                     dup_error(&key, &other.key, "event");
                 }
@@ -73,25 +67,11 @@ impl Events {
         self.effects.insert(index, Effect::new(key, block, None));
     }
 
-    pub fn scan_variables(&self, registry: &mut Variables) {
-        for item in self.events.values() {
-            registry.scan(&item.block);
-        }
-        for item in self.triggers.values() {
-            registry.scan(&item.block);
-        }
-        for item in self.effects.values() {
-            registry.scan(&item.block);
-        }
-    }
-
-    #[cfg(any(feature = "ck3", feature = "eu5"))]
     pub fn get_trigger(&self, key: &Token) -> Option<&Trigger> {
         let index = (key.loc.idx, key.as_str());
         self.triggers.get(&index)
     }
 
-    #[cfg(any(feature = "ck3", feature = "eu5"))]
     pub fn get_effect(&self, key: &Token) -> Option<&Effect> {
         let index = (key.loc.idx, key.as_str());
         self.effects.get(&index)
@@ -148,9 +128,32 @@ impl Events {
         });
     }
 
-    pub fn validate_call(&self, key: &Token, data: &Everything, sc: &mut ScopeContext) {
-        if let Some(event) = self.get_event(key.as_str()) {
-            event.validate_call(data, sc);
+    pub fn validate_call(&self, key: &Token, _data: &Everything, sc: &mut ScopeContext) {
+        if self.get_event(key.as_str()).is_some() {
+            self.calls.push(key, sc);
+        }
+    }
+
+    /// Validate the calls recorded by `validate_call`, including the calls those make in turn.
+    /// The calls to each event are handled in order of call site, so that the first call with
+    /// each kind of scope context is always the same one.
+    pub fn validate_deferred(&self, data: &Everything) {
+        loop {
+            let calls = self.calls.take_sorted(data);
+            if calls.is_empty() {
+                break;
+            }
+            let mut by_event: TigerHashMap<&str, Vec<ScopeContext>> = TigerHashMap::default();
+            for (key, sc) in calls {
+                by_event.entry(key.as_str()).or_default().push(sc);
+            }
+            by_event.into_par_iter().for_each(|(key, calls)| {
+                if let Some(event) = self.get_event(key) {
+                    for mut sc in calls {
+                        event.validate_call(data, &mut sc);
+                    }
+                }
+            });
         }
     }
 }
@@ -207,16 +210,8 @@ impl FileHandler<Block> for Events {
                 }
             } else if let Some(key) = item.expect_value() {
                 if matches!(expecting, Expecting::Event) && key.is("scripted_trigger") {
-                    if !Game::is_ck3() && !Game::is_eu5() {
-                        let msg = "scripted triggers in event files are only for CK3 and EU5";
-                        err(ErrorKey::WrongGame).msg(msg).loc(key).push();
-                    }
                     expecting = Expecting::ScriptedTrigger;
                 } else if matches!(expecting, Expecting::Event) && key.is("scripted_effect") {
-                    if !Game::is_ck3() && !Game::is_eu5() {
-                        let msg = "scripted effects in event files are only for CK3 and EU5";
-                        err(ErrorKey::WrongGame).msg(msg).loc(key).push();
-                    }
                     expecting = Expecting::ScriptedEffect;
                 } else {
                     err(ErrorKey::Validation)
@@ -241,18 +236,7 @@ pub struct Event {
 
 impl Event {
     pub fn new(key: Token, block: Block) -> Self {
-        let (expects_scope, expects_from_token) = match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => crate::ck3::events::get_event_scope(&key, &block),
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => crate::vic3::events::get_event_scope(&key, &block),
-            #[cfg(feature = "imperator")]
-            Game::Imperator => crate::imperator::events::get_event_scope(&key, &block),
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => crate::eu5::events::get_event_scope(&key, &block),
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => unimplemented!(),
-        };
+        let (expects_scope, expects_from_token) = crate::ck3::events::get_event_scope(&key, &block);
         let visited = Mutex::new(TigerHashSet::default());
         Self { key, block, expects_scope, expects_from_token, visited }
     }
@@ -270,18 +254,7 @@ impl Event {
         sc.set_strict_scopes(false);
         sc.set_source(&self.key);
 
-        match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => crate::ck3::events::validate_event(self, data, &mut sc),
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => crate::vic3::events::validate_event(self, data, &mut sc),
-            #[cfg(feature = "imperator")]
-            Game::Imperator => crate::imperator::events::validate_event(self, data, &mut sc),
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => crate::eu5::events::validate_event(self, data, &mut sc),
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => unimplemented!(),
-        }
+        crate::ck3::events::validate_event(self, data, &mut sc);
     }
 
     pub fn validate_call(&self, data: &Everything, sc: &mut ScopeContext) {
@@ -289,17 +262,6 @@ impl Event {
             // The event was already visited with an equivalent sc
             return;
         }
-        match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => crate::ck3::events::validate_event(self, data, sc),
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => crate::vic3::events::validate_event(self, data, sc),
-            #[cfg(feature = "imperator")]
-            Game::Imperator => crate::imperator::events::validate_event(self, data, sc),
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => crate::eu5::events::validate_event(self, data, sc),
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => unimplemented!(),
-        }
+        crate::ck3::events::validate_event(self, data, sc);
     }
 }

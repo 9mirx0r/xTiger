@@ -107,7 +107,6 @@ impl Block {
 
     /// Combine two blocks by adding the contents of `other` to this block.
     /// To avoid lots of cloning, `other` will be emptied in the process.
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
     pub fn append(&mut self, other: &mut Block) {
         self.v.append(&mut other.v);
     }
@@ -264,31 +263,6 @@ impl Block {
     /// Return true iff the `name` occurs in this block at least once as a field key.
     pub fn has_key(&self, name: &str) -> bool {
         self.get_key(name).is_some()
-    }
-
-    #[cfg(feature = "vic3")]
-    pub fn has_key_recursive(&self, name: &str) -> bool {
-        for item in &self.v {
-            match item {
-                BlockItem::Field(Field(key, _, bv)) => {
-                    if key.is(name) {
-                        return true;
-                    }
-                    if let Some(block) = bv.get_block()
-                        && block.has_key_recursive(name)
-                    {
-                        return true;
-                    }
-                }
-                BlockItem::Block(block) => {
-                    if block.has_key_recursive(name) {
-                        return true;
-                    }
-                }
-                BlockItem::Value(_) => (),
-            }
-        }
-        false
     }
 
     /// Return the number of times `name` occurs in this block as a field key.
@@ -461,6 +435,11 @@ impl Block {
         loc: Loc,
         global: &PdxfileMemory,
     ) -> Option<Block> {
+        // Expansions are cached per call site and arguments, and shared by all the ways of reaching
+        // that call site. Only link back to the call site itself, not to how it was reached, so
+        // that reports don't depend on which caller happened to be validated first.
+        let mut loc = loc;
+        loc.link_idx = None;
         let link_index = MACRO_MAP.get_or_insert_loc(loc);
         if let Some(block_source) = &self.source {
             let (ref source, ref local) = **block_source;
@@ -477,7 +456,8 @@ impl Block {
                                 // Make the replacement be a token that has the substituted content, but the original's loc,
                                 // and a loc.link back to the caller's parameter. This gives the best error messages.
                                 let mut val = val.clone();
-                                let orig_loc = val.loc;
+                                let mut orig_loc = val.loc;
+                                orig_loc.link_idx = None;
                                 val.loc = token.loc;
                                 val.loc.column -= 1; // point at the $, it looks better
                                 val.loc.link_idx = Some(MACRO_MAP.get_or_insert_loc(orig_loc));

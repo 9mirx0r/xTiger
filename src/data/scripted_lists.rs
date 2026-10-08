@@ -1,11 +1,11 @@
 use std::path::PathBuf;
-use std::sync::RwLock;
 
 use crate::block::Block;
 use crate::context::ScopeContext;
 use crate::everything::Everything;
 use crate::fileset::{FileEntry, FileHandler};
 use crate::helpers::{TigerHashMap, dup_error};
+use crate::macros::ValidationCache;
 use crate::parse::ParserMemory;
 use crate::pdxfile::PdxFile;
 use crate::report::{ErrorKey, err};
@@ -14,7 +14,6 @@ use crate::token::{Loc, Token};
 use crate::tooltipped::Tooltipped;
 use crate::trigger::validate_trigger;
 use crate::validator::Validator;
-use crate::variables::Variables;
 
 #[derive(Debug, Default)]
 pub struct ScriptedLists {
@@ -29,12 +28,6 @@ impl ScriptedLists {
             dup_error(&key, &other.key, "scripted list");
         }
         self.lists.insert(key.as_str(), List::new(key, block));
-    }
-
-    pub fn scan_variables(&self, registry: &mut Variables) {
-        for item in self.lists.values() {
-            registry.scan(&item.block);
-        }
     }
 
     pub fn exists(&self, key: &str) -> bool {
@@ -86,21 +79,16 @@ impl FileHandler<Block> for ScriptedLists {
 pub struct List {
     pub key: Token,
     block: Block,
-    cache: RwLock<TigerHashMap<Loc, ScopeContext>>,
+    cache: ValidationCache<Loc, ScopeContext>,
 }
 
 impl List {
     pub fn new(key: Token, block: Block) -> Self {
-        Self { key, block, cache: RwLock::new(TigerHashMap::default()) }
+        Self { key, block, cache: ValidationCache::default() }
     }
 
     fn cached_compat(&self, key: &Token, sc: &mut ScopeContext, data: &Everything) -> bool {
-        if let Some(our_sc) = self.cache.read().unwrap().get(&key.loc) {
-            sc.expect_compatibility(our_sc, key, data);
-            true
-        } else {
-            false
-        }
+        self.cache.perform(&key.loc, |our_sc| sc.expect_compatibility(our_sc, key, data))
     }
 
     pub fn validate(&self, data: &Everything) {
@@ -137,10 +125,10 @@ impl List {
         if !self.cached_compat(key, sc, data) {
             let mut our_sc = ScopeContext::new_unrooted(Scopes::all(), &self.key);
             our_sc.set_strict_scopes(false);
-            self.cache.write().unwrap().insert(key.loc, our_sc.clone());
+            self.cache.insert_pending(key.loc, our_sc.clone());
             Self::validate_conditions(&self.block, data, &mut our_sc);
             sc.expect_compatibility(&our_sc, key, data);
-            self.cache.write().unwrap().insert(key.loc, our_sc);
+            self.cache.insert(key.loc, our_sc);
         }
     }
 }

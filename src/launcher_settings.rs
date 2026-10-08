@@ -5,16 +5,11 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 
 use crate::fileset::{FileEntry, FileKind, FileStage};
-use crate::game::Game;
 use crate::parse::json::parse_json_file;
 
 /// Looks up the game's version in the launcher settings.
 pub fn get_version_from_launcher(game_dir: &Path) -> Result<String> {
-    let launcher_pathname = if Game::is_hoi4() {
-        game_dir.join("launcher-settings.json")
-    } else {
-        game_dir.join("launcher/launcher-settings.json")
-    };
+    let launcher_pathname = { game_dir.join("launcher/launcher-settings.json") };
     let launcher_entry = FileEntry::new(
         launcher_pathname.clone(),
         FileStage::NoStage,

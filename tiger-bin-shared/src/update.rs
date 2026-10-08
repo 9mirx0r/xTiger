@@ -27,19 +27,7 @@ cfg_if! {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-cfg_if! {
-    if #[cfg(feature = "ck3")] {
-        const BIN_NAME: &str = "ck3-tiger";
-    } else if #[cfg(feature = "vic3")] {
-        const BIN_NAME: &str = "vic3-tiger";
-    } else if #[cfg(feature = "imperator")] {
-        const BIN_NAME: &str = "imperator-tiger";
-    } else if #[cfg(feature = "eu5")] {
-        const BIN_NAME: &str = "eu5-tiger";
-    } else if #[cfg(feature = "hoi4")] {
-        const BIN_NAME: &str = "hoi4-tiger";
-    }
-}
+const BIN_NAME: &str = "ck3-tiger";
 
 /// Self-update the main tiger application.
 ///
@@ -53,7 +41,7 @@ pub fn update(current_version: &str, target_version: Option<&str>) -> Result<(),
     cfg_if! {
         if #[cfg(any(target_os = "windows", target_os = "linux"))] {
             if let Some(version) = target_version {
-                let re = Regex::new(r"^v?[0-9]+\.[0-9]+\.[0-9]+$").unwrap();
+                let re = Regex::new(r"^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$").unwrap();
                 if !re.is_match(version) {
                     return Err(UpdateError::VersionTag);
                 }
@@ -62,12 +50,12 @@ pub fn update(current_version: &str, target_version: Option<&str>) -> Result<(),
             #[cfg(target_os = "linux")]
             let bin_path = format!("{BIN_NAME}-linux-v{{{{version}}}}/{BIN_NAME}");
             #[cfg(target_os = "windows")]
-            let bin_path = format!("{}.exe", BIN_NAME);
+            let bin_path = format!("{BIN_NAME}-windows-v{{{{version}}}}/{BIN_NAME}.exe");
 
             let mut updater = UpdateBuilder::new();
             updater
-                .repo_owner("amtep")
-                .repo_name("tiger")
+                .repo_owner("9mirx0r")
+                .repo_name("xTiger")
                 .bin_name(BIN_NAME)
                 .bin_path_in_archive(&bin_path)
                 .identifier(BIN_NAME)

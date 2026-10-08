@@ -1,0 +1,32 @@
+[package]
+name = "xtiger-setup"
+version = "1.0.0-alpha"
+edition = "2024"
+license = "GPL-3.0-or-later"
+description = "Installer for the xTiger desktop app."
+repository = "https://github.com/9mirx0r/xTiger"
+rust-version = "1.88"
+publish = false
+
+# Like the app, the setup has its own workspace so that the validator's workspace and CI do not
+# need the Tauri toolchain.
+[workspace]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+dirs = "6"
+mslnk = "0.1"
+winreg = "0.55"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

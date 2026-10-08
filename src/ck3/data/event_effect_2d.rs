@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::token::Token;
 use crate::validator::Validator;
@@ -10,7 +9,7 @@ use crate::validator::Validator;
 pub struct EventEffect2d {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::EventEffect2d, EventEffect2d::add)
+    ItemLoader::Normal(Item::EventEffect2d, EventEffect2d::add)
 }
 
 impl EventEffect2d {

@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::token::Token;
 use crate::validator::Validator;
@@ -10,7 +9,7 @@ use crate::validator::Validator;
 pub struct Message {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Message, Message::add)
+    ItemLoader::Normal(Item::Message, Message::add)
 }
 
 impl Message {
@@ -54,7 +53,7 @@ impl DbKind for Message {
 pub struct MessageFilterType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::MessageFilterType, MessageFilterType::add)
+    ItemLoader::Normal(Item::MessageFilterType, MessageFilterType::add)
 }
 
 impl MessageFilterType {
@@ -82,7 +81,7 @@ impl DbKind for MessageFilterType {
 pub struct MessageGroupType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::MessageGroupType, MessageGroupType::add)
+    ItemLoader::Normal(Item::MessageGroupType, MessageGroupType::add)
 }
 
 impl MessageGroupType {

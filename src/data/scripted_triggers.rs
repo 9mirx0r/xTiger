@@ -4,9 +4,7 @@ use crate::block::Block;
 use crate::context::ScopeContext;
 use crate::everything::Everything;
 use crate::fileset::{FileEntry, FileHandler};
-#[cfg(feature = "hoi4")]
-use crate::game::Game;
-use crate::helpers::{BANNED_NAMES, TigerHashMap, limited_item_prefix_should_insert};
+use crate::helpers::{BANNED_NAMES, TigerHashMap, check_dup_item};
 use crate::item::Item;
 use crate::lowercase::Lowercase;
 use crate::macros::{MACRO_MAP, MacroCache};
@@ -19,7 +17,6 @@ use crate::tooltipped::Tooltipped;
 use crate::trigger::validate_trigger_internal;
 use crate::validate::ListType;
 use crate::validator::Validator;
-use crate::variables::Variables;
 
 #[derive(Debug, Default)]
 pub struct Triggers {
@@ -32,11 +29,11 @@ impl Triggers {
         if BANNED_NAMES.contains(&key.as_str()) {
             let msg = "scripted trigger has the same name as an important builtin";
             err(ErrorKey::NameConflict).strong().msg(msg).loc(key).push();
-        } else if let Some(name) =
-            limited_item_prefix_should_insert(Item::ScriptedTrigger, key, |key| {
+        } else {
+            check_dup_item(Item::ScriptedTrigger, &key, |key| {
                 self.triggers.get(key).map(|entry| &entry.key)
-            })
-        {
+            });
+            let name = key;
             let scope_override = self
                 .scope_overrides
                 .get(name.as_str())
@@ -46,12 +43,6 @@ impl Triggers {
                 MACRO_MAP.insert_or_get_loc(name.loc);
             }
             self.triggers.insert(name.as_str(), Trigger::new(name, block, scope_override));
-        }
-    }
-
-    pub fn scan_variables(&self, registry: &mut Variables) {
-        for item in self.triggers.values() {
-            registry.scan(&item.block);
         }
     }
 
@@ -105,10 +96,6 @@ impl FileHandler<Block> for Triggers {
             return None;
         }
 
-        #[cfg(feature = "hoi4")]
-        if Game::is_hoi4() {
-            return PdxFile::read_no_bom(entry, parser);
-        }
         PdxFile::read(entry, parser)
     }
 
@@ -159,7 +146,7 @@ impl Trigger {
             if self.scope_override.is_some() {
                 our_sc.set_no_warn(true);
             }
-            self.cache.insert(key, &[], tooltipped, negated, our_sc.clone());
+            self.cache.insert_pending(key, &[], tooltipped, negated, our_sc.clone());
             let vd = Validator::new(&self.block, data);
             validate_trigger_internal(
                 Lowercase::empty(),
@@ -219,7 +206,7 @@ impl Trigger {
             }
             // Insert the dummy sc before continuing. That way, if we recurse, we'll hit
             // that dummy context instead of macro-expanding again.
-            self.cache.insert(key, args, tooltipped, negated, our_sc.clone());
+            self.cache.insert_pending(key, args, tooltipped, negated, our_sc.clone());
             let vd = Validator::new(&block, data);
             validate_trigger_internal(
                 Lowercase::empty(),
@@ -242,13 +229,9 @@ impl Trigger {
 }
 
 const BUILTIN_OVERRIDE_TRIGGERS: &[&str] = &[
-    #[cfg(feature = "ck3")]
     "artifact_low_rarity_trigger",
-    #[cfg(feature = "ck3")]
     "artifact_medium_rarity_trigger",
-    #[cfg(feature = "ck3")]
     "artifact_high_rarity_trigger",
-    #[cfg(feature = "ck3")]
     "artifact_region_trigger",
 ];
 

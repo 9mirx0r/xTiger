@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::report::{ErrorKey, err, fatal};
 use crate::token::Token;
@@ -14,7 +13,7 @@ pub struct Region {
 }
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Region, Region::add)
+    ItemLoader::Normal(Item::Region, Region::add)
 }
 
 impl Region {

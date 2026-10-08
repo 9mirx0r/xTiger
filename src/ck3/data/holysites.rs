@@ -3,7 +3,6 @@ use crate::ck3::data::titles::Tier;
 use crate::ck3::modif::ModifKinds;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::report::{ErrorKey, fatal, warn};
@@ -14,7 +13,7 @@ use crate::validator::Validator;
 pub struct HolySite {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::HolySite, HolySite::add)
+    ItemLoader::Normal(Item::HolySite, HolySite::add)
 }
 
 impl HolySite {
@@ -40,7 +39,10 @@ impl DbKind for HolySite {
         let loca = format!("holy_site_{key}_effects");
         data.mark_used(Item::Localization, &loca);
 
-        vd.req_field("county");
+        // dynamic holy site types (1.20) are placed at runtime and have no county
+        if !vd.field_bool("is_dynamic") || !block.get_field_bool("is_dynamic").unwrap_or(false) {
+            vd.req_field("county");
+        }
         vd.field_item("county", Item::Title);
         vd.field_item("barony", Item::Title);
 
@@ -72,6 +74,23 @@ impl DbKind for HolySite {
                 data.verify_exists_implied(Item::Localization, &loca, key);
             }
             validate_modifs(block, data, ModifKinds::Character, vd);
+        });
+
+        for field in ["faith_character_modifier", "county_holder_character_modifier"] {
+            vd.field_validated_block(field, |block, data| {
+                let vd = Validator::new(block, data);
+                validate_modifs(block, data, ModifKinds::Character, vd);
+            });
+        }
+        vd.multi_field_validated_block("faith_character_modifier_scaled", |block, data| {
+            let mut vd = Validator::new(block, data);
+            vd.field_value("scale");
+            validate_modifs(block, data, ModifKinds::Character, vd);
+        });
+        vd.multi_field_validated_block("county_modifier_scaled", |block, data| {
+            let mut vd = Validator::new(block, data);
+            vd.field_value("scale");
+            validate_modifs(block, data, ModifKinds::County, vd);
         });
 
         // undocumented

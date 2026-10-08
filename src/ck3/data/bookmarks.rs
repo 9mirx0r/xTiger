@@ -1,11 +1,10 @@
 use crate::block::Block;
-use crate::ck3::validate::validate_portrait_modifier_overrides;
+use crate::ck3::validate::{validate_portrait_colors, validate_portrait_modifier_overrides};
 use crate::context::ScopeContext;
 use crate::data::dna::validate_genes;
 use crate::date::Date;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader, LoadAsFile, Recursive};
 use crate::pdxfile::PdxEncoding;
 use crate::report::{ErrorKey, fatal, warn};
@@ -17,7 +16,7 @@ use crate::validator::Validator;
 pub struct BookmarkGroup {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::BookmarkGroup, BookmarkGroup::add)
+    ItemLoader::Normal(Item::BookmarkGroup, BookmarkGroup::add)
 }
 
 impl BookmarkGroup {
@@ -37,7 +36,7 @@ impl DbKind for BookmarkGroup {
 pub struct Bookmark {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Bookmark, Bookmark::add)
+    ItemLoader::Normal(Item::Bookmark, Bookmark::add)
 }
 
 impl Bookmark {
@@ -133,7 +132,13 @@ fn validate_bookmark_character(
     vd.field_item("fallback_government", Item::GovernmentType);
     vd.field_item("culture", Item::Culture);
     if existing_ruler {
-        vd.field_item("religion", Item::Faith);
+        if let Some(token) = block.get_field_value("religion")
+            && data.item_exists(Item::Rite, token.as_str())
+        {
+            vd.field_value("religion");
+        } else {
+            vd.field_item("religion", Item::Faith);
+        }
     } else {
         vd.field_item("religion", Item::Localization);
     }
@@ -191,7 +196,7 @@ fn validate_bookmark_character(
 pub struct BookmarkPortrait {}
 
 inventory::submit! {
-    ItemLoader::Full(GameFlags::Ck3, Item::BookmarkPortrait, PdxEncoding::Utf8OptionalBom, ".txt", LoadAsFile::No, Recursive::Yes, BookmarkPortrait::add)
+    ItemLoader::Full(Item::BookmarkPortrait, PdxEncoding::Utf8OptionalBom, ".txt", LoadAsFile::No, Recursive::Yes, BookmarkPortrait::add)
 }
 
 impl BookmarkPortrait {
@@ -215,6 +220,7 @@ impl DbKind for BookmarkPortrait {
                 "portrait_modifier_overrides",
                 validate_portrait_modifier_overrides,
             );
+            vd.field_validated_block("colors", validate_portrait_colors);
         });
         vd.field_validated_block("tags", |block, data| {
             let mut vd = Validator::new(block, data);
@@ -266,7 +272,7 @@ fn validate_bookmark_against_history(
 pub struct ChallengeCharacter {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ChallengeCharacter, ChallengeCharacter::add)
+    ItemLoader::Normal(Item::ChallengeCharacter, ChallengeCharacter::add)
 }
 
 impl ChallengeCharacter {

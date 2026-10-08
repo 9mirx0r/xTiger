@@ -1,8 +1,6 @@
 use crate::block::{BV, Block};
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::Game;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::token::Token;
 use crate::validate::validate_camera_color;
@@ -12,7 +10,7 @@ use crate::validator::Validator;
 pub struct PortraitEnvironment {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::jomini(), Item::PortraitEnvironment, PortraitEnvironment::add)
+    ItemLoader::Normal(Item::PortraitEnvironment, PortraitEnvironment::add)
 }
 
 impl PortraitEnvironment {
@@ -48,11 +46,7 @@ impl DbKind for PortraitEnvironment {
                             || block.field_value_is("type", "directional_light")
                         {
                             vd.field_list_precise_numeric_exactly("look_at", 3);
-                            if Game::is_ck3() {
-                                vd.field_block("look_at_node"); // TODO
-                            } else if Game::is_vic3() {
-                                vd.field_value("look_at_node");
-                            }
+                            vd.field_block("look_at_node"); // TODO
                         } else {
                             vd.ban_field("look_at", || "spot_light or directional_light");
                             vd.ban_field("look_at_node", || "spot_light or directional_light");
@@ -68,19 +62,19 @@ impl DbKind for PortraitEnvironment {
                             vd.ban_field("radius", || "spot_light or point_light");
                             vd.ban_field("falloff", || "spot_light or point_light");
                         }
-                        if block.field_value_is("type", "point_light") {
+                        // Cone angles shape a spot light's beam. Vanilla sets them on spot lights
+                        // and sometimes copies them onto other lights, where they do nothing.
+                        if block.field_value_is("type", "spot_light") {
                             vd.field_precise_numeric("outer_cone_angle");
                             vd.field_precise_numeric("inner_cone_angle");
                         } else {
-                            // These fields are very often present anyway, so instead of lots of warnings,
-                            // just advice about them.
                             vd.advice_field(
                                 "outer_cone_angle",
-                                "outer_cone_angle is only for point_light",
+                                "outer_cone_angle is only for spot_light",
                             );
                             vd.advice_field(
                                 "inner_cone_angle",
-                                "inner_cone_angle is only for point_light",
+                                "inner_cone_angle is only for spot_light",
                             );
                         }
                     }
@@ -96,11 +90,7 @@ impl DbKind for PortraitEnvironment {
 
                     vd.field_list_precise_numeric_exactly("position", 3);
                     vd.field_list_precise_numeric_exactly("look_at", 3);
-                    if Game::is_ck3() {
-                        vd.field_block("look_at_node"); // TODO
-                    } else if Game::is_vic3() {
-                        vd.field_value("look_at_node"); // TODO
-                    }
+                    vd.field_block("look_at_node"); // TODO
                     vd.field_block("position_node"); // TODO
                     vd.field_precise_numeric("fov");
                     vd.field_list_integers_exactly("camera_near_far", 2);

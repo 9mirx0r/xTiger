@@ -1,0 +1,34 @@
+[package]
+name = "xtiger-app"
+version = "1.0.0-alpha"
+edition = "2024"
+license = "GPL-3.0-or-later"
+description = "Desktop app for xTiger, the validator for Crusader Kings III mods."
+repository = "https://github.com/9mirx0r/xTiger"
+rust-version = "1.88"
+publish = false
+
+# The app has its own workspace so that the validator's workspace and CI do not
+# need the Tauri toolchain.
+[workspace]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+# preserve_order keeps the order of the assistants' settings files when xTiger edits them.
+serde_json = { version = "1", features = ["preserve_order"] }
+base64 = "0.22"
+xtiger-mcp = { path = "../../xtiger-mcp" }
+semver = "1"
+sha2 = "0.10"
+ureq = { version = "3", features = ["json"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

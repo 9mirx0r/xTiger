@@ -2,10 +2,6 @@
 
 use std::borrow::{Borrow, Cow};
 use std::fmt::{Display, Error, Formatter};
-#[cfg(any(feature = "vic3", feature = "imperator"))]
-use std::slice::SliceIndex;
-#[cfg(any(feature = "vic3", feature = "imperator"))]
-use std::str::RMatchIndices;
 
 /// Wraps a string (either owned or `&str`) and guarantees that it's lowercase.
 ///
@@ -72,16 +68,6 @@ impl<'a> Lowercase<'a> {
     #[allow(dead_code)]
     pub fn contains_unchecked<S: Borrow<str>>(&self, infix: S) -> bool {
         self.0.contains(infix.borrow())
-    }
-
-    #[cfg(any(feature = "vic3", feature = "imperator"))]
-    pub fn rmatch_indices_unchecked(&self, separator: char) -> RMatchIndices<'_, char> {
-        self.0.rmatch_indices(separator)
-    }
-
-    #[cfg(any(feature = "vic3", feature = "imperator"))]
-    pub fn slice<R: 'a + SliceIndex<str, Output = str>>(&'a self, range: R) -> Self {
-        Lowercase::new_unchecked(&self.0[range])
     }
 }
 

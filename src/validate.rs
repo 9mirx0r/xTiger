@@ -3,34 +3,24 @@
 use std::fmt::{Display, Formatter};
 
 use crate::block::{BV, Block};
-#[cfg(feature = "ck3")]
 use crate::ck3::tables::misc::OUTBREAK_INTENSITIES;
-#[cfg(feature = "ck3")]
 use crate::ck3::validate::{
     validate_activity_modifier, validate_ai_value_modifier, validate_compare_modifier,
     validate_compatibility_modifier, validate_opinion_modifier, validate_scheme_modifier,
 };
 use crate::context::ScopeContext;
-#[cfg(feature = "jomini")]
 use crate::data::scripted_modifiers::ScriptedModifier;
 use crate::everything::Everything;
-use crate::game::Game;
-use crate::helpers::is_country_tag;
 use crate::item::Item;
 use crate::lowercase::Lowercase;
-#[cfg(feature = "jomini")]
 use crate::report::fatal;
 use crate::report::{Confidence, ErrorKey, Severity, err, report, warn};
-#[cfg(any(feature = "ck3", feature = "hoi4"))]
 use crate::scopes::Scopes;
 use crate::scopes::{scope_prefix, scope_to_scope};
-#[cfg(feature = "jomini")]
 use crate::script_value::{validate_non_dynamic_script_value, validate_script_value};
 use crate::token::Token;
 use crate::tooltipped::Tooltipped;
-#[cfg(any(feature = "ck3", feature = "hoi4"))]
 use crate::trigger::validate_target_ok_this;
-#[cfg(feature = "jomini")]
 use crate::trigger::validate_trigger;
 use crate::trigger::{
     Part, PartFlags, is_character_token, partition, validate_argument, validate_argument_scope,
@@ -42,10 +32,7 @@ use crate::validator::Validator;
 pub enum ListType {
     None,
     Any,
-    #[cfg(feature = "hoi4")]
-    All,
     Every,
-    #[cfg(feature = "jomini")]
     Ordered,
     Random,
 }
@@ -53,14 +40,8 @@ pub enum ListType {
 impl ListType {
     pub fn is_for_triggers(self) -> bool {
         match self {
-            ListType::None => false,
             ListType::Any => true,
-            #[cfg(feature = "hoi4")]
-            ListType::All => true,
-            ListType::Every => false,
-            #[cfg(feature = "jomini")]
-            ListType::Ordered => false,
-            ListType::Random => false,
+            ListType::None | ListType::Every | ListType::Ordered | ListType::Random => false,
         }
     }
 }
@@ -70,10 +51,7 @@ impl Display for ListType {
         match self {
             ListType::None => write!(f, ""),
             ListType::Any => write!(f, "any"),
-            #[cfg(feature = "hoi4")]
-            ListType::All => write!(f, "all"),
             ListType::Every => write!(f, "every"),
-            #[cfg(feature = "jomini")]
             ListType::Ordered => write!(f, "ordered"),
             ListType::Random => write!(f, "random"),
         }
@@ -87,10 +65,7 @@ impl TryFrom<&str> for ListType {
         match from {
             "" => Ok(ListType::None),
             "any" => Ok(ListType::Any),
-            #[cfg(feature = "hoi4")]
-            "all" => Ok(ListType::All),
             "every" => Ok(ListType::Every),
-            #[cfg(feature = "jomini")]
             "ordered" => Ok(ListType::Ordered),
             "random" => Ok(ListType::Random),
             _ => Err(std::fmt::Error),
@@ -98,19 +73,13 @@ impl TryFrom<&str> for ListType {
     }
 }
 
-#[cfg(any(feature = "ck3", feature = "vic3"))]
 pub fn validate_compare_duration(block: &Block, data: &Everything, sc: &mut ScopeContext) {
     let mut vd = Validator::new(block, data);
     let mut count = 0;
 
     for field in &["days", "weeks", "months", "years"] {
         if let Some(bv) = vd.field_any_cmp(field) {
-            if Game::is_jomini() {
-                #[cfg(feature = "jomini")]
-                validate_script_value(bv, data, sc);
-            } else {
-                // TODO HOI4
-            }
+            validate_script_value(bv, data, sc);
             count += 1;
         }
     }
@@ -124,7 +93,6 @@ pub fn validate_compare_duration(block: &Block, data: &Everything, sc: &mut Scop
 
 // Very similar to validate_days_weeks_months_years, but requires = instead of allowing comparators
 // "weeks" is not documented but is used all over vanilla TODO: verify
-#[cfg(feature = "jomini")]
 pub fn validate_mandatory_duration(block: &Block, vd: &mut Validator, sc: &mut ScopeContext) {
     let mut count = 0;
 
@@ -141,7 +109,6 @@ pub fn validate_mandatory_duration(block: &Block, vd: &mut Validator, sc: &mut S
     }
 }
 
-#[cfg(feature = "jomini")]
 pub fn validate_duration(block: &Block, data: &Everything, sc: &mut ScopeContext) {
     let mut vd = Validator::new(block, data);
     validate_mandatory_duration(block, &mut vd, sc);
@@ -149,7 +116,6 @@ pub fn validate_duration(block: &Block, data: &Everything, sc: &mut ScopeContext
 
 // Very similar to validate_duration, but validates part of a block that may contain a duration
 // Also does not accept script values (per the documentation)
-#[cfg(feature = "jomini")]
 pub fn validate_optional_duration_int(vd: &mut Validator) {
     let mut count = 0;
 
@@ -170,24 +136,13 @@ pub fn validate_optional_duration_int(vd: &mut Validator) {
 pub fn validate_optional_duration(vd: &mut Validator, sc: &mut ScopeContext) {
     let mut count = 0;
 
-    #[cfg(not(feature = "imperator"))]
     let options = &["days", "weeks", "months", "years"];
 
     // Imperator does not allow a "weeks" field and does allow a "duration" field for modifiers.
-    #[cfg(feature = "imperator")]
-    let options = &["days", "months", "years", "duration"];
 
     for field in options {
         vd.field_validated_key(field, |key, bv, data| {
-            if Game::is_jomini() {
-                #[cfg(feature = "jomini")]
-                validate_script_value(bv, data, sc);
-            } else {
-                // TODO HOI4
-                let _ = &bv;
-                let _ = &data;
-                let _ = &sc;
-            }
+            validate_script_value(bv, data, sc);
             count += 1;
             if count > 1 {
                 let msg = "must have at most 1 of days, weeks, months, or years";
@@ -256,15 +211,7 @@ pub fn validate_color(block: &Block, _data: &Everything) {
     }
 }
 
-#[cfg(feature = "jomini")]
 pub fn validate_possibly_named_color(bv: &BV, data: &Everything) {
-    if Game::is_hoi4() {
-        // no named colors
-        if let Some(block) = bv.expect_block() {
-            validate_color(block, data);
-        }
-    }
-    #[cfg(feature = "jomini")]
     match bv {
         BV::Value(token) => data.verify_exists(Item::NamedColor, token),
         BV::Block(block) => validate_color(block, data),
@@ -282,7 +229,6 @@ pub fn precheck_iterator_fields(
 ) {
     match ltype {
         ListType::Any => {
-            #[cfg(feature = "jomini")]
             if let Some(bv) = block.get_field("percent") {
                 if let Some(token) = bv.get_value()
                     && let Some(num) = token.get_number()
@@ -295,7 +241,6 @@ pub fn precheck_iterator_fields(
                 }
                 validate_script_value(bv, data, sc);
             }
-            #[cfg(feature = "jomini")]
             if let Some(bv) = block.get_field("count") {
                 match bv {
                     BV::Value(token) if token.is("all") => (),
@@ -303,9 +248,6 @@ pub fn precheck_iterator_fields(
                 }
             }
         }
-        #[cfg(feature = "hoi4")]
-        ListType::All => {}
-        #[cfg(feature = "jomini")]
         ListType::Ordered => {
             for field in &["min", "max"] {
                 if let Some(bv) = block.get_field(field) {
@@ -325,16 +267,14 @@ pub fn precheck_iterator_fields(
         ListType::Random | ListType::Every | ListType::None => (),
     }
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() && name == "county_in_region" {
+    if name == "county_in_region" {
         for region in block.get_field_values("region") {
             if !data.item_exists(Item::Region, region.as_str()) {
                 validate_target_ok_this(region, data, sc, Scopes::GeographicalRegion);
             }
         }
     }
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() && name == "succession_appointment_investors" {
+    if name == "succession_appointment_investors" {
         if let Some(candidate) = block.get_field_value("candidate") {
             validate_target_ok_this(candidate, data, sc, Scopes::Character);
         }
@@ -342,31 +282,20 @@ pub fn precheck_iterator_fields(
             validate_script_value(value, data, sc);
         }
     }
-
-    #[cfg(feature = "hoi4")]
-    if Game::is_hoi4()
-        && name == "country_with_original_tag"
-        && let Some(tag) = block.get_field_value("original_tag_to_check")
-    {
-        validate_target_ok_this(tag, data, sc, Scopes::Country);
-    }
 }
 
 /// This checks the fields that are only used in iterators.
 /// It does not check "limit" because that is shared with the if/else blocks.
 /// Returns true iff the iterator took care of its own tooltips
-#[allow(unused_variables)] // hoi4 does not use the parameters
 pub fn validate_iterator_fields(
     caller: &Lowercase,
     list_type: ListType,
-    data: &Everything,
     sc: &mut ScopeContext,
     vd: &mut Validator,
     tooltipped: &mut Tooltipped,
     is_svalue: bool,
 ) {
     // undocumented
-    #[cfg(feature = "jomini")]
     if list_type == ListType::None {
         vd.ban_field("custom", || "lists");
     } else if vd.field_item("custom", Item::Localization) {
@@ -374,7 +303,6 @@ pub fn validate_iterator_fields(
     }
 
     // undocumented
-    #[cfg(feature = "jomini")]
     if list_type != ListType::None && list_type != ListType::Any {
         vd.multi_field_validated_block("alternative_limit", |b, data| {
             validate_trigger(b, data, sc, *tooltipped);
@@ -383,7 +311,6 @@ pub fn validate_iterator_fields(
         vd.ban_field("alternative_limit", || "`every_`, `ordered_`, and `random_` lists");
     }
 
-    #[cfg(feature = "jomini")]
     if list_type == ListType::Any {
         vd.field_any_cmp("percent"); // prechecked
         vd.field_any_cmp("count"); // prechecked
@@ -394,12 +321,8 @@ pub fn validate_iterator_fields(
         }
     }
 
-    #[cfg(feature = "jomini")]
     if list_type == ListType::Ordered {
-        #[cfg(feature = "jomini")]
-        if Game::is_jomini() {
-            vd.field_script_value("order_by", sc);
-        }
+        vd.field_script_value("order_by", sc);
         vd.field("position"); // prechecked
         vd.field("min"); // prechecked
         vd.field("max"); // prechecked
@@ -414,45 +337,15 @@ pub fn validate_iterator_fields(
         vd.ban_field("check_range_bounds", || "`ordered_` lists");
     }
 
-    #[cfg(feature = "jomini")]
     if list_type == ListType::Random {
         vd.field_validated_block_sc("weight", sc, validate_modifiers_with_base);
     } else {
         vd.ban_field("weight", || "`random_` lists");
     }
-
-    #[cfg(feature = "hoi4")]
-    if list_type == ListType::Every {
-        vd.field_integer("random_select_amount");
-    } else {
-        vd.ban_field("random_select_amount", || "`every_` lists");
-    }
-
-    #[cfg(feature = "hoi4")]
-    if list_type != ListType::None {
-        vd.field_item("tooltip", Item::Localization);
-    }
-
-    #[cfg(feature = "hoi4")]
-    if list_type == ListType::Every {
-        vd.field_bool("display_individual_scopes");
-    } else {
-        vd.ban_field("display_individual_scopes", || "`every_` lists");
-    }
-
-    #[cfg(feature = "hoi4")]
-    if (list_type == ListType::Every || list_type == ListType::Random)
-        && sc.scopes(data).contains(Scopes::Character | Scopes::IndustrialOrg)
-    {
-        vd.field_bool("include_invisible");
-    } else {
-        vd.ban_field("include_invisible", || "`every_` and `random_` character and mio lists");
-    }
 }
 
 /// This checks the special fields for certain iterators, like `type =` in `every_relation`.
 /// It doesn't check the generic ones like `limit` or the ordering ones for `ordered_*`.
-#[allow(unused_variables)] // vic3 does not use `tooltipped`
 pub fn validate_inside_iterator(
     name: &Lowercase,
     listtype: ListType,
@@ -463,7 +356,6 @@ pub fn validate_inside_iterator(
     tooltipped: Tooltipped,
 ) {
     // Docs say that all three can take either list or variable, but global and local lists must be variable lists.
-    #[cfg(feature = "jomini")]
     if name == "in_list" {
         vd.req_field_one_of(&["list", "variable"]);
         if let Some(token) = vd.field_value("list") {
@@ -495,299 +387,242 @@ pub fn validate_inside_iterator(
         });
     }
 
-    #[cfg(feature = "hoi4")]
-    if Game::is_hoi4() {
-        if name == "country_with_original_tag" {
-            vd.req_field("original_tag_to_check");
-            vd.field_value("original_tag_to_check"); // prechecked
-        } else if name == "owned_controlled_state" {
-            vd.field_list_items("prioritize", Item::State);
-        } else if name == "of" {
-            vd.field_value("array"); // TODO HOI4: check array reference
-            vd.field_value("value"); // name of temp variable
-            vd.field_value("index"); // name of temp variable
-        } else if name == "of_scopes" {
-            vd.field_value("array"); // TODO HOI4: check array reference
-        }
+    if name == "in_de_facto_hierarchy" || name == "in_de_jure_hierarchy" {
+        vd.field_trigger("filter", tooltipped, sc);
+        vd.field_trigger("continue", tooltipped, sc);
+    } else {
+        let only_for =
+            || format!("`{listtype}_in_de_facto_hierarchy` or `{listtype}_in_de_jure_hierarchy`");
+        vd.ban_field("filter", only_for);
+        vd.ban_field("continue", only_for);
     }
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        if name == "in_de_facto_hierarchy" || name == "in_de_jure_hierarchy" {
-            vd.field_trigger("filter", tooltipped, sc);
-            vd.field_trigger("continue", tooltipped, sc);
-        } else {
-            let only_for = || {
-                format!("`{listtype}_in_de_facto_hierarchy` or `{listtype}_in_de_jure_hierarchy`")
-            };
-            vd.ban_field("filter", only_for);
-            vd.ban_field("continue", only_for);
-        }
-
-        if name == "active_accolade" {
-            vd.field_item("accolade_parameter", Item::AccoladeParameter);
-        } else {
-            vd.ban_field("accolade_parameter", || format!("`{listtype}_{name}`"));
-        }
-
-        if name == "county_province_epidemic" || name == "province_epidemic" {
-            vd.multi_field_choice_any_cmp("intensity", OUTBREAK_INTENSITIES);
-        } else {
-            vd.ban_field("intensity", || {
-                format!("`{listtype}_county_province_epidemic` or `{listtype}_province_epidemic`")
-            });
-        }
-
-        if name == "secret" {
-            vd.field_item("type", Item::Secret);
-        }
-
-        if name == "scheme" {
-            vd.field_item("type", Item::Scheme);
-        }
-
-        if name == "task_contract"
-            || name == "character_task_contract"
-            || name == "character_active_contract"
-        {
-            vd.field_item("task_contract_type", Item::TaskContractType);
-        } else {
-            vd.ban_field("task_contract_type", || format!("`{listtype}_task_contract`, `{listtype}_character_task_contract` or `{listtype}_character_active_contract`"));
-        }
-
-        if name == "memory" {
-            vd.field_item("memory_type", Item::MemoryType);
-        } else {
-            vd.ban_field("memory_type", || format!("`{listtype}_{name}`"));
-        }
-
-        if name == "targeting_faction" {
-            vd.field_item("faction_type", Item::Faction);
-        } else {
-            vd.ban_field("faction_type", || format!("`{listtype}_{name}`"));
-        }
-
-        if name == "vassal" || name == "vassal_or_below" {
-            vd.field_item("vassal_stance", Item::VassalStance);
-        } else {
-            vd.ban_field("vassal_stance", || {
-                format!("`{listtype}_vassal` or `{listtype}_vassal_or_below`")
-            });
-        }
-
-        if name == "owned_story" {
-            vd.field_item("type", Item::Story);
-        }
-
-        if name == "held_title" {
-            // TODO: actually check the value
-            vd.field_any_cmp("title_tier");
-        } else {
-            vd.ban_field("title_tier", || format!("`{listtype}_{name}`"));
-        }
-
-        if name == "county_in_region" {
-            vd.req_field("region");
-            vd.multi_field_value("region"); // prechecked
-        } else {
-            vd.ban_field("region", || format!("`{listtype}_county_in_region`"));
-        }
-
-        if name == "court_position_candidate" {
-            vd.req_field("court_position_type");
-            vd.field_item_or_target(
-                "court_position_type",
-                sc,
-                Item::CourtPosition,
-                Scopes::CourtPositionType,
-            );
-        }
-
-        if name == "court_position_holder" {
-            vd.field_item("type", Item::CourtPosition);
-        }
-
-        if name == "relation" {
-            if !block.has_key("type") {
-                let msg = "required field `type` missing";
-                let info = format!(
-                    "Verified for 1.9.2: with no type, {listtype}_relation will do nothing."
-                );
-                err(ErrorKey::FieldMissing).strong().msg(msg).info(info).loc(block).push();
-            }
-            vd.multi_field_item("type", Item::Relation);
-        }
-
-        if name == "active_dynasty" {
-            vd.field_bool("include_inactive");
-        }
-
-        if name == "ruler" {
-            // TODO: if an iterator has a limit checking one of these, suggest using the filter.
-            vd.field_target("government_type", sc, Scopes::GovernmentType);
-            vd.field_bool("only_independent");
-            vd.field_choice("tier", &["county", "duchy", "kingdom", "empire", "hegemony"]);
-            vd.field_target("faith", sc, Scopes::Faith);
-            vd.field_target("culture", sc, Scopes::Culture);
-        }
+    if name == "active_accolade" {
+        vd.field_item("accolade_parameter", Item::AccoladeParameter);
+    } else {
+        vd.ban_field("accolade_parameter", || format!("`{listtype}_{name}`"));
     }
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        if name == "claim" {
-            vd.field_choice("explicit", &["yes", "no", "all"]);
-            vd.field_choice("pressed", &["yes", "no", "all"]);
-        } else {
-            vd.ban_field("explicit", || format!("`{listtype}_claim`"));
-            vd.ban_field("pressed", || format!("`{listtype}_claim`"));
-        }
+    if name == "county_province_epidemic" || name == "province_epidemic" {
+        vd.multi_field_choice_any_cmp("intensity", OUTBREAK_INTENSITIES);
+    } else {
+        vd.ban_field("intensity", || {
+            format!("`{listtype}_county_province_epidemic` or `{listtype}_province_epidemic`")
+        });
     }
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        if name == "pool_character" {
-            vd.req_field("province");
-            if let Some(token) = vd.field_value("province") {
-                validate_target_ok_this(token, data, sc, Scopes::Province);
-            }
-        } else {
-            vd.ban_field("province", || format!("`{listtype}_pool_character`"));
-        }
+    if name == "secret" {
+        vd.field_item("type", Item::Secret);
     }
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        if sc.can_be(Scopes::Character, data) {
-            vd.field_bool("only_if_dead");
-            vd.field_bool("even_if_dead");
-        } else {
-            vd.ban_field("only_if_dead", || "lists of characters");
-            vd.ban_field("even_if_dead", || "lists of characters");
-        }
+    if name == "scheme" {
+        vd.field_item("type", Item::Scheme);
     }
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        if name == "character_struggle" {
-            vd.field_choice("involvement", &["involved", "interloper"]);
-        } else {
-            vd.ban_field("involvement", || format!("`{listtype}_character_struggle`"));
-        }
+    if name == "task_contract"
+        || name == "character_task_contract"
+        || name == "character_active_contract"
+    {
+        vd.field_item("task_contract_type", Item::TaskContractType);
+    } else {
+        vd.ban_field("task_contract_type", || format!("`{listtype}_task_contract`, `{listtype}_character_task_contract` or `{listtype}_character_active_contract`"));
     }
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        if name == "connected_county" {
-            // Undocumented
-            vd.field_bool("invert");
-            vd.field_numeric("max_naval_distance");
-            vd.field_bool("allow_one_county_land_gap");
-        } else {
-            let only_for = || format!("`{listtype}_connected_county`");
-            vd.ban_field("invert", only_for);
-            vd.ban_field("max_naval_distance", only_for);
-            vd.ban_field("allow_one_county_land_gap", only_for);
-        }
+    if name == "memory" {
+        vd.field_item("memory_type", Item::MemoryType);
+    } else {
+        vd.ban_field("memory_type", || format!("`{listtype}_{name}`"));
     }
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        if name == "activity_phase_location"
-            || name == "activity_phase_location_future"
-            || name == "activity_phase_location_past"
-        {
-            vd.field_bool("unique");
-        } else {
-            let only_for =
-                || format!("the `{listtype}_activity_phase_location` family of iterators");
-            vd.ban_field("unique", only_for);
-        }
+    if name == "targeting_faction" {
+        vd.field_item("faction_type", Item::Faction);
+    } else {
+        vd.ban_field("faction_type", || format!("`{listtype}_{name}`"));
     }
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        if name == "guest_subset" || name == "guest_subset_current_phase" {
-            vd.field_item("name", Item::GuestSubset);
-        } else {
-            vd.ban_field("name", || {
-                format!("`{listtype}_guest_subset` and `{listtype}_guest_subset_current_phase`")
-            });
-        }
+    if name == "vassal" || name == "vassal_or_below" {
+        vd.field_item("vassal_stance", Item::VassalStance);
+    } else {
+        vd.ban_field("vassal_stance", || {
+            format!("`{listtype}_vassal` or `{listtype}_vassal_or_below`")
+        });
     }
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        if name == "guest_subset" {
-            vd.field_value("phase"); // TODO
-        } else {
-            vd.ban_field("phase", || format!("`{listtype}_guest_subset`"));
-        }
+    if name == "owned_story" {
+        vd.field_item("type", Item::Story);
     }
 
-    if Game::is_ck3() {
-        #[cfg(feature = "ck3")]
-        if name == "trait_in_category" {
-            vd.field_value("category"); // TODO
-        } else {
-            // Don't ban, because it's a valid trigger
-        }
+    if name == "held_title" {
+        // TODO: actually check the value
+        vd.field_any_cmp("title_tier");
+    } else {
+        vd.ban_field("title_tier", || format!("`{listtype}_{name}`"));
     }
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        if name == "succession_appointment_investors" {
-            vd.req_field("candidate");
-            vd.field_value("candidate"); // prechecked
-            vd.field_any_cmp("value"); // prechecked
-        } else {
-            vd.ban_field("candidate", || format!("`{listtype}_succession_appointment_investors`"));
-        }
+    if name == "county_in_region" {
+        vd.req_field("region");
+        vd.multi_field_value("region"); // prechecked
+    } else {
+        vd.ban_field("region", || format!("`{listtype}_county_in_region`"));
     }
 
-    #[cfg(feature = "hoi4")]
-    if Game::is_hoi4() {
-        if listtype == ListType::Random
-            && matches!(
-                name.as_str(),
-                "controlled_state"
-                    | "core_state"
-                    | "owned_controlled_state"
-                    | "owned_state"
-                    | "state"
-            )
-        {
-            vd.field_list_items("prioritize", Item::State);
-        } else {
-            vd.ban_field("prioritize", || "state `random_` iterators");
+    if name == "court_position_candidate" {
+        vd.req_field("court_position_type");
+        vd.field_item_or_target(
+            "court_position_type",
+            sc,
+            Item::CourtPosition,
+            Scopes::CourtPositionType,
+        );
+    }
+
+    if name == "court_position_holder" {
+        vd.field_item("type", Item::CourtPosition);
+    }
+
+    if name == "relation" {
+        if !block.has_key("type") {
+            let msg = "required field `type` missing";
+            let info =
+                format!("Verified for 1.9.2: with no type, {listtype}_relation will do nothing.");
+            err(ErrorKey::FieldMissing).strong().msg(msg).info(info).loc(block).push();
         }
+        vd.multi_field_item("type", Item::Relation);
+    }
+
+    if name == "active_dynasty" {
+        vd.field_bool("include_inactive");
+    }
+
+    if name == "character_tenet" || name == "character_doctrine" {
+        vd.field_choice("knowledge_filter", &["known", "unknown", "all"]);
+        vd.field_target("rite_filter", sc, Scopes::Rite);
+        vd.field_target("faith_filter", sc, Scopes::Faith);
+    }
+    if name == "character_tenet" {
+        vd.field_choice("status", &["core", "permitted", "prohibited", "known", "unknown"]);
+    }
+    if name == "rite_tenet" {
+        vd.field_choice("status", &["core", "permitted", "prohibited", "known"]);
+    }
+
+    if name == "desired_tenet" || name == "undesired_tenet" {
+        vd.field_script_value("selection_count", sc);
+        vd.field_script_value("threshold", sc);
+        vd.field_bool("only_positive");
+        vd.field_bool("only_negative");
+        vd.field_bool("known_tenets");
+    }
+
+    if name == "holy_site" {
+        vd.field_bool("is_eminent");
+    }
+
+    if name == "ruler" {
+        // TODO: if an iterator has a limit checking one of these, suggest using the filter.
+        vd.field_target("government_type", sc, Scopes::GovernmentType);
+        vd.field_bool("only_independent");
+        vd.field_choice("tier", &["county", "duchy", "kingdom", "empire", "hegemony"]);
+        vd.field_target("faith", sc, Scopes::Faith);
+        vd.field_target("culture", sc, Scopes::Culture);
+        // 1.20 filter names
+        vd.field_target("government_type_filter", sc, Scopes::GovernmentType);
+        vd.field_target("faith_filter", sc, Scopes::Faith);
+        vd.field_target("culture_filter", sc, Scopes::Culture);
+        vd.field_choice("tier_filter", &["county", "duchy", "kingdom", "empire", "hegemony"]);
+    }
+
+    if name == "claim" {
+        vd.field_choice("explicit", &["yes", "no", "all"]);
+        vd.field_choice("pressed", &["yes", "no", "all"]);
+    } else {
+        vd.ban_field("explicit", || format!("`{listtype}_claim`"));
+        vd.ban_field("pressed", || format!("`{listtype}_claim`"));
+    }
+
+    if name == "pool_character" {
+        vd.req_field("province");
+        if let Some(token) = vd.field_value("province") {
+            validate_target_ok_this(token, data, sc, Scopes::Province);
+        }
+    } else {
+        vd.ban_field("province", || format!("`{listtype}_pool_character`"));
+    }
+
+    if sc.can_be(Scopes::Character, data) {
+        vd.field_bool("only_if_dead");
+        vd.field_bool("even_if_dead");
+    } else {
+        vd.ban_field("only_if_dead", || "lists of characters");
+        vd.ban_field("even_if_dead", || "lists of characters");
+    }
+
+    if name == "character_struggle" {
+        vd.field_choice("involvement", &["involved", "interloper"]);
+    } else {
+        vd.ban_field("involvement", || format!("`{listtype}_character_struggle`"));
+    }
+
+    if name == "connected_county" {
+        // Undocumented
+        vd.field_bool("invert");
+        vd.field_numeric("max_naval_distance");
+        vd.field_bool("allow_one_county_land_gap");
+    } else {
+        let only_for = || format!("`{listtype}_connected_county`");
+        vd.ban_field("invert", only_for);
+        vd.ban_field("max_naval_distance", only_for);
+        vd.ban_field("allow_one_county_land_gap", only_for);
+    }
+
+    if name == "activity_phase_location"
+        || name == "activity_phase_location_future"
+        || name == "activity_phase_location_past"
+    {
+        vd.field_bool("unique");
+    } else {
+        let only_for = || format!("the `{listtype}_activity_phase_location` family of iterators");
+        vd.ban_field("unique", only_for);
+    }
+
+    if name == "guest_subset" || name == "guest_subset_current_phase" {
+        vd.field_item("name", Item::GuestSubset);
+    } else {
+        vd.ban_field("name", || {
+            format!("`{listtype}_guest_subset` and `{listtype}_guest_subset_current_phase`")
+        });
+    }
+
+    if name == "guest_subset" {
+        vd.field_value("phase"); // TODO
+    } else {
+        vd.ban_field("phase", || format!("`{listtype}_guest_subset`"));
+    }
+
+    if name == "trait_in_category" {
+        vd.field_value("category"); // TODO
+    } else {
+        // Don't ban, because it's a valid trigger
+    }
+
+    if name == "succession_appointment_investors" {
+        vd.req_field("candidate");
+        vd.field_value("candidate"); // prechecked
+        vd.field_any_cmp("value"); // prechecked
+    } else {
+        vd.ban_field("candidate", || format!("`{listtype}_succession_appointment_investors`"));
     }
 }
 
 pub fn validate_modifiers_with_base(block: &Block, data: &Everything, sc: &mut ScopeContext) {
     let mut vd = Validator::new(block, data);
-    if Game::is_jomini() {
-        #[cfg(feature = "jomini")]
-        {
-            vd.field_validated("base", validate_non_dynamic_script_value);
-            vd.multi_field_script_value("add", sc);
-            vd.multi_field_script_value("factor", sc);
-            vd.multi_field_script_value("min", sc);
-            vd.multi_field_script_value("max", sc);
-        }
-    } else {
-        #[cfg(feature = "hoi4")]
-        {
-            // TODO HOI4
-            vd.field_numeric("base");
-            vd.multi_field_numeric("add");
-            vd.multi_field_numeric("factor");
-        }
-    }
+    vd.field_validated("base", validate_non_dynamic_script_value);
+    vd.multi_field_script_value("add", sc);
+    vd.multi_field_script_value("factor", sc);
+    vd.multi_field_script_value("min", sc);
+    vd.multi_field_script_value("max", sc);
     validate_modifiers(&mut vd, sc);
-    #[cfg(feature = "jomini")]
-    if Game::is_jomini() {
-        validate_scripted_modifier_calls(vd, data, sc);
-    }
+    validate_scripted_modifier_calls(vd, data, sc);
 }
 
 pub fn validate_modifiers(vd: &mut Validator, sc: &mut ScopeContext) {
@@ -811,31 +646,24 @@ pub fn validate_modifiers(vd: &mut Validator, sc: &mut ScopeContext) {
             false,
         );
     });
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        vd.multi_field_validated_block_sc("compare_modifier", sc, validate_compare_modifier);
-        vd.multi_field_validated_block_sc("opinion_modifier", sc, validate_opinion_modifier);
-        vd.multi_field_validated_block_sc("ai_value_modifier", sc, validate_ai_value_modifier);
-        vd.multi_field_validated_block_sc(
-            "compatibility_modifier",
-            sc,
-            validate_compatibility_modifier,
-        );
+    vd.multi_field_validated_block_sc("compare_modifier", sc, validate_compare_modifier);
+    vd.multi_field_validated_block_sc("opinion_modifier", sc, validate_opinion_modifier);
+    vd.multi_field_validated_block_sc("ai_value_modifier", sc, validate_ai_value_modifier);
+    vd.multi_field_validated_block_sc(
+        "compatibility_modifier",
+        sc,
+        validate_compatibility_modifier,
+    );
 
-        // These are special single-use modifiers
-        vd.multi_field_validated_block_sc("scheme_modifier", sc, validate_scheme_modifier);
-        vd.multi_field_validated_block_sc("activity_modifier", sc, validate_activity_modifier);
-    }
+    // These are special single-use modifiers
+    vd.multi_field_validated_block_sc("scheme_modifier", sc, validate_scheme_modifier);
+    vd.multi_field_validated_block_sc("activity_modifier", sc, validate_activity_modifier);
 
-    #[cfg(feature = "jomini")]
-    if Game::is_jomini() {
-        vd.multi_field_script_value("min", sc);
-        vd.multi_field_script_value("max", sc);
-    }
+    vd.multi_field_script_value("min", sc);
+    vd.multi_field_script_value("max", sc);
     // TODO HOI4
 }
 
-#[cfg(feature = "jomini")]
 pub fn validate_scripted_modifier_call(
     key: &Token,
     bv: &BV,
@@ -884,7 +712,6 @@ pub fn validate_scripted_modifier_call(
     }
 }
 
-#[cfg(feature = "jomini")]
 pub fn validate_scripted_modifier_calls(
     mut vd: Validator,
     data: &Everything,
@@ -952,36 +779,14 @@ pub fn validate_scope_chain(
                 } else if part_lc == "root" {
                     sc.replace_root();
                 } else if part_lc == "prev" {
-                    if !part_flags.contains(PartFlags::First) && !Game::is_imperator() {
+                    if !part_flags.contains(PartFlags::First) {
                         warn_not_first(part);
                     }
                     sc.replace_prev();
                 } else if part_lc == "this" {
                     sc.replace_this();
-                } else if Game::is_hoi4() && part_lc == "from" {
-                    #[cfg(feature = "hoi4")]
-                    sc.replace_from();
-                } else if Game::is_hoi4() && is_country_tag(part.as_str()) {
-                    if !part_flags.contains(PartFlags::First) {
-                        warn_not_first(part);
-                    }
-                    #[cfg(feature = "hoi4")]
-                    data.verify_exists(Item::CountryTag, part);
-                    #[cfg(feature = "hoi4")]
-                    sc.replace(Scopes::Country, part.clone());
                 } else if is_character_token(part.as_str(), data) {
-                    #[cfg(feature = "hoi4")]
-                    sc.replace(Scopes::Character, part.clone());
-                } else if Game::is_hoi4() && part.is_integer() {
-                    // TODO HOI4: figure out if a state id has to be the whole target
-                    if !part_flags.contains(PartFlags::First) {
-                        warn_not_first(part);
-                    }
-                    #[cfg(feature = "hoi4")]
-                    data.verify_exists(Item::State, part);
-                    #[cfg(feature = "hoi4")]
-                    sc.replace(Scopes::State, part.clone());
-                } else if let Some((inscopes, outscope)) = scope_to_scope(part, sc.scopes(data)) {
+                } else if let Some((inscopes, outscope)) = scope_to_scope(part) {
                     validate_inscopes(part_flags, part, inscopes, sc, data);
                     sc.replace(outscope, part.clone());
                 } else {
@@ -1064,7 +869,6 @@ pub fn validate_identifier(token: &Token, kind: &str, sev: Severity) {
 }
 
 /// Camera colors must be hsv, and value can be > 1
-#[cfg(feature = "jomini")]
 pub fn validate_camera_color(block: &Block, data: &Everything) {
     let mut count = 0;
     // Get the color tag, as in color = hsv { 0.5 1.0 1.0 }

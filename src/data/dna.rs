@@ -1,9 +1,8 @@
-//! Character DNA for portraits. Used in CK3 and Vic3 but not Imperator.
+//! Character DNA for portraits.
 
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::{Game, GameFlags};
 use crate::item::{Item, ItemLoader};
 use crate::token::Token;
 use crate::validator::Validator;
@@ -12,7 +11,7 @@ use crate::validator::Validator;
 pub struct Dna {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3.union(GameFlags::Vic3), Item::Dna, Dna::add)
+    ItemLoader::Normal(Item::Dna, Dna::add)
 }
 
 impl Dna {
@@ -33,9 +32,8 @@ impl DbKind for Dna {
 fn validate_portrait_info(block: &Block, data: &Everything) {
     let mut vd = Validator::new(block, data);
     vd.field_validated_block("genes", validate_genes);
-    if Game::is_vic3() {
-        vd.field_block("entity");
-    }
+    vd.field_choice("type", &["male", "female", "boy", "girl"]);
+    vd.field_value("id");
 }
 
 pub fn validate_genes(block: &Block, data: &Everything) {

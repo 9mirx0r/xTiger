@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::token::Token;
 use crate::validator::Validator;
@@ -10,7 +9,7 @@ use crate::validator::Validator;
 pub struct ProvinceEffect {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ProvinceEffect, ProvinceEffect::add)
+    ItemLoader::Normal(Item::ProvinceEffect, ProvinceEffect::add)
 }
 
 impl ProvinceEffect {
@@ -25,5 +24,7 @@ impl DbKind for ProvinceEffect {
 
         vd.field_integer("effect_index");
         vd.field_bool("is_winter_effect");
+        vd.field_bool("is_secondary");
+        vd.field_bool("include_impassable_provinces");
     }
 }

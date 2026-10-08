@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::{Game, GameFlags};
 use crate::item::{Item, ItemLoader};
 use crate::report::{ErrorKey, warn};
 use crate::token::Token;
@@ -12,7 +11,7 @@ use crate::validator::Validator;
 pub struct EffectLocalization {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::jomini(), Item::EffectLocalization, EffectLocalization::add)
+    ItemLoader::Normal(Item::EffectLocalization, EffectLocalization::add)
 }
 
 impl EffectLocalization {
@@ -56,8 +55,6 @@ impl EffectLocalization {
                 let msg = "missing `_past` perspective";
                 warn(ErrorKey::MissingPerspective).msg(msg).loc(caller).loc_msg(key, "here").push();
             }
-            #[cfg(feature = "hoi4")]
-            Tooltipped::Inner => unimplemented!(),
         }
     }
 }
@@ -65,10 +62,6 @@ impl EffectLocalization {
 impl DbKind for EffectLocalization {
     fn validate(&self, _key: &Token, block: &Block, data: &Everything) {
         let mut vd = Validator::new(block, data);
-        #[cfg(feature = "eu5")]
-        vd.field_item("none", Item::Localization);
-        #[cfg(feature = "eu5")]
-        vd.field_item("none_past", Item::Localization);
         vd.field_item("global", Item::Localization);
         vd.field_item("global_past", Item::Localization);
         vd.field_item("global_neg", Item::Localization);
@@ -92,36 +85,30 @@ pub fn validate_effect_localization(caller: &Token, data: &Everything, tooltippe
 
     // As of CK3 1.18, effect localizations don't have to be defined and can just be present as
     // localizations.
-    if Game::is_ck3() {
-        match tooltipped {
-            Tooltipped::No => (),
-            Tooltipped::Yes | Tooltipped::FailuresOnly => {
-                if data.item_exists(Item::Localization, caller.as_str()) {
+    match tooltipped {
+        Tooltipped::No => (),
+        Tooltipped::Yes | Tooltipped::FailuresOnly => {
+            if data.item_exists(Item::Localization, caller.as_str()) {
+                return;
+            }
+            for sfx in &["global", "first", "third"] {
+                let loca = format!("{caller}_{sfx}");
+                if data.item_exists(Item::Localization, &loca) {
                     return;
                 }
-                for sfx in &["global", "first", "third"] {
-                    let loca = format!("{caller}_{sfx}");
-                    if data.item_exists(Item::Localization, &loca) {
-                        return;
-                    }
-                }
-                let msg = "missing present perspective";
-                warn(ErrorKey::MissingPerspective).msg(msg).loc(caller).push();
             }
-            Tooltipped::Past => {
-                for sfx in &["global_part", "first_part", "third_past"] {
-                    let loca = format!("{caller}_{sfx}");
-                    if data.item_exists(Item::Localization, &loca) {
-                        return;
-                    }
-                }
-                let msg = "missing past perspective";
-                warn(ErrorKey::MissingPerspective).msg(msg).loc(caller).push();
-            }
-            #[cfg(feature = "hoi4")]
-            Tooltipped::Inner => unimplemented!(),
+            let msg = "missing present perspective";
+            warn(ErrorKey::MissingPerspective).msg(msg).loc(caller).push();
         }
-    } else {
-        data.verify_exists(Item::EffectLocalization, caller);
+        Tooltipped::Past => {
+            for sfx in &["global_part", "first_part", "third_past"] {
+                let loca = format!("{caller}_{sfx}");
+                if data.item_exists(Item::Localization, &loca) {
+                    return;
+                }
+            }
+            let msg = "missing past perspective";
+            warn(ErrorKey::MissingPerspective).msg(msg).loc(caller).push();
+        }
     }
 }

@@ -2,18 +2,15 @@
 //!
 //! The main entry point is [`PdxFile`].
 
-#[cfg(feature = "ck3")]
 use std::fs::read;
 use std::fs::read_to_string;
 
-#[cfg(feature = "ck3")]
 use encoding_rs::{UTF_8, WINDOWS_1252};
 
 use crate::block::Block;
 use crate::fileset::FileEntry;
 use crate::parse::ParserMemory;
 use crate::parse::pdxfile::parse_pdx_file;
-#[cfg(feature = "ck3")]
 use crate::parse::pdxfile::{PdxfileMemory, parse_reader_export};
 use crate::report::{ErrorKey, err, warn};
 
@@ -24,12 +21,8 @@ const BOM_CHAR: char = '\u{feff}';
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PdxEncoding {
     Utf8Bom,
-    #[cfg(feature = "jomini")]
     Utf8OptionalBom,
-    #[cfg(feature = "ck3")]
     Detect,
-    #[cfg(feature = "hoi4")]
-    Utf8NoBom,
 }
 
 pub struct PdxFile {}
@@ -60,19 +53,6 @@ impl PdxFile {
         }
     }
 
-    /// Parse a UTF-8 file that may must start with a BOM (Byte Order Marker).
-    #[cfg(feature = "hoi4")]
-    pub fn read_no_bom(entry: &FileEntry, parser: &ParserMemory) -> Option<Block> {
-        let contents = Self::read_utf8(entry)?;
-        if contents.starts_with(BOM_CHAR) {
-            let msg = "Expected UTF-8 encoding without BOM";
-            err(ErrorKey::Encoding).msg(msg).abbreviated(entry).push();
-            Some(parse_pdx_file(entry, contents, BOM_UTF8_LEN, parser))
-        } else {
-            Some(parse_pdx_file(entry, contents, 0, parser))
-        }
-    }
-
     /// Parse a UTF-8 file that may optionally start with a BOM (Byte Order Marker).
     pub fn read_optional_bom(entry: &FileEntry, parser: &ParserMemory) -> Option<Block> {
         let contents = Self::read_utf8(entry)?;
@@ -84,7 +64,6 @@ impl PdxFile {
     }
 
     /// Parse a file that may be in UTF-8 with BOM encoding, or Windows-1252 encoding.
-    #[cfg(feature = "ck3")]
     pub fn read_detect_encoding(entry: &FileEntry, parser: &ParserMemory) -> Option<Block> {
         let bytes = match read(entry.fullpath()) {
             Ok(bytes) => bytes,
@@ -123,16 +102,11 @@ impl PdxFile {
     ) -> Option<Block> {
         match encoding {
             PdxEncoding::Utf8Bom => Self::read(entry, parser),
-            #[cfg(feature = "jomini")]
             PdxEncoding::Utf8OptionalBom => Self::read_optional_bom(entry, parser),
-            #[cfg(feature = "ck3")]
             PdxEncoding::Detect => Self::read_detect_encoding(entry, parser),
-            #[cfg(feature = "hoi4")]
-            PdxEncoding::Utf8NoBom => Self::read_no_bom(entry, parser),
         }
     }
 
-    #[cfg(feature = "ck3")]
     pub fn reader_export(entry: &FileEntry, memory: &mut PdxfileMemory) {
         if let Some(contents) = Self::read_utf8(entry) {
             if contents.starts_with(BOM_CHAR) {

@@ -8,11 +8,7 @@ use std::sync::LazyLock;
 use crate::block::BV;
 use crate::context::ScopeContext;
 use crate::everything::Everything;
-use crate::game::Game;
 use crate::helpers::TigerHashMap;
-#[cfg(feature = "hoi4")]
-use crate::hoi4::tables::on_action::on_action_scopecontext_hoi4;
-#[cfg(feature = "ck3")]
 use crate::item::Item;
 use crate::parse::pdxfile::parse_pdx_internal;
 use crate::scopes::Scopes;
@@ -26,22 +22,8 @@ struct OnActionScopeContext {
 }
 
 static ON_ACTION_SCOPES_MAP: LazyLock<TigerHashMap<String, OnActionScopeContext>> =
-    LazyLock::new(|| {
-        build_on_action_hashmap(match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => crate::ck3::tables::on_action::ON_ACTION_SCOPES,
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => crate::vic3::tables::on_action::ON_ACTION_SCOPES,
-            #[cfg(feature = "imperator")]
-            Game::Imperator => crate::imperator::tables::on_action::ON_ACTION_SCOPES,
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => crate::eu5::tables::on_action::ON_ACTION_SCOPES,
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => crate::hoi4::tables::on_action::ON_ACTION_SCOPES,
-        })
-    });
+    LazyLock::new(|| build_on_action_hashmap(crate::ck3::tables::on_action::ON_ACTION_SCOPES));
 
-#[allow(unused_variables)] // only ck3 and hoi4 use `data`
 pub fn on_action_scopecontext(key: &Token, data: &Everything) -> Option<ScopeContext> {
     if let Some(oa_sc) = ON_ACTION_SCOPES_MAP.get(key.as_str()) {
         let mut sc = ScopeContext::new(oa_sc.root, key);
@@ -54,33 +36,24 @@ pub fn on_action_scopecontext(key: &Token, data: &Everything) -> Option<ScopeCon
         return Some(sc);
     }
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        if let Some(relation) = key.as_str().strip_suffix("_quarterly_pulse") {
-            if data.item_exists(Item::Relation, relation) {
+    if let Some(relation) = key.as_str().strip_suffix("_quarterly_pulse") {
+        if data.item_exists(Item::Relation, relation) {
+            let mut sc = ScopeContext::new(Scopes::Character, key);
+            sc.define_name("quarter", Scopes::Value, key); // undocumented
+            return Some(sc);
+        }
+    } else {
+        for pfx in &["on_set_relation_", "on_remove_relation_", "on_death_relation_"] {
+            if let Some(relation) = key.as_str().strip_prefix(pfx)
+                && data.item_exists(Item::Relation, relation)
+            {
                 let mut sc = ScopeContext::new(Scopes::Character, key);
-                sc.define_name("quarter", Scopes::Value, key); // undocumented
+                sc.define_name("target", Scopes::Character, key); // undocumented
                 return Some(sc);
-            }
-        } else {
-            for pfx in &["on_set_relation_", "on_remove_relation_", "on_death_relation_"] {
-                if let Some(relation) = key.as_str().strip_prefix(pfx)
-                    && data.item_exists(Item::Relation, relation)
-                {
-                    let mut sc = ScopeContext::new(Scopes::Character, key);
-                    sc.define_name("target", Scopes::Character, key); // undocumented
-                    return Some(sc);
-                }
             }
         }
     }
 
-    #[cfg(feature = "hoi4")]
-    if Game::is_hoi4()
-        && let Some(sc) = on_action_scopecontext_hoi4(key, data)
-    {
-        return Some(sc);
-    }
     None
 }
 

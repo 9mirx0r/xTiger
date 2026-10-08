@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::Game;
 use crate::block::{BV, Block, BlockItem, Comparator, Eq::Single, Field};
 use crate::data::gui::{GuiTemplate, GuiType};
 use crate::datacontext::DataContext;
@@ -190,7 +189,7 @@ impl GuiBlock {
                                     }
                                 }
                             } else if validation == GuiValidation::ActionTooltip {
-                                if !Game::is_eu5() {
+                                {
                                     let msg = "action tooltip is only for EU5";
                                     err(ErrorKey::WrongGame).msg(msg).loc(bv).push();
                                 }

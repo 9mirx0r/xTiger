@@ -2,7 +2,6 @@ use crate::block::Block;
 use crate::ck3::modif::ModifKinds;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::scopes::Scopes;
@@ -14,7 +13,7 @@ use crate::validator::{Validator, ValueValidator};
 pub struct HouseUnity {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::HouseUnity, HouseUnity::add)
+    ItemLoader::Normal(Item::HouseUnity, HouseUnity::add)
 }
 
 impl HouseUnity {

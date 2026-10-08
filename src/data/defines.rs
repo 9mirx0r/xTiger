@@ -3,13 +3,10 @@ use std::path::PathBuf;
 use crate::block::{BV, Block};
 use crate::everything::Everything;
 use crate::fileset::{FileEntry, FileHandler};
-use crate::game::Game;
 use crate::helpers::{TigerHashMap, dup_error};
-#[cfg(feature = "ck3")]
 use crate::item::Item;
 use crate::parse::ParserMemory;
 use crate::pdxfile::PdxFile;
-#[cfg(feature = "ck3")]
 use crate::report::Severity;
 use crate::report::{ErrorKey, err};
 use crate::token::Token;
@@ -21,7 +18,7 @@ pub struct Defines {
 
 impl Defines {
     pub fn load_item(&mut self, group: Token, name: Token, bv: &BV) {
-        let key = format!("{}|{}", &group, &name);
+        let key = format!("{group}|{name}");
         if let Some(other) = self.defines.get(&key)
             && other.name.loc.kind >= name.loc.kind
             && !bv.equivalent(&other.bv)
@@ -46,7 +43,6 @@ impl Defines {
         }
     }
 
-    #[cfg(feature = "jomini")]
     pub fn get_bv(&self, key: &str) -> Option<&BV> {
         self.defines.get(key).map(|d| &d.bv)
     }
@@ -66,7 +62,6 @@ impl FileHandler<Block> for Defines {
     }
 
     fn handle_file(&mut self, _entry: &FileEntry, mut block: Block) {
-        // TODO HOI4: Hoi4 has a toplevel group
         for (group, block) in block.drain_definitions_warn() {
             for (name, bv) in block.iter_assignments_and_definitions_warn() {
                 self.load_item(group.clone(), name.clone(), bv);
@@ -91,21 +86,10 @@ impl Define {
     #[allow(clippy::unused_self)]
     #[allow(unused_variables)] // because only ck3 uses `data`
     pub fn validate(&self, data: &Everything) {
-        let defines_map = match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => &crate::ck3::tables::defines::DEFINES_MAP,
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => &crate::vic3::tables::defines::DEFINES_MAP,
-            #[cfg(feature = "imperator")]
-            Game::Imperator => &crate::imperator::tables::defines::DEFINES_MAP,
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => &crate::eu5::tables::defines::DEFINES_MAP,
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => &crate::hoi4::tables::defines::DEFINES_MAP,
-        };
+        let defines_map = &crate::ck3::tables::defines::DEFINES_MAP;
 
         // TODO: save key instead of reconstructing it here?
-        let key = format!("{}|{}", &self.group, &self.name);
+        let key = format!("{}|{}", self.group, self.name);
         if let Some(dt) = defines_map.get(&*key) {
             dt.validate(&self.bv, data);
         } else {
@@ -144,13 +128,12 @@ impl Define {
                 }
             };
             if let Some(define_type) = defines_map.get(&*key) {
-                eprintln!("    (\"{}|{}\", DefineType::{define_type:?}),", &self.group, &self.name);
+                eprintln!("    (\"{}|{}\", DefineType::{define_type:?}),", self.group, self.name);
             } else {
-                eprintln!("    (\"{}|{}\", {define_type}),", &self.group, &self.name);
+                eprintln!("    (\"{}|{}\", {define_type}),", self.group, self.name);
             }
         }
 
-        #[cfg(feature = "ck3")]
         if self.group.is("NGameIcons")
             && self.name.is("PIETY_GROUPS")
             && let Some(icon_path) =

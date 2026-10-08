@@ -1,35 +1,21 @@
 use crate::block::{BV, Block};
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::{Game, GameFlags};
 use crate::helpers::{TigerHashSet, dup_error};
 use crate::item::{Item, ItemLoader};
-#[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
 use crate::report::{Confidence, Severity};
 use crate::report::{ErrorKey, err, fatal, warn};
 use crate::token::Token;
-#[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
 use crate::validate::validate_numeric_range;
 use crate::validator::Validator;
 
-const BODY_TYPES: &[&str] = &[
-    "male",
-    "female",
-    "boy",
-    "girl",
-    #[cfg(feature = "eu5")]
-    "adolescent_boy",
-    #[cfg(feature = "eu5")]
-    "adolescent_girl",
-    #[cfg(any(feature = "imperator", feature = "eu5"))]
-    "infant",
-];
+const BODY_TYPES: &[&str] = &["male", "female", "boy", "girl"];
 
 #[derive(Clone, Debug)]
 pub struct Gene {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::jomini(), Item::GeneCategory, Gene::add)
+    ItemLoader::Normal(Item::GeneCategory, Gene::add)
 }
 
 impl Gene {
@@ -99,32 +85,19 @@ impl ColorGene {
 }
 
 impl DbKind for ColorGene {
-    #[allow(unused_variables)] // vic3 does not use key
     fn validate(&self, key: &Token, block: &Block, data: &Everything) {
         let mut vd = Validator::new(block, data);
-        if Game::is_ck3() {
-            data.verify_exists(Item::Localization, key);
-        }
+        data.verify_exists(Item::Localization, key);
 
-        if Game::is_ck3() {
-            vd.req_field("group");
-        }
-
-        if Game::is_imperator() {
-            vd.req_field("index");
-            vd.field_integer("index");
-            vd.field_value("max_blend");
-        }
+        vd.req_field("group");
 
         vd.req_field("color");
-        #[cfg(any(feature = "ck3", feature = "vic3"))]
         vd.req_field("blend_range");
 
         vd.field_item("sync_inheritance_with", Item::GeneCategory);
         vd.field_value("group"); // TODO
         vd.field_value("color"); // TODO
 
-        #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
         vd.field_validated_block("blend_range", |block, data| {
             validate_numeric_range(block, data, 0.0, 1.0, Severity::Warning, Confidence::Weak);
         });
@@ -192,21 +165,26 @@ impl MorphGene {
 }
 
 impl DbKind for MorphGene {
-    #[allow(unused_variables)] // vic3 does not use key
+    fn add_subitems(&self, _key: &Token, block: &Block, db: &mut Db) {
+        // Morph templates can set tags too, such as the baldness stages, which hairstyles and
+        // decals then ask for in their required_tags.
+        for (_, block) in block.iter_definitions() {
+            if let Some(tags) = block.get_field_value("set_tags") {
+                for tag in tags.split(',') {
+                    db.add_flag(Item::AccessoryTag, tag);
+                }
+            }
+        }
+    }
+
     fn validate(&self, key: &Token, block: &Block, data: &Everything) {
         let mut vd = Validator::new(block, data);
 
-        if Game::is_ck3() {
-            data.verify_exists(Item::Localization, key);
-        }
-
-        if Game::is_imperator() {
-            vd.req_field("index");
-            vd.field_integer("index");
-        }
+        data.verify_exists(Item::Localization, key);
 
         vd.field_list("ugliness_feature_categories"); // TODO: options
         vd.field_bool("can_have_portrait_extremity_shift");
+        vd.field_bool("visible");
         // TODO value?
         if let Some(token) = vd.field_value("group")
             && self.special_gene
@@ -368,7 +346,6 @@ impl AccessoryGene {
 }
 
 impl DbKind for AccessoryGene {
-    #[cfg(feature = "ck3")]
     fn add_subitems(&self, _key: &Token, block: &Block, db: &mut Db) {
         for (key, block) in block.iter_definitions() {
             if key.is("ugliness_feature_categories") {
@@ -388,11 +365,6 @@ impl DbKind for AccessoryGene {
 
         vd.field_bool("inheritable");
         vd.field_value("group");
-
-        if Game::is_imperator() {
-            vd.req_field("index");
-            vd.field_integer("index");
-        }
 
         vd.unknown_block_fields(|_, block| {
             validate_accessory_gene(block, data);
@@ -566,7 +538,6 @@ fn validate_morph_gene(block: &Block, data: &Everything) {
     vd.field_bool("visible");
     vd.field_value("positive_mirror"); // TODO
     vd.field_value("negative_mirror"); // TODO
-    #[cfg(feature = "imperator")]
     vd.field_value("set_tags");
 
     for field in BODY_TYPES {
@@ -582,21 +553,12 @@ fn validate_morph_gene(block: &Block, data: &Everything) {
                 BV::Block(block) => {
                     let mut vd = Validator::new(block, data);
                     vd.multi_field_validated_block("setting", validate_gene_setting);
-                    #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
                     vd.multi_field_validated_block("decal", validate_gene_decal);
-                    #[cfg(feature = "imperator")]
-                    vd.multi_field_validated_block("decal", validate_gene_decal_imperator);
                     vd.multi_field_validated_block("texture_override", validate_texture_override);
 
-                    if Game::is_imperator() {
-                        vd.field_validated_block("hair_hsv_shift_curve", validate_hsv_curve);
-                        vd.field_validated_block("eye_hsv_shift_curve", validate_hsv_curve);
-                        vd.field_validated_block("skin_hsv_shift_curve", validate_hsv_curve);
-                    } else {
-                        vd.field_validated_block("hair_hsv_shift_curve", validate_shift_curve);
-                        vd.field_validated_block("eye_hsv_shift_curve", validate_shift_curve);
-                        vd.field_validated_block("skin_hsv_shift_curve", validate_shift_curve);
-                    }
+                    vd.field_validated_block("hair_hsv_shift_curve", validate_shift_curve);
+                    vd.field_validated_block("eye_hsv_shift_curve", validate_shift_curve);
+                    vd.field_validated_block("skin_hsv_shift_curve", validate_shift_curve);
                 }
             }
         });
@@ -658,28 +620,28 @@ fn validate_gene_setting(block: &Block, data: &Everything) {
         }
     });
     vd.field_validated_block("curve", validate_curve);
-    #[cfg(feature = "imperator")]
-    vd.multi_field_validated_block("animation_curve", validate_curve);
 
     vd.field_validated("age", validate_age_field);
     if let Some(token) = vd.field_value("required_tags") {
-        for tag in token.split(',') {
-            if tag.starts_with("not(") {
-                let real_tag = &tag.split('(')[1].split(')')[0];
-                data.verify_exists(Item::AccessoryTag, real_tag);
-            } else {
-                data.verify_exists(Item::AccessoryTag, &tag);
-            }
+        validate_required_tags(token, data);
+    }
+}
+
+fn validate_required_tags(token: &Token, data: &Everything) {
+    for tag in token.split(',') {
+        if tag.starts_with("not(") {
+            let real_tag = &tag.split('(')[1].split(')')[0];
+            data.verify_exists(Item::AccessoryTag, real_tag);
+        } else {
+            data.verify_exists(Item::AccessoryTag, &tag);
         }
     }
 }
 
-#[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
 fn validate_gene_decal(block: &Block, data: &Everything) {
     let mut vd = Validator::new(block, data);
     vd.req_field("body_part");
     vd.req_field("textures");
-    #[cfg(any(feature = "ck3", feature = "vic3"))]
     vd.req_field("priority");
     vd.field_value("body_part"); // TODO
     vd.multi_field_validated_block("textures", validate_decal_textures);
@@ -689,19 +651,11 @@ fn validate_gene_decal(block: &Block, data: &Everything) {
     vd.field_integer("priority");
     vd.field_validated("age", validate_age_field);
     vd.field_choice("decal_apply_order", &["pre_skin_color", "post_skin_color"]);
+    if let Some(token) = vd.field_value("required_tags") {
+        validate_required_tags(token, data);
+    }
 }
 
-#[cfg(feature = "imperator")]
-fn validate_gene_decal_imperator(block: &Block, data: &Everything) {
-    let mut vd = Validator::new(block, data);
-    vd.req_field("type");
-    vd.req_field("atlas_pos");
-    vd.field_choice("type", &["skin", "paint"]);
-    vd.field_list_integers_exactly("atlas_pos", 2);
-    vd.multi_field_validated_block("alpha_curve", validate_curve);
-}
-
-#[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
 fn validate_decal_textures(block: &Block, data: &Everything) {
     let mut vd = Validator::new(block, data);
     // TODO: validate that it's a dds? What properties should the dds have?
@@ -722,7 +676,6 @@ fn validate_texture_override(block: &Block, data: &Everything) {
     vd.field_item("properties", Item::File);
 }
 
-#[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
 fn validate_blend_modes(block: &Block, data: &Everything) {
     let mut vd = Validator::new(block, data);
     let choices = &["overlay", "replace", "hard_light", "multiply"];
@@ -731,7 +684,6 @@ fn validate_blend_modes(block: &Block, data: &Everything) {
     vd.field_choice("properties", choices);
 }
 
-#[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
 fn validate_uv_tiling(block: &Block, data: &Everything) {
     let mut vd = Validator::new(block, data);
     vd.req_tokens_integers_exactly(2);

@@ -3,7 +3,6 @@ use crate::ck3::modif::ModifKinds;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::scopes::Scopes;
@@ -16,7 +15,7 @@ use crate::validator::Validator;
 pub struct TaxSlotType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::TaxSlotType, TaxSlotType::add)
+    ItemLoader::Normal(Item::TaxSlotType, TaxSlotType::add)
 }
 
 impl TaxSlotType {
@@ -78,7 +77,7 @@ impl DbKind for TaxSlotType {
 pub struct TaxSlotObligation {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::TaxSlotObligation, TaxSlotObligation::add)
+    ItemLoader::Normal(Item::TaxSlotObligation, TaxSlotObligation::add)
 }
 
 impl TaxSlotObligation {

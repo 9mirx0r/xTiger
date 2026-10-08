@@ -8,7 +8,6 @@ use anyhow::{Context, Result};
 
 use crate::block::Block;
 use crate::fileset::{FileEntry, FileKind, FileStage};
-use crate::game::Game;
 use crate::parse::ParserMemory;
 use crate::pdxfile::PdxFile;
 use crate::report::{ErrorKey, untidy, warn};
@@ -31,6 +30,8 @@ pub struct ModFile {
     // with current CK3)
     supported_version: Option<Token>,
     picture: Option<Token>,
+    /// The names of the mods this one builds on.
+    dependencies: Vec<Token>,
 }
 
 /// Validate the [`Block`] form of a `.mod` file and return it as a [`ModFile`].
@@ -44,11 +45,12 @@ fn validate_modfile(block: &Block) -> ModFile {
         tags: block.get_field_list("tags"),
         supported_version: block.get_field_value("supported_version").cloned(),
         picture: block.get_field_value("picture").cloned(),
+        dependencies: block.get_field_list("dependencies").unwrap_or_default(),
     };
 
     if let Some(picture) = &modfile.picture {
         // TODO: reverify this for the other games as well
-        if !Game::is_hoi4() && !picture.is("thumbnail.png") {
+        if !picture.is("thumbnail.png") {
             let msg = "Steam ignores picture= and always uses thumbnail.png.";
             warn(ErrorKey::Packaging).msg(msg).loc(picture).push();
         }
@@ -130,5 +132,21 @@ impl ModFile {
     /// The mod's name in human-friendly form, if available.
     pub fn display_name(&self) -> Option<String> {
         self.name.as_ref().map(ToString::to_string)
+    }
+
+    /// Report each mod this one depends on that is not among the `loaded` mod names. Without
+    /// it, everything that mod defines is reported as missing.
+    pub(crate) fn check_dependencies(&self, loaded: &[String]) {
+        for dependency in &self.dependencies {
+            if !loaded.iter().any(|name| name.eq_ignore_ascii_case(dependency.as_str())) {
+                let msg = format!(
+                    "this mod depends on `{dependency}`, which is not loaded in this check"
+                );
+                let info = "Everything that mod defines will be reported as missing. If it is not \
+                            installed, subscribe to it first. To check with it, add a `load_mod` \
+                            block to ck3-tiger.conf.";
+                warn(ErrorKey::Packaging).msg(msg).info(info).loc(dependency).push();
+            }
+        }
     }
 }

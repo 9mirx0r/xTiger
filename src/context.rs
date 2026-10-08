@@ -1,14 +1,14 @@
 //! [`ScopeContext`] tracks our knowledge of the scope types used in script and validates its consistency.
 
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::thread::panicking;
 
 use crate::everything::Everything;
-use crate::game::Game;
 use crate::helpers::{ActionOrEvent, TigerHashMap, stringify_choices};
 use crate::report::{ErrorKey, ReportBuilderFull, err, warn};
 use crate::scopes::Scopes;
-use crate::token::Token;
+use crate::token::{Loc, Token};
 
 /// When reporting an unknown scope, list alternative scope names if there are not more than this.
 const MAX_SCOPE_NAME_LIST: usize = 6;
@@ -26,12 +26,6 @@ pub struct ScopeContext {
 
     /// root is always a `ScopeEntry::Scope`
     root: ScopeEntry,
-
-    /// `from` is the previous event root, and can be stacked like `from.from`.
-    /// The topmost `from` is at index 0, the next older one is at index 1, etc.
-    /// A `from` entry is always a `ScopeEntry::Scope`.
-    #[cfg(feature = "hoi4")]
-    from: Vec<ScopeEntry>,
 
     /// Names of named scopes; the values are indices into the `named` vector.
     scope_names: TigerHashMap<&'static str, (usize, Temporary)>,
@@ -63,7 +57,7 @@ pub struct ScopeContext {
 
     /// How many dummy `prev` levels were added to this scope context?
     /// They affect how the scope context is cleaned up.
-    /// Usually 0 or 1, but imperator and hoi4 can have multiple prev levels.
+    /// Usually 0 or 1.
     prev_levels: usize,
 
     /// Is this scope context one where all the named scopes are (or should be) known in advance?
@@ -105,11 +99,6 @@ enum ScopeEntry {
     /// INVARIANT: The `usize` must not be zero.
     Backref(usize),
 
-    /// Fromref is for when the current scope is made with `from`.
-    /// The fromref number is 0 for a single `from`, 1 for `from.from`, etc.
-    #[cfg(feature = "hoi4")]
-    Fromref(usize),
-
     /// A Rootref is for when the current scope is made with `root`. Most of the time,
     /// we also start with `this` being a Rootref.
     #[default]
@@ -123,19 +112,15 @@ enum ScopeEntry {
     Named(usize),
 
     /// The scope takes its value from a global variable
-    #[cfg(feature = "jomini")]
     GlobalVar(&'static str, Reason),
 
     /// The scope takes its value from a global variable list
-    #[cfg(feature = "jomini")]
     GlobalList(&'static str, Reason),
 
     /// The scope takes its value from a normal variable
-    #[cfg(feature = "jomini")]
     Var(&'static str, Reason),
 
     /// The scope takes its value from a variable list
-    #[cfg(feature = "jomini")]
     VarList(&'static str, Reason),
 }
 
@@ -144,6 +129,19 @@ enum ScopeEntry {
 ///
 /// TODO: make a `ReasonRef` that contains an `&Token`, and a `Borrow` impl for it.
 /// This will avoid some cloning.
+impl ScopeEntry {
+    fn reason(&self) -> Option<&Reason> {
+        match self {
+            ScopeEntry::Scope(_, reason)
+            | ScopeEntry::GlobalVar(_, reason)
+            | ScopeEntry::GlobalList(_, reason)
+            | ScopeEntry::Var(_, reason)
+            | ScopeEntry::VarList(_, reason) => Some(reason),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Reason {
     /// The reason can be explained by pointing at some token
@@ -154,12 +152,7 @@ pub enum Reason {
     /// The scope was supplied by the game engine. The `Token` points at a key explaining this, for
     /// example the key of an `Item` or the field key of a trigger or effect in an item.
     Builtin(Token),
-    /// The vic3 engine evaluates `multiplier` in `add_modifier` in root scope, which is probably a
-    /// bug. Explain it to the user when it comes up. The `Token` points at the `multiplier` key.
-    #[cfg(feature = "vic3")]
-    MultiplierBug(Token),
     /// The scope type was taken from info about a variable or variable list in the given namespace.
-    #[cfg(feature = "jomini")]
     VariableReference(Token, &'static str),
 }
 
@@ -168,7 +161,6 @@ pub enum Reason {
 /// where the builder scope opened by `squared_distance` needs to be preserved
 /// while `prev.capital_province` is evaluated in the original scope.
 #[repr(transparent)]
-#[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
 pub struct StashedBuilder {
     this: ScopeEntry,
 }
@@ -200,11 +192,10 @@ const PREV: usize = 2;
 impl Reason {
     pub fn token(&self) -> &Token {
         match self {
-            Reason::Token(t) | Reason::Name(t) | Reason::Builtin(t) => t,
-            #[cfg(feature = "vic3")]
-            Reason::MultiplierBug(t) => t,
-            #[cfg(feature = "jomini")]
-            Reason::VariableReference(t, _) => t,
+            Reason::Token(t)
+            | Reason::Name(t)
+            | Reason::Builtin(t)
+            | Reason::VariableReference(t, _) => t,
         }
     }
 
@@ -214,11 +205,6 @@ impl Reason {
             Reason::Token(t) => Cow::Owned(format!("deduced from `{t}` here")),
             Reason::Name(_) => Cow::Borrowed("deduced from the scope's name"),
             Reason::Builtin(_) => Cow::Borrowed("supplied by the game engine"),
-            #[cfg(feature = "vic3")]
-            Reason::MultiplierBug(_) => {
-                Cow::Borrowed("evaluated in root scope for `multiplier` (as of 1.9.8")
-            }
-            #[cfg(feature = "jomini")]
             Reason::VariableReference(t, namespace) => {
                 Cow::Owned(format!("based on {namespace}{t}"))
             }
@@ -245,8 +231,6 @@ impl ScopeContext {
         ScopeContext {
             scope_stack: vec![ScopeEntry::Rootref],
             root: ScopeEntry::Scope(root, Reason::Builtin(token.clone())),
-            #[cfg(feature = "hoi4")]
-            from: Vec::new(),
             scope_names: TigerHashMap::default(),
             scope_list_names: TigerHashMap::default(),
             local_names: TigerHashMap::default(),
@@ -273,8 +257,6 @@ impl ScopeContext {
         ScopeContext {
             scope_stack: vec![ScopeEntry::Scope(this, Reason::Token(token.clone()))],
             root: ScopeEntry::Scope(Scopes::all(), Reason::Token(token.clone())),
-            #[cfg(feature = "hoi4")]
-            from: Vec::new(),
             scope_names: TigerHashMap::default(),
             scope_list_names: TigerHashMap::default(),
             local_names: TigerHashMap::default(),
@@ -289,30 +271,6 @@ impl ScopeContext {
             source: token,
             traceback: Vec::new(),
         }
-    }
-
-    /// Make a new `ScopeContext`, with `this` and `root` unconnected
-    /// and of separate scope types.
-    /// `token` is used when reporting errors about the use of `this` or `root`.
-    ///
-    /// This function is useful in specialized contexts where the game engine
-    /// provides different `this` and `root`.
-    #[cfg(feature = "hoi4")]
-    pub fn new_separate_root<T: Into<Token>>(root: Scopes, this: Scopes, token: T) -> Self {
-        let token = token.into();
-        let mut sc = ScopeContext::new(root, token.clone());
-        *sc.scope_stack.last_mut().unwrap() = ScopeEntry::Scope(this, Reason::Builtin(token));
-        sc
-    }
-
-    #[cfg(feature = "hoi4")]
-    pub fn new_with_prev<T: Into<Token>>(root: Scopes, prev: Scopes, token: T) -> Self {
-        let token = token.into();
-        let mut sc = ScopeContext::new(root, token.clone());
-        sc.scope_stack
-            .insert(sc.scope_stack.len() - 1, ScopeEntry::Scope(prev, Reason::Token(token)));
-        sc.prev_levels += 1;
-        sc
     }
 
     /// Declare whether all the named scopes in this scope context are known. Default is true.
@@ -356,8 +314,6 @@ impl ScopeContext {
                 *named = new_sc.root.clone();
             }
         }
-        #[cfg(feature = "hoi4")]
-        new_sc.from.insert(0, new_sc.root.clone());
         let (scopes, reason) = new_sc.scopes_reason(data);
         new_sc.root = ScopeEntry::Scope(scopes, reason.clone());
         new_sc.scope_stack = vec![ScopeEntry::Rootref];
@@ -402,7 +358,6 @@ impl ScopeContext {
     /// This function is mainly used in the setup of a `ScopeContext` before using it.
     /// It's a bit of a hack and shouldn't be used.
     /// TODO: get rid of this.
-    #[cfg(feature = "ck3")] // happens not to be used by vic3
     pub fn change_root<T: Into<Token>>(&mut self, root: Scopes, token: T) {
         self.root = ScopeEntry::Scope(root, Reason::Builtin(token.into()));
     }
@@ -462,30 +417,17 @@ impl ScopeContext {
                 Some(match self.named[idx] {
                     ScopeEntry::Scope(s, _) => s,
                     ScopeEntry::Backref(_) => unreachable!(),
-                    #[cfg(feature = "hoi4")]
-                    ScopeEntry::Fromref(_) => unreachable!(),
                     ScopeEntry::Rootref => self.resolve_root().0,
                     ScopeEntry::Named(idx) => self.resolve_named(idx, data).0,
-                    #[cfg(feature = "jomini")]
                     ScopeEntry::GlobalVar(name, _) => data.global_scopes.scopes(name),
-                    #[cfg(feature = "jomini")]
                     ScopeEntry::GlobalList(name, _) => data.global_list_scopes.scopes(name),
-                    #[cfg(feature = "jomini")]
                     ScopeEntry::Var(name, _) => data.variable_scopes.scopes(name),
-                    #[cfg(feature = "jomini")]
                     ScopeEntry::VarList(name, _) => data.variable_list_scopes.scopes(name),
                 })
             }
         } else {
             None
         }
-    }
-
-    /// Put a scope entry on the FROM chain. It becomes the new FROM, and the old one (if any)
-    /// becomes FROM.FROM, etc.
-    #[cfg(feature = "hoi4")]
-    pub fn push_as_from<T: Into<Token>>(&mut self, scopes: Scopes, token: T) {
-        self.from.insert(0, ScopeEntry::Scope(scopes, Reason::Builtin(token.into())));
     }
 
     /// This is called when the script does `exists = scope:name`.
@@ -582,7 +524,6 @@ impl ScopeContext {
     }
 
     /// Sets a local variable to the provided scope type
-    #[cfg(feature = "jomini")]
     pub fn set_local_variable(&mut self, name: &Token, scope: Scopes) {
         if let Some(&idx) = self.local_names.get(name.as_str()) {
             Self::break_chains_to(&mut self.named, idx);
@@ -679,7 +620,6 @@ impl ScopeContext {
 
     /// Expect local variable list `name` to be known and (with strict scopes) warn if it isn't.
     /// Narrow the type of `this` down to the list's type.
-    #[cfg(feature = "jomini")]
     pub fn expect_local_list(&mut self, name: &Token, data: &Everything) {
         if let Some(&idx) = self.local_list_names.get(name.as_str()) {
             let (s, reason) = self.resolve_named(idx, data);
@@ -692,7 +632,6 @@ impl ScopeContext {
     }
 
     /// Expect local variable `name` to be known and (with strict scopes) warn if it isn't.
-    #[cfg(feature = "jomini")]
     pub fn expect_local(&mut self, name: &Token, scope: Scopes, data: &Everything) {
         if let Some(&idx) = self.local_names.get(name.as_str()) {
             self.expect_named(idx, scope, &Reason::Token(name.clone()), data);
@@ -736,14 +675,12 @@ impl ScopeContext {
         self.is_builder = true;
     }
 
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
     pub fn stash_builder(&mut self) -> StashedBuilder {
         let stash = StashedBuilder { this: self.scope_stack.pop().unwrap() };
         self.is_builder = false;
         stash
     }
 
-    #[cfg(any(feature = "ck3", feature = "vic3", feature = "eu5"))]
     pub fn unstash_builder(&mut self, stash: StashedBuilder) {
         self.scope_stack.push(stash.this);
         self.is_builder = true;
@@ -762,6 +699,31 @@ impl ScopeContext {
 
     /// Return an object that captures the essentials of this `ScopeContext`, to be used for
     /// hashing.
+    /// Compare the tokens that explain where this context's scopes came from, in a way that is
+    /// the same in every run. This puts contexts with equal signatures in a fixed order.
+    pub fn stable_cmp_reasons(&self, other: &ScopeContext) -> Ordering {
+        fn locs(sc: &ScopeContext) -> impl Iterator<Item = Loc> + '_ {
+            std::iter::once(&sc.root)
+                .chain(&sc.scope_stack)
+                .chain(&sc.named)
+                .filter_map(ScopeEntry::reason)
+                .map(|reason| reason.token().loc)
+                .chain(sc.is_input.iter().flatten().map(|token| token.loc))
+        }
+        let (mut a, mut b) = (locs(self), locs(other));
+        loop {
+            match (a.next(), b.next()) {
+                (None, None) => return Ordering::Equal,
+                (None, Some(_)) => return Ordering::Less,
+                (Some(_), None) => return Ordering::Greater,
+                (Some(x), Some(y)) => match x.stable_cmp(y) {
+                    Ordering::Equal => (),
+                    ordering => return ordering,
+                },
+            }
+        }
+    }
+
     pub fn signature(&self, data: &Everything) -> Signature {
         fn process_scope_names(
             sc: &ScopeContext,
@@ -815,15 +777,7 @@ impl ScopeContext {
     /// Replace the `this` in a temporary scope level with a reference to the previous scope level.
     pub fn replace_prev(&mut self) {
         let this = self.scope_stack.last_mut().unwrap();
-        let backref = if Game::is_imperator() || Game::is_hoi4() {
-            // Allow `prev.prev` etc
-            match this {
-                ScopeEntry::Backref(r) => *r + 1,
-                _ => PREV,
-            }
-        } else {
-            PREV
-        };
+        let backref = { PREV };
         *this = ScopeEntry::Backref(backref);
         while 1 + backref > self.scope_stack.len() {
             // We went further back up the scope chain than we know about.
@@ -834,16 +788,6 @@ impl ScopeContext {
             };
             self.scope_stack.insert(0, entry);
             self.prev_levels += 1;
-        }
-    }
-
-    /// Replace the `this` in a temporary scope level with a reference to its previous event root.
-    #[cfg(feature = "hoi4")]
-    pub fn replace_from(&mut self) {
-        let this = self.scope_stack.last_mut().unwrap();
-        match this {
-            ScopeEntry::Fromref(r) => *this = ScopeEntry::Fromref(*r + 1),
-            _ => *this = ScopeEntry::Fromref(0),
         }
     }
 
@@ -876,7 +820,6 @@ impl ScopeContext {
     ///
     /// This is used when a scope chain starts with `global_var:name`. The `token` is expected to be the
     /// `global_var:name` token.
-    #[cfg(feature = "jomini")]
     pub fn replace_global_variable(&mut self, name: &'static str, token: &Token) {
         *self.scope_stack.last_mut().unwrap() =
             ScopeEntry::GlobalVar(name, Reason::VariableReference(token.clone(), "global_var:"));
@@ -886,7 +829,6 @@ impl ScopeContext {
     ///
     /// This is used when a scope chain starts with `var:name`. The `token` is expected to be the
     /// `var:name` token.
-    #[cfg(feature = "jomini")]
     pub fn replace_variable(&mut self, name: &'static str, token: &Token) {
         *self.scope_stack.last_mut().unwrap() =
             ScopeEntry::Var(name, Reason::VariableReference(token.clone(), "var:"));
@@ -894,7 +836,6 @@ impl ScopeContext {
 
     /// Replace the `this` in a temporary scope level with a reference to the scope type of the
     /// list `name`.
-    #[cfg(feature = "jomini")]
     pub fn replace_list_entry(&mut self, name: &Token) {
         *self.scope_stack.last_mut().unwrap() =
             ScopeEntry::Named(self.named_list_index(name.as_str(), name));
@@ -902,7 +843,6 @@ impl ScopeContext {
 
     /// Replace the `this` in a temporary scope level with a reference to the scope type of the
     /// local variable list `name`.
-    #[cfg(feature = "jomini")]
     pub fn replace_local_list_entry(&mut self, name: &Token) {
         *self.scope_stack.last_mut().unwrap() =
             ScopeEntry::Named(self.local_list_index(name.as_str(), name));
@@ -910,7 +850,6 @@ impl ScopeContext {
 
     /// Replace the `this` in a temporary scope level with a reference to the scope type of the
     /// global variable list `name`.
-    #[cfg(feature = "jomini")]
     pub fn replace_global_list_entry(&mut self, name: &Token) {
         *self.scope_stack.last_mut().unwrap() = ScopeEntry::GlobalList(
             name.as_str(),
@@ -920,7 +859,6 @@ impl ScopeContext {
 
     /// Replace the `this` in a temporary scope level with a reference to the scope type of the
     /// variable list `name`.
-    #[cfg(feature = "jomini")]
     pub fn replace_variable_list_entry(&mut self, name: &Token) {
         *self.scope_stack.last_mut().unwrap() = ScopeEntry::VarList(
             name.as_str(),
@@ -1003,7 +941,6 @@ impl ScopeContext {
     /// Same as [`Self::named_index()`], but for lists. No warning is emitted if a new list is created.
     /// Do warn if a temporary list was used after it was wiped.
     #[doc(hidden)]
-    #[cfg(feature = "jomini")]
     fn named_list_index(&mut self, name: &'static str, token: &Token) -> usize {
         if let Some(&(idx, t)) = self.scope_list_names.get(name) {
             if t == Temporary::Wiped {
@@ -1023,7 +960,6 @@ impl ScopeContext {
     /// Same as [`Self::named_index()`], but for local variable lists.
     /// No warning is emitted if a new list is created.
     #[doc(hidden)]
-    #[cfg(feature = "jomini")]
     fn local_list_index(&mut self, name: &'static str, token: &Token) -> usize {
         if let Some(&idx) = self.local_list_names.get(name) {
             idx
@@ -1048,7 +984,6 @@ impl ScopeContext {
     }
 
     /// Return the possible scope types of this local variable.
-    #[cfg(feature = "jomini")]
     pub fn local_variable_scopes(&self, name: &str, data: &Everything) -> Scopes {
         if let Some(idx) = self.local_names.get(name).copied() {
             self.resolve_named(idx, data).0
@@ -1066,14 +1001,6 @@ impl ScopeContext {
         }
     }
 
-    #[cfg(feature = "vic3")]
-    pub fn get_multiplier_context(&self, key: &Token) -> Self {
-        let scopes = self.resolve_root().0;
-        let mut sc = ScopeContext::new(scopes, key);
-        sc.root = ScopeEntry::Scope(scopes, Reason::MultiplierBug(key.clone()));
-        sc
-    }
-
     /// Return the possible scope types of `root`, and the reason why we think it has those types
     fn resolve_root(&self) -> (Scopes, &Reason) {
         match self.root {
@@ -1087,7 +1014,6 @@ impl ScopeContext {
     ///
     /// The `idx` must be an index from the `names` or `list_names` vectors.
     #[doc(hidden)]
-    #[allow(clippy::only_used_in_recursion)] // hoi4 doesn't use data
     fn resolve_named(&self, idx: usize, data: &Everything) -> (Scopes, &Reason) {
         #[allow(clippy::indexing_slicing)]
         match self.named[idx] {
@@ -1095,17 +1021,11 @@ impl ScopeContext {
             ScopeEntry::Rootref => self.resolve_root(),
             ScopeEntry::Named(idx) => self.resolve_named(idx, data),
             ScopeEntry::Backref(_) => unreachable!(),
-            #[cfg(feature = "hoi4")]
-            ScopeEntry::Fromref(_) => unreachable!(),
-            #[cfg(feature = "jomini")]
             ScopeEntry::GlobalVar(name, ref reason) => (data.global_scopes.scopes(name), reason),
-            #[cfg(feature = "jomini")]
             ScopeEntry::GlobalList(name, ref reason) => {
                 (data.global_list_scopes.scopes(name), reason)
             }
-            #[cfg(feature = "jomini")]
             ScopeEntry::Var(name, ref reason) => (data.variable_scopes.scopes(name), reason),
-            #[cfg(feature = "jomini")]
             ScopeEntry::VarList(name, ref reason) => {
                 (data.variable_list_scopes.scopes(name), reason)
             }
@@ -1161,42 +1081,16 @@ impl ScopeContext {
         self.scopes_reason_backref(THIS, data)
     }
 
-    /// Return the possible scope types for a `from` entry, together with the reason why we think
-    /// that.
-    #[cfg(feature = "hoi4")]
-    #[doc(hidden)]
-    fn resolve_from(&self, back: usize) -> (Scopes, &Reason) {
-        match self.from.get(back) {
-            None => {
-                // We went further up the FROM chain than we know about.
-                let scopes = if self.strict_scopes { Scopes::None } else { Scopes::all() };
-                // just nab the `reason` from root
-                match self.root {
-                    ScopeEntry::Scope(_, ref reason) => (scopes, reason),
-                    _ => unreachable!(),
-                }
-            }
-            Some(ScopeEntry::Scope(s, reason)) => (*s, reason),
-            Some(_) => unreachable!(),
-        }
-    }
-
     #[doc(hidden)]
     fn scopes_reason_backref(&self, back: usize, data: &Everything) -> (Scopes, &Reason) {
         match self.resolve_backrefs(back) {
             ScopeEntry::Scope(s, reason) => (*s, reason),
             ScopeEntry::Backref(_) => unreachable!(),
-            #[cfg(feature = "hoi4")]
-            ScopeEntry::Fromref(r) => self.resolve_from(*r),
             ScopeEntry::Rootref => self.resolve_root(),
             ScopeEntry::Named(idx) => self.resolve_named(*idx, data),
-            #[cfg(feature = "jomini")]
             ScopeEntry::GlobalVar(name, reason) => (data.global_scopes.scopes(name), reason),
-            #[cfg(feature = "jomini")]
             ScopeEntry::GlobalList(name, reason) => (data.global_list_scopes.scopes(name), reason),
-            #[cfg(feature = "jomini")]
             ScopeEntry::Var(name, reason) => (data.variable_scopes.scopes(name), reason),
-            #[cfg(feature = "jomini")]
             ScopeEntry::VarList(name, reason) => (data.variable_list_scopes.scopes(name), reason),
         }
     }
@@ -1210,7 +1104,6 @@ impl ScopeContext {
     }
 
     #[doc(hidden)]
-    #[allow(unused_variables)] // hoi4 does not use data
     fn expect_check(e: &mut ScopeEntry, scopes: Scopes, reason: &Reason, data: &Everything) {
         match e {
             ScopeEntry::Scope(s, r) => {
@@ -1227,19 +1120,15 @@ impl ScopeContext {
                     warn(ErrorKey::Scopes).msg(msg).loc(token).loc_msg(r.token(), msg2).push();
                 }
             }
-            #[cfg(feature = "jomini")]
             ScopeEntry::GlobalVar(name, reason) => {
                 data.global_scopes.expect(name, reason.token(), scopes);
             }
-            #[cfg(feature = "jomini")]
             ScopeEntry::GlobalList(name, reason) => {
                 data.global_list_scopes.expect(name, reason.token(), scopes);
             }
-            #[cfg(feature = "jomini")]
             ScopeEntry::Var(name, reason) => {
                 data.variable_scopes.expect(name, reason.token(), scopes);
             }
-            #[cfg(feature = "jomini")]
             ScopeEntry::VarList(name, reason) => {
                 data.variable_list_scopes.expect(name, reason.token(), scopes);
             }
@@ -1248,7 +1137,6 @@ impl ScopeContext {
     }
 
     #[doc(hidden)]
-    #[allow(unused_variables)] // hoi4 does not use data
     fn expect_check3(
         e: &mut ScopeEntry,
         scopes: Scopes,
@@ -1279,47 +1167,19 @@ impl ScopeContext {
                         .push();
                 }
             }
-            #[cfg(feature = "jomini")]
             ScopeEntry::GlobalVar(name, reason) => {
                 data.global_scopes.expect(name, reason.token(), scopes);
             }
-            #[cfg(feature = "jomini")]
             ScopeEntry::GlobalList(name, reason) => {
                 data.global_list_scopes.expect(name, reason.token(), scopes);
             }
-            #[cfg(feature = "jomini")]
             ScopeEntry::Var(name, reason) => {
                 data.variable_scopes.expect(name, reason.token(), scopes);
             }
-            #[cfg(feature = "jomini")]
             ScopeEntry::VarList(name, reason) => {
                 data.variable_list_scopes.expect(name, reason.token(), scopes);
             }
             _ => unreachable!(),
-        }
-    }
-
-    #[doc(hidden)]
-    #[cfg(feature = "hoi4")]
-    fn expect_fromref(&mut self, idx: usize, scopes: Scopes, reason: &Reason, data: &Everything) {
-        if idx < self.from.len() {
-            Self::expect_check(&mut self.from[idx], scopes, reason, data);
-        }
-    }
-
-    #[doc(hidden)]
-    #[cfg(feature = "hoi4")]
-    fn expect_fromref3(
-        &mut self,
-        idx: usize,
-        scopes: Scopes,
-        reason: &Reason,
-        key: &Token,
-        report: &str,
-        data: &Everything,
-    ) {
-        if idx < self.from.len() {
-            Self::expect_check3(&mut self.from[idx], scopes, reason, key, report, data);
         }
     }
 
@@ -1329,7 +1189,11 @@ impl ScopeContext {
         loop {
             #[allow(clippy::indexing_slicing)]
             match self.named[idx] {
-                ScopeEntry::Scope(_, _) => {
+                ScopeEntry::Scope(_, _)
+                | ScopeEntry::GlobalVar(_, _)
+                | ScopeEntry::GlobalList(_, _)
+                | ScopeEntry::Var(_, _)
+                | ScopeEntry::VarList(_, _) => {
                     Self::expect_check(&mut self.named[idx], scopes, reason, data);
                     return;
                 }
@@ -1339,16 +1203,6 @@ impl ScopeContext {
                 }
                 ScopeEntry::Named(i) => idx = i,
                 ScopeEntry::Backref(_) => unreachable!(),
-                #[cfg(feature = "hoi4")]
-                ScopeEntry::Fromref(_) => unreachable!(),
-                #[cfg(feature = "jomini")]
-                ScopeEntry::GlobalVar(_, _)
-                | ScopeEntry::GlobalList(_, _)
-                | ScopeEntry::Var(_, _)
-                | ScopeEntry::VarList(_, _) => {
-                    Self::expect_check(&mut self.named[idx], scopes, reason, data);
-                    return;
-                }
             }
         }
     }
@@ -1366,7 +1220,11 @@ impl ScopeContext {
         loop {
             #[allow(clippy::indexing_slicing)]
             match self.named[idx] {
-                ScopeEntry::Scope(_, _) => {
+                ScopeEntry::Scope(_, _)
+                | ScopeEntry::GlobalVar(_, _)
+                | ScopeEntry::GlobalList(_, _)
+                | ScopeEntry::Var(_, _)
+                | ScopeEntry::VarList(_, _) => {
                     Self::expect_check3(&mut self.named[idx], scopes, reason, key, report, data);
                     return;
                 }
@@ -1376,16 +1234,6 @@ impl ScopeContext {
                 }
                 ScopeEntry::Named(i) => idx = i,
                 ScopeEntry::Backref(_) => unreachable!(),
-                #[cfg(feature = "hoi4")]
-                ScopeEntry::Fromref(_) => unreachable!(),
-                #[cfg(feature = "jomini")]
-                ScopeEntry::GlobalVar(_, _)
-                | ScopeEntry::GlobalList(_, _)
-                | ScopeEntry::Var(_, _)
-                | ScopeEntry::VarList(_, _) => {
-                    Self::expect_check3(&mut self.named[idx], scopes, reason, key, report, data);
-                    return;
-                }
             }
         }
     }
@@ -1400,14 +1248,11 @@ impl ScopeContext {
         }
         let this = self.resolve_backrefs_mut(THIS);
         match this {
-            ScopeEntry::Scope(_, _) => Self::expect_check(this, scopes, reason, data),
             ScopeEntry::Backref(_) => unreachable!(),
-            #[cfg(feature = "hoi4")]
-            &mut ScopeEntry::Fromref(r) => self.expect_fromref(r, scopes, reason, data),
             ScopeEntry::Rootref => Self::expect_check(&mut self.root, scopes, reason, data),
             &mut ScopeEntry::Named(idx) => self.expect_named(idx, scopes, reason, data),
-            #[cfg(feature = "jomini")]
-            ScopeEntry::GlobalVar(_, _)
+            ScopeEntry::Scope(_, _)
+            | ScopeEntry::GlobalVar(_, _)
             | ScopeEntry::GlobalList(_, _)
             | ScopeEntry::Var(_, _)
             | ScopeEntry::VarList(_, _) => Self::expect_check(this, scopes, reason, data),
@@ -1435,17 +1280,12 @@ impl ScopeContext {
         match this {
             ScopeEntry::Scope(_, _) => Self::expect_check3(this, scopes, reason, key, report, data),
             ScopeEntry::Backref(_) => unreachable!(),
-            #[cfg(feature = "hoi4")]
-            &mut ScopeEntry::Fromref(r) => {
-                self.expect_fromref3(r, scopes, reason, key, report, data);
-            }
             ScopeEntry::Rootref => {
                 Self::expect_check3(&mut self.root, scopes, reason, key, report, data);
             }
             &mut ScopeEntry::Named(idx) => {
                 self.expect_named3(idx, scopes, reason, key, report, data);
             }
-            #[cfg(feature = "jomini")]
             ScopeEntry::GlobalVar(_, _)
             | ScopeEntry::GlobalList(_, _)
             | ScopeEntry::Var(_, _)
@@ -1478,7 +1318,6 @@ impl ScopeContext {
         self.expect3(scopes, reason, key, THIS, "scope", data);
 
         // Compare restrictions on `prev`
-        // TODO: for imperator and hoi4, go multiple prev levels back
         // TODO: The self.prev_levels > 0 check isn't right. Instead, create enough prev levels.
         if other.prev_levels > 0 && self.prev_levels > 0 {
             let (scopes, reason) = other.scopes_reason_backref(PREV, data);
@@ -1487,13 +1326,6 @@ impl ScopeContext {
 
         // Compare restrictions on `from`
         // TODO: go all the way back up the chains
-        #[cfg(feature = "hoi4")]
-        {
-            let (scopes, reason) = other.resolve_from(0);
-            self.expect_fromref3(0, scopes, reason, key, "from", data);
-            let (scopes, reason) = other.resolve_from(1);
-            self.expect_fromref3(1, scopes, reason, key, "from.from", data);
-        }
 
         // Compare restrictions on named scopes
         for (name, &(oidx, otemp)) in &other.scope_names {
@@ -1653,119 +1485,40 @@ impl Drop for ScopeContext {
 ///
 /// It should be limited to names that are so obvious that it's extremely unlikely that anyone
 /// would use them for a different type.
-#[allow(unused_variables)] // hoi4 does not use `name`
-#[allow(unused_mut)] // hoi4 does not use `name`
-fn scope_type_from_name(mut name: &str) -> Option<Scopes> {
-    #[cfg(feature = "jomini")]
-    if let Some(real_name) = name.strip_prefix("scope:") {
-        name = real_name;
-    } else if let Some(real_name) = name.strip_prefix("local_var:") {
-        name = real_name;
-    } else {
-        return None;
-    }
+fn scope_type_from_name(name: &str) -> Option<Scopes> {
+    let name = name.strip_prefix("scope:").or_else(|| name.strip_prefix("local_var:"))?;
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        return match name {
-            "accolade" => Some(Scopes::Accolade),
-            "accolade_type" => Some(Scopes::AccoladeType),
-            "activity" => Some(Scopes::Activity),
-            "actor"
-            | "recipient"
-            | "secondary_actor"
-            | "secondary_recipient"
-            | "mother"
-            | "father"
-            | "real_father"
-            | "child"
-            | "councillor"
-            | "liege"
-            | "courtier"
-            | "guest"
-            | "host" => Some(Scopes::Character),
-            "army" => Some(Scopes::Army),
-            "artifact" => Some(Scopes::Artifact),
-            "barony" | "county" | "title" | "landed_title" => Some(Scopes::LandedTitle),
-            "combat_side" => Some(Scopes::CombatSide),
-            "council_task" => Some(Scopes::CouncilTask),
-            "culture" => Some(Scopes::Culture),
-            "faction" => Some(Scopes::Faction),
-            "faith" => Some(Scopes::Faith),
-            "province" => Some(Scopes::Province),
-            "scheme" => Some(Scopes::Scheme),
-            "struggle" => Some(Scopes::Struggle),
-            "story" => Some(Scopes::StoryCycle),
-            "travel_plan" => Some(Scopes::TravelPlan),
-            "war" => Some(Scopes::War),
-            _ => None,
-        };
+    match name {
+        "accolade" => Some(Scopes::Accolade),
+        "accolade_type" => Some(Scopes::AccoladeType),
+        "activity" => Some(Scopes::Activity),
+        "actor"
+        | "recipient"
+        | "secondary_actor"
+        | "secondary_recipient"
+        | "mother"
+        | "father"
+        | "real_father"
+        | "child"
+        | "councillor"
+        | "liege"
+        | "courtier"
+        | "guest"
+        | "host" => Some(Scopes::Character),
+        "army" => Some(Scopes::Army),
+        "artifact" => Some(Scopes::Artifact),
+        "barony" | "county" | "title" | "landed_title" => Some(Scopes::LandedTitle),
+        "combat_side" => Some(Scopes::CombatSide),
+        "council_task" => Some(Scopes::CouncilTask),
+        "culture" => Some(Scopes::Culture),
+        "faction" => Some(Scopes::Faction),
+        "faith" => Some(Scopes::Faith),
+        "province" => Some(Scopes::Province),
+        "scheme" => Some(Scopes::Scheme),
+        "struggle" => Some(Scopes::Struggle),
+        "story" => Some(Scopes::StoryCycle),
+        "travel_plan" => Some(Scopes::TravelPlan),
+        "war" => Some(Scopes::War),
+        _ => None,
     }
-
-    #[cfg(feature = "vic3")]
-    if Game::is_vic3() {
-        // Due to differences in state vs state_region, law vs law_type, etc, less can be deduced
-        // with certainty for vic3.
-        return match name {
-            "admiral" | "general" | "character" => Some(Scopes::Character),
-            "actor" | "country" | "enemy_country" | "initiator" | "target_country" => {
-                Some(Scopes::Country)
-            }
-            "battle" => Some(Scopes::Battle),
-            "interest_group" => Some(Scopes::InterestGroup),
-            "journal_entry" => Some(Scopes::JournalEntry),
-            "market" => Some(Scopes::Market),
-            _ => None,
-        };
-    }
-
-    #[cfg(feature = "imperator")]
-    if Game::is_imperator() {
-        return match name {
-            "party" | "character_party" => Some(Scopes::Party),
-            "employer" | "party_country" | "country" | "overlord" | "unit_owner"
-            | "attacker_warleader" | "defender_warleader" | "former_overlord"
-            | "target_subject" | "future_overlord" | "old_country" | "controller" | "owner"
-            | "family_country" | "losing_side" | "home_country" => Some(Scopes::Country),
-            "fam" | "family" => Some(Scopes::Family),
-            "preferred_heir" | "deified_ruler" | "personal_loyalty" | "character"
-            | "siege_controller" | "party_leader" | "next_in_family" | "ruler" | "governor"
-            | "governor_or_ruler" | "commander" | "former_ruler" | "newborn" | "spouse"
-            | "job_holder" | "consort" | "current_heir" | "current_ruler" | "primary_heir"
-            | "secondary_heir" | "current_co_ruler" | "head_of_family" | "holding_owner"
-            | "char" | "mother" | "father" => Some(Scopes::Character),
-            "job" => Some(Scopes::Job),
-            "legion" => Some(Scopes::Legion),
-            "dominant_province_religion" | "religion" => Some(Scopes::Religion),
-            "area" => Some(Scopes::Area),
-            "region" => Some(Scopes::Region),
-            "governorship" => Some(Scopes::Governorship),
-            "country_culture" => Some(Scopes::CountryCulture),
-            "location"
-            | "unit_destination"
-            | "unit_objective_destination"
-            | "unit_location"
-            | "unit_next_location"
-            | "capital_scope"
-            | "holy_site" => Some(Scopes::Province),
-            "dominant_province_culture_group" | "culture_group" => Some(Scopes::CultureGroup),
-            "dominant_province_culture" | "culture" => Some(Scopes::Culture),
-            "owning_unit" => Some(Scopes::Unit),
-            "deity" | "province_deity" => Some(Scopes::Deity),
-            "state" => Some(Scopes::State),
-            "treasure" => Some(Scopes::Treasure),
-            "siege" => Some(Scopes::Siege),
-            _ => None,
-        };
-    }
-
-    #[cfg(feature = "eu5")]
-    if Game::is_eu5() {
-        return match name {
-            // TODO: EU5 fill in good guesses
-            _ => None,
-        };
-    }
-
-    None
 }

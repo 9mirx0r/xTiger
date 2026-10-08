@@ -5,7 +5,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::report::{ErrorKey, warn};
 use crate::scopes::Scopes;
@@ -17,7 +16,7 @@ use crate::validator::Validator;
 pub struct GreatProjectType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::GreatProjectType, GreatProjectType::add)
+    ItemLoader::Normal(Item::GreatProjectType, GreatProjectType::add)
 }
 
 impl GreatProjectType {
@@ -232,6 +231,10 @@ fn validate_contributor_filter(block: &Block, data: &Everything) {
     vd.field_bool("top_liege");
     vd.field_bool("owner");
     vd.field_bool("allies");
+    vd.field_bool("head_of_faith");
+    vd.field_bool("founder");
+    vd.field_bool("duchy");
+    vd.field_bool("clerical_region");
 }
 
 fn validate_contribution(key: &Token, block: &Block, data: &Everything, gp_key: &Token) {

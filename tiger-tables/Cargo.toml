@@ -1,24 +1,15 @@
 [package]
 name = "tiger-tables"
-version = "1.19.0"
+version = "1.0.0-alpha"
 edition = "2024"
 license = "GPL-3.0-or-later"
-description = "Library used by Tiger Validator. It holds tables that may be useful for other projects, so that they can be imported without pulling in all of Tiger."
-homepage = "https://github.com/amtep/tiger"
-repository = "https://github.com/amtep/tiger"
+description = "Library used by xTiger, the CK3 mod validator. It holds tables that may be useful for other projects, so that they can be imported without pulling in all of Tiger."
+homepage = "https://github.com/9mirx0r/xTiger"
+repository = "https://github.com/9mirx0r/xTiger"
 readme = "../README.md"
 keywords = [ "paradox", "validator", "linter", "mods" ]
 categories = [ "development-tools", "game-development" ]
 rust-version = "1.88"
-
-[features]
-default = ["ck3"]
-ck3 = ["jomini"]
-vic3 = ["jomini"]
-imperator = ["jomini"]
-eu5 = ["jomini"]
-jomini = []
-hoi4 = []
 
 [dependencies]
 anyhow = "1.0.102"

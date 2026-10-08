@@ -4,7 +4,6 @@ use crate::ck3::modif::ModifKinds;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::scopes::Scopes;
@@ -16,7 +15,7 @@ use crate::validator::Validator;
 pub struct LegitimacyType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::LegitimacyType, LegitimacyType::add)
+    ItemLoader::Normal(Item::LegitimacyType, LegitimacyType::add)
 }
 
 impl LegitimacyType {

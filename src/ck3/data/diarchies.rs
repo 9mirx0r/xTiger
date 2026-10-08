@@ -3,7 +3,6 @@ use crate::ck3::modif::ModifKinds;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::scopes::Scopes;
@@ -15,7 +14,7 @@ use crate::validator::Validator;
 pub struct DiarchyType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::DiarchyType, DiarchyType::add)
+    ItemLoader::Normal(Item::DiarchyType, DiarchyType::add)
 }
 
 impl DiarchyType {
@@ -86,7 +85,7 @@ impl DbKind for DiarchyType {
 pub struct DiarchyMandate {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::DiarchyMandate, DiarchyMandate::add)
+    ItemLoader::Normal(Item::DiarchyMandate, DiarchyMandate::add)
 }
 
 impl DiarchyMandate {

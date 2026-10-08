@@ -3,7 +3,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::scopes::Scopes;
 use crate::token::Token;
@@ -15,7 +14,7 @@ use crate::validator::Validator;
 pub struct Faction {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Faction, Faction::add)
+    ItemLoader::Normal(Item::Faction, Faction::add)
 }
 
 impl Faction {

@@ -3,7 +3,6 @@ use crate::ck3::modif::ModifKinds;
 use crate::ck3::tables::modifs::modif_loc;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::verify_modif_exists;
 use crate::report::Severity;
@@ -14,7 +13,7 @@ use crate::validator::Validator;
 pub struct ModifierFormat {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ModifierFormat, ModifierFormat::add)
+    ItemLoader::Normal(Item::ModifierFormat, ModifierFormat::add)
 }
 
 impl ModifierFormat {

@@ -5,13 +5,10 @@ use crate::context::{ScopeContext, Temporary};
 use crate::desc::validate_desc;
 use crate::effect::{validate_effect, validate_effect_control};
 use crate::everything::Everything;
-#[cfg(feature = "jomini")]
-use crate::game::Game;
 use crate::item::Item;
 use crate::lowercase::Lowercase;
 use crate::report::{ErrorKey, Severity, err, warn};
 use crate::scopes::Scopes;
-#[cfg(feature = "jomini")]
 use crate::script_value::validate_script_value;
 use crate::special_tokens::SpecialTokens;
 use crate::token::Token;
@@ -21,21 +18,6 @@ use crate::validate::{validate_identifier, validate_optional_duration};
 use crate::validator::{Validator, ValueValidator};
 
 #[allow(dead_code)]
-#[cfg(feature = "imperator")]
-pub fn validate_add_to_list_imperator(
-    key: &Token,
-    mut vd: ValueValidator,
-    sc: &mut ScopeContext,
-    _tooltipped: Tooltipped,
-) {
-    let temp = if key.as_str().contains("_temporary_") { Temporary::Yes } else { Temporary::No };
-    vd.identifier("list name");
-    sc.define_or_expect_list_this(vd.value(), vd.data(), temp);
-    vd.accept();
-}
-
-#[allow(dead_code)]
-#[cfg(any(feature = "ck3", feature = "vic3"))]
 pub fn validate_add_to_list(
     key: &Token,
     bv: &BV,
@@ -67,7 +49,6 @@ pub fn validate_add_to_list(
 
 /// A specific validator for the three `add_to_variable_list` effects (`global`, `local`, and default).
 /// It is also used for the three `remove_list_variable` effects.
-#[cfg(feature = "jomini")]
 pub fn validate_add_to_variable_list(
     key: &Token,
     _block: &Block,
@@ -99,13 +80,12 @@ pub fn validate_add_to_variable_list(
             data.variable_list_scopes.expect(name.as_str(), name, outscopes);
         }
     }
-    if key.starts_with("add_") && (Game::is_ck3() || Game::is_vic3()) {
+    if key.starts_with("add_") {
         validate_optional_duration(&mut vd, sc);
     }
 }
 
 /// A specific validator for the three `change_variable` effects (`global`, `local`, and default).
-#[cfg(feature = "jomini")]
 pub fn validate_change_variable(
     key: &Token,
     _block: &Block,
@@ -135,7 +115,6 @@ pub fn validate_change_variable(
 }
 
 /// A specific validator for the three `clamp_variable` effects (`global`, `local`, and default).
-#[cfg(feature = "jomini")]
 pub fn validate_clamp_variable(
     key: &Token,
     _block: &Block,
@@ -160,7 +139,6 @@ pub fn validate_clamp_variable(
 }
 
 /// A specific validator for the `random_list` effect, which has a unique syntax.
-#[cfg(feature = "jomini")]
 pub fn validate_random_list(
     key: &Token,
     _block: &Block,
@@ -197,7 +175,6 @@ pub fn validate_random_list(
     has_tooltip
 }
 
-#[cfg(feature = "jomini")]
 pub fn validate_remove_from_list(
     _key: &Token,
     mut vd: ValueValidator,
@@ -210,7 +187,6 @@ pub fn validate_remove_from_list(
 }
 
 /// A specific validator for the three `round_variable` effects (`global`, `local`, and default).
-#[cfg(feature = "jomini")]
 pub fn validate_round_variable(
     key: &Token,
     _block: &Block,
@@ -234,7 +210,6 @@ pub fn validate_round_variable(
     vd.field_script_value("nearest", sc);
 }
 
-#[cfg(feature = "jomini")]
 pub fn validate_save_scope(
     key: &Token,
     mut vd: ValueValidator,
@@ -248,7 +223,6 @@ pub fn validate_save_scope(
 }
 
 /// A specific validator for the `save_scope_value` effect.
-#[cfg(feature = "jomini")]
 pub fn validate_save_scope_value(
     key: &Token,
     _block: &Block,
@@ -268,7 +242,6 @@ pub fn validate_save_scope_value(
 }
 
 /// A specific validator for the three `set_variable` effects (`global`, `local`, and default).
-#[cfg(feature = "jomini")]
 pub fn validate_set_variable(
     key: &Token,
     bv: &BV,
@@ -311,20 +284,16 @@ pub fn validate_set_variable(
                     }
                 }
                 BV::Block(_) => {
-                    #[cfg(feature = "jomini")]
-                    if Game::is_jomini() {
-                        validate_script_value(bv, data, sc);
-                        if let Some(name) = &name {
-                            if key.as_str().contains("_local_") {
-                                sc.set_local_variable(name, Scopes::Value);
-                            } else if key.as_str().contains("_global_") {
-                                data.global_scopes.expect(name.as_str(), name, Scopes::Value);
-                            } else {
-                                data.variable_scopes.expect(name.as_str(), name, Scopes::Value);
-                            }
+                    validate_script_value(bv, data, sc);
+                    if let Some(name) = &name {
+                        if key.as_str().contains("_local_") {
+                            sc.set_local_variable(name, Scopes::Value);
+                        } else if key.as_str().contains("_global_") {
+                            data.global_scopes.expect(name.as_str(), name, Scopes::Value);
+                        } else {
+                            data.variable_scopes.expect(name.as_str(), name, Scopes::Value);
                         }
                     }
-                    // TODO HOI4
                 }
             });
             validate_optional_duration(&mut vd, sc);
@@ -333,7 +302,6 @@ pub fn validate_set_variable(
 }
 
 /// A specific validator for the `switch` effect, which has a unique syntax.
-#[cfg(feature = "jomini")]
 pub fn validate_switch(
     key: &Token,
     _block: &Block,
@@ -373,7 +341,6 @@ pub fn validate_switch(
     }
 }
 
-#[cfg(feature = "jomini")]
 pub fn validate_trigger_event(
     _key: &Token,
     bv: &BV,
@@ -394,16 +361,9 @@ pub fn validate_trigger_event(
             vd.set_case_sensitive(false);
             vd.field_event("id", sc);
             vd.field_action("on_action", sc);
-            #[cfg(feature = "ck3")]
-            if Game::is_ck3() {
-                vd.field_target("saved_event_id", sc, Scopes::Flag);
-                vd.field_date("trigger_on_next_date");
-                vd.field_bool("delayed");
-            }
-            #[cfg(feature = "vic3")]
-            if Game::is_vic3() {
-                vd.field_bool("popup");
-            }
+            vd.field_target("saved_event_id", sc, Scopes::Flag);
+            vd.field_date("trigger_on_next_date");
+            vd.field_bool("delayed");
             validate_optional_duration(&mut vd, sc);
         }
     }

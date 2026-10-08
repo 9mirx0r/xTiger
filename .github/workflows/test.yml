@@ -26,14 +26,8 @@ jobs:
       - name: Install toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Test
-        run: cargo test
-
       - name: Test CK3
-        run: cargo test -p tiger-lib --no-default-features --features ck3 --lib
-
-      - name: Test Imperator
-        run: cargo test -p tiger-lib --no-default-features --features imperator --lib
+        run: cargo test -p tiger-lib --lib
 
   fmt:
     name: rustfmt
@@ -65,14 +59,11 @@ jobs:
       - name: CK3 clippy
         run: cargo clippy -p ck3-tiger
 
-      - name: Vic3 clippy
-        run: cargo clippy -p vic3-tiger
-
-      - name: Imperator clippy
-        run: cargo clippy -p imperator-tiger
-
       - name: utils clippy
         run: cargo clippy -p utils
+
+      - name: MCP server clippy
+        run: cargo clippy -p xtiger-mcp --all-targets
 
   msrv:
     strategy:
@@ -93,14 +84,21 @@ jobs:
         with:
           toolchain: "1.88"
 
-      - name: tiger-lib msrv
-        run: cargo check
-
       - name: CK3 msrv
         run: cargo check -p ck3-tiger
 
-      - name: Vic3 msrv
-        run: cargo check -p vic3-tiger
+      - name: MCP server msrv
+        run: cargo check -p xtiger-mcp
 
-      - name: Imperator msrv
-        run: cargo check -p imperator-tiger
+  mcp:
+    name: MCP server tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Test MCP server
+        run: cargo test -p xtiger-mcp

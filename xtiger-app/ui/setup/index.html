@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xTiger Setup</title>
+<link rel="stylesheet" href="setup.css">
+<script type="module" src="setup.js"></script>
+</head>
+<body>
+<aside class="art" data-tauri-drag-region>
+  <img src="../assets/qubis-tiger.webp" alt="" data-tauri-drag-region>
+  <span class="art-badge" id="badge" data-tauri-drag-region></span>
+</aside>
+
+<div class="side">
+  <header class="titlebar" data-tauri-drag-region>
+    <span class="titlebar-spacer" data-tauri-drag-region></span>
+    <button class="win-btn" id="win-min" aria-label="Minimize">
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5h10" stroke="currentColor"/></svg>
+    </button>
+    <button class="win-btn win-close" id="win-close" aria-label="Close">
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor"/></svg>
+    </button>
+  </header>
+  <main class="screen" id="screen"></main>
+</div>
+</body>
+</html>

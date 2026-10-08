@@ -14,12 +14,8 @@ use walkdir::WalkDir;
 
 use crate::block::Block;
 use crate::everything::{Everything, FilesError};
-use crate::game::Game;
 use crate::helpers::TigerHashSet;
 use crate::item::{Item, ItemExt};
-#[cfg(any(feature = "vic3", feature = "eu5"))]
-use crate::mod_metadata::ModMetadata;
-#[cfg(any(feature = "ck3", feature = "imperator", feature = "hoi4"))]
 use crate::modfile::ModFile;
 use crate::parse::ParserMemory;
 use crate::pathtable::{PathTable, PathTableIndex};
@@ -65,24 +61,12 @@ impl FileKind {
 /// Note that ordering of these enum values matters for the same reason as [`FileKind`].
 #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum FileStage {
-    #[cfg(feature = "eu5")]
-    LoadingScreen,
-    #[cfg(feature = "eu5")]
-    MainMenu,
-    #[cfg(feature = "eu5")]
-    InGame,
     NoStage,
 }
 
 impl FileStage {
     fn with_dir(self, path: &Path) -> PathBuf {
         let toplevel: Option<&'static str> = match self {
-            #[cfg(feature = "eu5")]
-            FileStage::LoadingScreen => Some("loading_screen"),
-            #[cfg(feature = "eu5")]
-            FileStage::MainMenu => Some("main_menu"),
-            #[cfg(feature = "eu5")]
-            FileStage::InGame => Some("in_game"),
             FileStage::NoStage => None,
         };
         // TODO: could try using Cow here. Might be that the caller has to clone anyway though.
@@ -251,11 +235,9 @@ pub struct Fileset {
     vanilla_root: Option<PathBuf>,
 
     /// Extra CK3 directory loaded before vanilla.
-    #[cfg(feature = "jomini")]
     clausewitz_root: Option<PathBuf>,
 
     /// Extra CK3 directory loaded before vanilla.
-    #[cfg(feature = "jomini")]
     jomini_root: Option<PathBuf>,
 
     /// The mod being analyzed.
@@ -263,6 +245,9 @@ pub struct Fileset {
 
     /// Other mods to be loaded before `mod`, in order.
     pub loaded_mods: Vec<LoadedMod>,
+
+    /// The names of the mods in `loaded_mods`, from their `.mod` files.
+    loaded_mod_names: Vec<String>,
 
     /// DLC directories to be loaded after vanilla, in order.
     loaded_dlcs: Vec<LoadedMod>,
@@ -292,24 +277,17 @@ pub struct Fileset {
 
 impl Fileset {
     pub fn new(vanilla_dir: Option<&Path>, mod_root: PathBuf, replace_paths: Vec<PathBuf>) -> Self {
-        let vanilla_root = if Game::is_jomini() {
-            vanilla_dir.map(|dir| dir.join("game"))
-        } else {
-            vanilla_dir.map(ToOwned::to_owned)
-        };
-        #[cfg(feature = "jomini")]
+        let vanilla_root = { vanilla_dir.map(|dir| dir.join("game")) };
         let clausewitz_root = vanilla_dir.map(|dir| dir.join("clausewitz"));
-        #[cfg(feature = "jomini")]
         let jomini_root = vanilla_dir.map(|dir| dir.join("jomini"));
 
         Fileset {
             vanilla_root,
-            #[cfg(feature = "jomini")]
             clausewitz_root,
-            #[cfg(feature = "jomini")]
             jomini_root,
             the_mod: LoadedMod::new_main_mod(mod_root, replace_paths),
             loaded_mods: Vec::new(),
+            loaded_mod_names: Vec::new(),
             loaded_dlcs: Vec::new(),
             config: None,
             files: Vec::new(),
@@ -340,70 +318,36 @@ impl Fileset {
             let label =
                 block.get_field_value("label").map_or_else(default_label, ToString::to_string);
 
-            if Game::is_ck3() || Game::is_imperator() || Game::is_hoi4() {
-                #[cfg(any(feature = "ck3", feature = "imperator", feature = "hoi4"))]
-                if let Some(path) = get_modfile(&label, config_path, block, paradox_dir) {
-                    let modfile = ModFile::read(&path)?;
-                    eprintln!(
-                        "Loading secondary mod {label} from: {}{}",
-                        modfile.modpath().display(),
-                        modfile
-                            .display_name()
-                            .map_or_else(String::new, |name| format!(" \"{name}\"")),
-                    );
-                    let kind = FileKind::LoadedMod(mod_idx);
-                    let loaded_mod = LoadedMod::new(
-                        kind,
-                        label.clone(),
-                        modfile.modpath().clone(),
-                        modfile.replace_paths(),
-                    );
-                    add_loaded_mod_root(label);
-                    self.loaded_mods.push(loaded_mod);
-                } else {
-                    bail!(
-                        "could not load secondary mod from config; missing valid `modfile` or `workshop_id` field"
-                    );
-                }
-            } else if Game::is_vic3() || Game::is_eu5() {
-                #[cfg(any(feature = "vic3", feature = "eu5"))]
-                if let Some(pathdir) = get_mod(&label, config_path, block, workshop_dir) {
-                    match ModMetadata::read(&pathdir) {
-                        Ok(metadata) => {
-                            eprintln!(
-                                "Loading secondary mod {label} from: {}{}",
-                                pathdir.display(),
-                                metadata
-                                    .display_name()
-                                    .map_or_else(String::new, |name| format!(" \"{name}\"")),
-                            );
-                            let kind = FileKind::LoadedMod(mod_idx);
-                            let loaded_mod = LoadedMod::new(
-                                kind,
-                                label.clone(),
-                                pathdir,
-                                metadata.replace_paths(),
-                            );
-                            add_loaded_mod_root(label);
-                            self.loaded_mods.push(loaded_mod);
-                        }
-                        Err(e) => {
-                            eprintln!(
-                                "could not load secondary mod {label} from: {}",
-                                pathdir.display()
-                            );
-                            eprintln!("  because: {e}");
-                        }
-                    }
-                } else {
-                    bail!(
-                        "could not load secondary mod from config; missing valid `mod` or `workshop_id` field"
-                    );
-                }
+            if let Some(path) = get_modfile(&label, config_path, block, paradox_dir) {
+                let modfile = ModFile::read(&path)?;
+                eprintln!(
+                    "Loading secondary mod {label} from: {}{}",
+                    modfile.modpath().display(),
+                    modfile.display_name().map_or_else(String::new, |name| format!(" \"{name}\"")),
+                );
+                let kind = FileKind::LoadedMod(mod_idx);
+                let loaded_mod = LoadedMod::new(
+                    kind,
+                    label.clone(),
+                    modfile.modpath().clone(),
+                    modfile.replace_paths(),
+                );
+                add_loaded_mod_root(label);
+                self.loaded_mods.push(loaded_mod);
+                self.loaded_mod_names.extend(modfile.display_name());
+            } else {
+                bail!(
+                    "could not load secondary mod from config; missing valid `modfile` or `workshop_id` field"
+                );
             }
         }
         self.config = Some(config);
         Ok(())
+    }
+
+    /// The names of the other mods loaded with this one.
+    pub fn loaded_mod_names(&self) -> &[String] {
+        &self.loaded_mod_names
     }
 
     fn should_replace(&self, path: &Path, kind: FileKind) -> bool {
@@ -453,64 +397,36 @@ impl Fileset {
 
     #[allow(clippy::nonminimal_bool)] // The expressions as written are clearer
     fn scan_stage(&mut self, stage: FileStage) -> Result<(), FilesError> {
-        #[cfg(feature = "jomini")]
         if let Some(path) = &self.clausewitz_root {
             let path = stage.with_dir(path);
-            if !(Game::is_eu5() && !path.exists()) {
-                self.scan(&path, stage, FileKind::Clausewitz)
-                    .map_err(|e| FilesError::VanillaUnreadable { path: path.clone(), source: e })?;
-            }
+            self.scan(&path, stage, FileKind::Clausewitz)
+                .map_err(|e| FilesError::VanillaUnreadable { path: path.clone(), source: e })?;
         }
-        #[cfg(feature = "jomini")]
         if let Some(path) = &self.jomini_root {
             let path = stage.with_dir(path);
-            if !(Game::is_eu5() && !path.exists()) {
-                self.scan(&path, stage, FileKind::Jomini)
-                    .map_err(|e| FilesError::VanillaUnreadable { path: path.clone(), source: e })?;
-            }
+            self.scan(&path, stage, FileKind::Jomini)
+                .map_err(|e| FilesError::VanillaUnreadable { path: path.clone(), source: e })?;
         }
         if let Some(path) = &self.vanilla_root {
             let path = stage.with_dir(path);
-            if !(Game::is_eu5() && !path.exists()) {
-                self.scan(&path, stage, FileKind::Vanilla)
-                    .map_err(|e| FilesError::VanillaUnreadable { path: path.clone(), source: e })?;
-            }
-            #[cfg(feature = "hoi4")]
-            if Game::is_hoi4() {
-                self.load_dlcs(&path.join("integrated_dlc"))?;
-            }
-            // We don't know yet how EU5 will do DLCs
-            if !Game::is_eu5() {
-                self.load_dlcs(&path.join("dlc"))?;
-            }
+            self.scan(&path, stage, FileKind::Vanilla)
+                .map_err(|e| FilesError::VanillaUnreadable { path: path.clone(), source: e })?;
+            self.load_dlcs(&path.join("dlc"))?;
         }
         // loaded_mods is cloned here for the borrow checker
         for loaded_mod in &self.loaded_mods.clone() {
             let path = stage.with_dir(loaded_mod.root());
-            if !(Game::is_eu5() && !path.exists()) {
-                self.scan(&path, stage, loaded_mod.kind())
-                    .map_err(|e| FilesError::ModUnreadable { path: path.clone(), source: e })?;
-            }
-        }
-        let path = stage.with_dir(self.the_mod.root());
-        if !(Game::is_eu5() && !path.exists()) {
-            self.scan(&path, stage, FileKind::Mod)
+            self.scan(&path, stage, loaded_mod.kind())
                 .map_err(|e| FilesError::ModUnreadable { path: path.clone(), source: e })?;
         }
+        let path = stage.with_dir(self.the_mod.root());
+        self.scan(&path, stage, FileKind::Mod)
+            .map_err(|e| FilesError::ModUnreadable { path: path.clone(), source: e })?;
         Ok(())
     }
 
     pub fn scan_all(&mut self) -> Result<(), FilesError> {
-        if Game::is_eu5() {
-            #[cfg(feature = "eu5")]
-            self.scan_stage(FileStage::LoadingScreen)?;
-            #[cfg(feature = "eu5")]
-            self.scan_stage(FileStage::MainMenu)?;
-            #[cfg(feature = "eu5")]
-            self.scan_stage(FileStage::InGame)?;
-        } else {
-            self.scan_stage(FileStage::NoStage)?;
-        }
+        self.scan_stage(FileStage::NoStage)?;
         Ok(())
     }
 
@@ -599,11 +515,7 @@ impl Fileset {
 
     pub fn exists(&self, key: &str) -> bool {
         let key = key.strip_prefix('/').unwrap_or(key);
-        let filepath = if Game::is_hoi4() && key.contains('\\') {
-            PathBuf::from(key.replace('\\', "/"))
-        } else {
-            PathBuf::from(key)
-        };
+        let filepath = { PathBuf::from(key) };
         self.filenames.contains(&filepath)
     }
 
@@ -650,7 +562,6 @@ impl Fileset {
         }
     }
 
-    #[cfg(feature = "ck3")] // vic3 happens not to use
     pub fn verify_exists(&self, file: &Token) {
         self.mark_used(&file.as_str().replace("//", "/"));
         if !self.exists(file.as_str()) {
@@ -679,30 +590,8 @@ impl Fileset {
     }
 
     pub fn validate(&self, _data: &Everything) {
-        let common_dirs = match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => crate::ck3::tables::misc::COMMON_DIRS,
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => crate::vic3::tables::misc::COMMON_DIRS,
-            #[cfg(feature = "imperator")]
-            Game::Imperator => crate::imperator::tables::misc::COMMON_DIRS,
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => crate::eu5::tables::misc::COMMON_DIRS,
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => crate::hoi4::tables::misc::COMMON_DIRS,
-        };
-        let common_subdirs_ok = match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => crate::ck3::tables::misc::COMMON_SUBDIRS_OK,
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => crate::vic3::tables::misc::COMMON_SUBDIRS_OK,
-            #[cfg(feature = "imperator")]
-            Game::Imperator => crate::imperator::tables::misc::COMMON_SUBDIRS_OK,
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => crate::eu5::tables::misc::COMMON_SUBDIRS_OK,
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => crate::hoi4::tables::misc::COMMON_SUBDIRS_OK,
-        };
+        let common_dirs = crate::ck3::tables::misc::COMMON_DIRS;
+        let common_subdirs_ok = crate::ck3::tables::misc::COMMON_SUBDIRS_OK;
         // Check the files in directories in common/ to make sure they are in known directories
         let mut warned: Vec<&Path> = Vec::new();
         'outer: for entry in &self.ordered_files {
@@ -711,14 +600,6 @@ impl Fileset {
             }
             if entry.path == OsStr::new("common/achievement_groups.txt") {
                 continue;
-            }
-            #[cfg(feature = "hoi4")]
-            if Game::is_hoi4() {
-                for valid in crate::hoi4::tables::misc::COMMON_FILES {
-                    if <&str as AsRef<Path>>::as_ref(valid) == entry.path {
-                        continue 'outer;
-                    }
-                }
             }
             let dirname = entry.path.parent().unwrap();
             if warned.contains(&dirname) {
@@ -754,37 +635,23 @@ impl Fileset {
             if entry.path.starts_with("common/scripted_values") {
                 let msg = "file should be in common/script_values/";
                 err(ErrorKey::Filename).msg(msg).loc(entry).push();
-            } else if (Game::is_ck3() || Game::is_imperator())
-                && entry.path.starts_with("common/on_actions")
-            {
+            } else if entry.path.starts_with("common/on_actions") {
                 let msg = "file should be in common/on_action/";
                 err(ErrorKey::Filename).msg(msg).loc(entry).push();
-            } else if (Game::is_vic3() || Game::is_hoi4())
-                && entry.path.starts_with("common/on_action")
-            {
-                let msg = "file should be in common/on_actions/";
-                err(ErrorKey::Filename).msg(msg).loc(entry).push();
-            } else if Game::is_vic3() && entry.path.starts_with("common/modifiers") {
-                let msg = "file should be in common/static_modifiers since 1.7";
-                err(ErrorKey::Filename).msg(msg).loc(entry).push();
-            } else if Game::is_ck3() && entry.path.starts_with("common/vassal_contracts") {
+            } else if entry.path.starts_with("common/vassal_contracts") {
                 let msg = "common/vassal_contracts was replaced with common/subject_contracts/contracts in 1.16";
                 err(ErrorKey::Filename).msg(msg).loc(entry).push();
-            } else if Game::is_ck3() && entry.path.starts_with("common/religion/holy_sites") {
+            } else if entry.path.starts_with("common/religion/holy_sites") {
                 let msg = "common/religion/holy_sites was renamed to common/religion/holy_site_types in 1.19";
                 err(ErrorKey::Filename).msg(msg).loc(entry).push();
-            } else if Game::is_ck3() && entry.path.starts_with("common/religion/religion_families")
-            {
+            } else if entry.path.starts_with("common/religion/religion_families") {
                 let msg = "common/religion/religion_families was renamed to common/religion/religion_family_types in 1.19";
                 err(ErrorKey::Filename).msg(msg).loc(entry).push();
-            } else if Game::is_ck3() && entry.path.starts_with("common/religion/religions") {
+            } else if entry.path.starts_with("common/religion/religions") {
                 let msg = "common/religion/religions was renamed to common/religion/religion_types in 1.19";
                 err(ErrorKey::Filename).msg(msg).loc(entry).push();
-            } else if Game::is_ck3() && entry.path.starts_with("common/religion/doctrines") {
+            } else if entry.path.starts_with("common/religion/doctrines") {
                 let msg = "common/religion/doctrines was split to common/religion/doctrine_types and doctrine_group_types in 1.19";
-                err(ErrorKey::Filename).msg(msg).loc(entry).push();
-            } else if Game::is_vic3() && entry.path.starts_with("common/canals") {
-                let msg = "common/canals/ was merged into common/strait_definitions/";
                 err(ErrorKey::Filename).msg(msg).loc(entry).push();
             } else {
                 let msg = format!("file in unexpected directory `{}`", dirname.display());
@@ -814,7 +681,6 @@ impl Fileset {
     }
 }
 
-#[cfg(any(feature = "ck3", feature = "imperator", feature = "hoi4"))]
 fn get_modfile(
     label: &String,
     config_path: &Path,
@@ -845,40 +711,6 @@ fn get_modfile(
                 ));
             }
             None => eprintln!("workshop_id defined, but could not find paradox directory"),
-        }
-    }
-    path
-}
-
-#[cfg(any(feature = "vic3", feature = "eu5"))]
-fn get_mod(
-    label: &String,
-    config_path: &Path,
-    block: &Block,
-    workshop_dir: Option<&Path>,
-) -> Option<PathBuf> {
-    let mut path: Option<PathBuf> = None;
-    if let Some(modfile) = block.get_field_value("mod") {
-        let mod_path = fix_slashes_for_target_platform(
-            config_path
-                .parent()
-                .unwrap() // SAFETY: known to be for a file in a directory
-                .join(modfile.as_str()),
-        );
-        if mod_path.exists() {
-            path = Some(mod_path);
-        } else {
-            eprintln!("Could not find mod {label} at: {}", mod_path.display());
-        }
-    }
-    if path.is_none()
-        && let Some(workshop_id) = block.get_field_value("workshop_id")
-    {
-        match workshop_dir {
-            Some(w) => {
-                path = Some(fix_slashes_for_target_platform(w.join(workshop_id.as_str())));
-            }
-            None => eprintln!("workshop_id defined, but could not find workshop"),
         }
     }
     path

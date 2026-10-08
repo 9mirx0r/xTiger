@@ -2,7 +2,6 @@ use crate::block::Block;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::scopes::Scopes;
 use crate::token::Token;
@@ -14,7 +13,7 @@ use crate::validator::Validator;
 pub struct PoolSelector {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::PoolSelector, PoolSelector::add)
+    ItemLoader::Normal(Item::PoolSelector, PoolSelector::add)
 }
 
 impl PoolSelector {
@@ -55,7 +54,7 @@ impl DbKind for PoolSelector {
 pub struct CharacterBackground {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CharacterBackground, CharacterBackground::add)
+    ItemLoader::Normal(Item::CharacterBackground, CharacterBackground::add)
 }
 
 impl CharacterBackground {

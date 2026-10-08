@@ -12,24 +12,10 @@ use strum_macros::Display;
 pub enum Game {
     /// Crusader Kings 3
     Ck3,
-    /// Victoria 3
-    Vic3,
-    /// Europa Universalis 5
-    Eu5,
 }
 
 fn remove_game_wrapper(sometype: &str) -> &str {
     if let Some(sfx) = sometype.strip_prefix("Ck3(")
-        && let Some(result) = sfx.strip_suffix(')')
-    {
-        return result;
-    }
-    if let Some(sfx) = sometype.strip_prefix("Vic3(")
-        && let Some(result) = sfx.strip_suffix(')')
-    {
-        return result;
-    }
-    if let Some(sfx) = sometype.strip_prefix("Eu5(")
         && let Some(result) = sfx.strip_suffix(')')
     {
         return result;

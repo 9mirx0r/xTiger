@@ -5,7 +5,6 @@ use std::str::Chars;
 use crate::data::localization::{Language, LocaEntry, LocaValue, MacroValue};
 use crate::datatype::{Code, CodeArg, CodeChain};
 use crate::fileset::FileEntry;
-use crate::game::Game;
 use crate::parse::cob::Cob;
 use crate::parse::ignore::{IgnoreFilter, IgnoreSize, parse_comment};
 use crate::report::register_ignore_filter;
@@ -424,7 +423,7 @@ pub struct ValueParser<'a> {
 // TODO: some duplication of helper functions between `LocaParser` and `ValueParser`
 impl<'a> ValueParser<'a> {
     pub fn new(content: Vec<&'a Token>) -> Self {
-        assert!(!content.is_empty());
+        assert_ne!(content.len(), 0);
 
         Self {
             loc: content[0].loc,
@@ -578,11 +577,6 @@ impl<'a> ValueParser<'a> {
 
     fn parse_code_code(&mut self) -> Code {
         let mut text = self.start_text();
-
-        if Game::is_hoi4() && self.peek() == Some('?') {
-            text.add_char('?');
-            self.next_char();
-        }
 
         while let Some(c) = self.peek() {
             if is_code_char(c) {
@@ -788,16 +782,49 @@ impl<'a> ValueParser<'a> {
         self.next_char(); // eat the @
 
         let mut old_value = take(&mut self.value);
+        let mut frame: Option<Option<Token>> = None;
+        let mut format = None;
 
         while let Some(c) = self.peek() {
             if c == '[' {
                 self.parse_code();
-            } else if is_key_char(c) {
+            } else if is_key_char(c) && frame.is_none() {
                 let key = self.get_key();
                 self.value.push(LocaValue::Text(key));
             } else if c == '!' {
                 self.next_char();
                 break;
+            } else if c == ':' && !self.value.is_empty() && frame.is_none() {
+                // CK3 icons can select a frame and a text format: `@aptitude:3!` or
+                // `@aptitude:3:color_green!`. The game reports unknown formats at runtime.
+                self.next_char();
+                if self.peek() == Some('[') {
+                    let saved = take(&mut self.value);
+                    self.parse_code();
+                    self.value = saved;
+                    frame = Some(None);
+                } else if self.peek().is_some_and(|c| c.is_ascii_digit()) {
+                    frame = Some(Some(self.get_key()));
+                } else {
+                    self.unexpected_char("expected icon frame", ErrorKey::Localization);
+                    self.value.push(LocaValue::Error);
+                    break;
+                }
+                if self.peek() == Some(':') {
+                    self.next_char();
+                    if self.peek().is_some_and(is_key_char) {
+                        format = Some(self.get_key());
+                    } else {
+                        self.unexpected_char("expected text format", ErrorKey::Localization);
+                        self.value.push(LocaValue::Error);
+                        break;
+                    }
+                }
+                if self.peek() != Some('!') {
+                    self.unexpected_char("expected `!`", ErrorKey::Localization);
+                    self.value.push(LocaValue::Error);
+                    break;
+                }
             } else if self.value.is_empty() {
                 self.unexpected_char("expected icon name", ErrorKey::Localization);
                 self.value.push(LocaValue::Error);
@@ -826,9 +853,13 @@ impl<'a> ValueParser<'a> {
             old_value.push(LocaValue::CalculatedIcon(take(&mut self.value)));
             self.value = take(&mut old_value);
         }
+        if let Some(format) = format
+            && !matches!(self.value.last(), Some(LocaValue::Error))
+        {
+            self.value.push(LocaValue::IconFormat(format));
+        }
     }
 
-    #[allow(dead_code)] // only needed for hoi4
     fn parse_flag(&mut self) {
         self.next_char(); // eat the @
 
@@ -884,7 +915,7 @@ impl<'a> ValueParser<'a> {
             match c {
                 '[' => self.parse_code(),
                 '#' => self.parse_markup(),
-                '@' if Game::is_hoi4() => self.parse_flag(),
+                '@' if false => self.parse_flag(),
                 '@' => self.parse_icon(),
                 '\\' => self.parse_escape(),
                 _ => self.parse_text(),

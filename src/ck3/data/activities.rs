@@ -6,7 +6,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::report::{ErrorKey, err, warn};
 use crate::scopes::Scopes;
@@ -20,7 +19,7 @@ use crate::validator::Validator;
 pub struct ActivityType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ActivityType, ActivityType::add)
+    ItemLoader::Normal(Item::ActivityType, ActivityType::add)
 }
 
 impl ActivityType {
@@ -417,6 +416,16 @@ impl DbKind for ActivityType {
             });
         });
 
+        vd.multi_field_validated("header_background", |bv, data| match bv {
+            BV::Value(token) => data.verify_exists(Item::File, token),
+            BV::Block(block) => {
+                let mut vd = Validator::new(block, data);
+                let mut sc = ScopeContext::new(Scopes::Character, key);
+                vd.field_trigger("trigger", Tooltipped::No, &mut sc);
+                vd.field_item("reference", Item::File);
+            }
+        });
+
         let mut sc = ScopeContext::new(Scopes::Activity, key);
         sc.define_name("host", Scopes::Character, key);
         sc.define_name("activity", Scopes::Activity, key);
@@ -569,6 +578,13 @@ fn validate_phase(key: &Token, block: &Block, data: &Everything, has_special_opt
     sc.define_name("host", Scopes::Character, key);
     vd.field_effect("on_enter_phase", Tooltipped::No, &mut sc);
     vd.field_effect("on_phase_active", Tooltipped::No, &mut sc);
+    vd.field_effect_builder("on_phase_active_activity", Tooltipped::No, |key| {
+        let mut sc = ScopeContext::new(Scopes::Activity, key);
+        sc.define_name("activity", Scopes::Activity, key);
+        sc.define_name("host", Scopes::Character, key);
+        sc.define_name("province", Scopes::Province, key);
+        sc
+    });
     vd.field_effect("on_end", Tooltipped::No, &mut sc);
     vd.field_effect("on_monthly_pulse", Tooltipped::No, &mut sc);
     vd.field_effect("on_weekly_pulse", Tooltipped::No, &mut sc);
@@ -619,7 +635,7 @@ fn validate_special_guest(
 pub struct ActivityLocale {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ActivityLocale, ActivityLocale::add)
+    ItemLoader::Normal(Item::ActivityLocale, ActivityLocale::add)
 }
 
 impl ActivityLocale {
@@ -678,7 +694,7 @@ fn validate_visuals(key: &Token, bv: &BV, data: &Everything) {
 pub struct GuestInviteRule {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::GuestInviteRule, GuestInviteRule::add)
+    ItemLoader::Normal(Item::GuestInviteRule, GuestInviteRule::add)
 }
 
 impl GuestInviteRule {
@@ -690,6 +706,7 @@ impl GuestInviteRule {
 impl DbKind for GuestInviteRule {
     fn validate(&self, key: &Token, block: &Block, data: &Everything) {
         let mut vd = Validator::new(block, data);
+        vd.field_bool("locked");
         data.verify_exists(Item::Localization, key);
 
         vd.field_effect_builder("effect", Tooltipped::No, |key| {
@@ -706,7 +723,7 @@ impl DbKind for GuestInviteRule {
 pub struct ActivityPulseAction {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ActivityPulseAction, ActivityPulseAction::add)
+    ItemLoader::Normal(Item::ActivityPulseAction, ActivityPulseAction::add)
 }
 
 impl ActivityPulseAction {
@@ -740,7 +757,7 @@ impl DbKind for ActivityPulseAction {
 pub struct ActivityIntent {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ActivityIntent, ActivityIntent::add)
+    ItemLoader::Normal(Item::ActivityIntent, ActivityIntent::add)
 }
 
 impl ActivityIntent {
@@ -814,6 +831,15 @@ fn validate_option(
     has_special_option: bool,
     is_special_option: bool,
 ) {
+    const FILTERS: &[&str] = &[
+        "known_character",
+        "known_faith",
+        "personal",
+        "active_faith",
+        "active_rite",
+        "core_faith",
+        "core_rite",
+    ];
     let mut vd = Validator::new(block, data);
     data.verify_exists(Item::Localization, key);
     let loca = format!("{key}_desc");
@@ -829,6 +855,13 @@ fn validate_option(
     vd.field_trigger("is_shown", Tooltipped::No, &mut sc);
     vd.field_trigger("is_valid", Tooltipped::Yes, &mut sc);
     vd.field_script_value_no_breakdown("ai_will_do", &mut sc);
+    vd.field_bool("tenet_doctrine_based_activity");
+    for f in &["tenet_1", "tenet_2", "tenet_3"] {
+        vd.field_choice(f, FILTERS);
+    }
+    for f in &["doctrine_1", "doctrine_2", "doctrine_3"] {
+        vd.field_choice(f, &FILTERS[..2].iter().chain(&FILTERS[3..]).copied().collect::<Vec<_>>());
+    }
 
     vd.field_effect_builder("on_start", Tooltipped::No, |key| {
         let mut sc = ScopeContext::new(Scopes::Activity, key);
@@ -869,7 +902,7 @@ fn validate_option(
 pub struct ActivityGroupType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ActivityGroupType, ActivityGroupType::add)
+    ItemLoader::Normal(Item::ActivityGroupType, ActivityGroupType::add)
 }
 
 impl ActivityGroupType {

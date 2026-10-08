@@ -14,10 +14,6 @@ use strum_macros::Display;
 enum Game {
     /// Crusader Kings 3
     Ck3,
-    /// Victoria 3
-    Vic3,
-    /// Europa Universalis 5
-    Eu5,
 }
 
 #[derive(Debug, Parser)]
@@ -39,8 +35,6 @@ struct Cli {
     out: PathBuf,
 }
 
-// TODO EU5: fill in any patterns EU5 has
-
 const TRIGGER_PATTERNS: &[(Game, &str, &str, &str, Option<&str>)] = &[
     (Game::Ck3, "", "common/dynasty_legacies", "_perks", None),
     (Game::Ck3, "", "common/lifestyles", "_perk_points", None),
@@ -58,13 +52,7 @@ const EFFECT_PATTERNS: &[(Game, &str, &str, &str, Option<&str>)] = &[
     (Game::Ck3, "set_relation_", "common/scripted_relations", "", None),
     (Game::Ck3, "remove_relation_", "common/scripted_relations", "", None),
 ];
-const ITERATOR_PATTERNS: &[(Game, &str, &str, &str, Option<&str>)] = &[
-    (Game::Vic3, "country_in_", "common/geographic_regions", "", Some("short_key")),
-    (Game::Vic3, "province_in_", "common/geographic_regions", "", Some("short_key")),
-    (Game::Vic3, "state_in_", "common/geographic_regions", "", Some("short_key")),
-    (Game::Vic3, "state_region_in_", "common/geographic_regions", "", Some("short_key")),
-    (Game::Vic3, "strategic_region_in_", "common/geographic_regions", "", Some("short_key")),
-];
+const ITERATOR_PATTERNS: &[(Game, &str, &str, &str, Option<&str>)] = &[];
 
 const TRIGGERS_TABLE_START: &str = "const TRIGGER: ";
 const EFFECTS_TABLE_START: &str = "const SCOPE_EFFECT: ";
@@ -206,18 +194,6 @@ fn extract_new_entries(game: Game, log: &str) -> Vec<(&str, Vec<String>)> {
             } else if line.contains(" - ") {
                 let name = line.split(" - ").next().unwrap();
                 in_entry = Some(name);
-            }
-        }
-    } else if game == Game::Vic3 || game == Game::Eu5 {
-        for line in log.lines() {
-            if let Some(name) = line.strip_prefix("## ") {
-                in_entry = Some(name);
-            } else if let Some(name) = in_entry
-                && line.starts_with("**Supported Scopes**: ")
-            {
-                let scopes =
-                    line.split(": ").nth(1).unwrap().split(", ").map(from_snake_case).collect();
-                result.push((name, scopes));
             }
         }
     }

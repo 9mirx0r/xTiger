@@ -2,7 +2,6 @@ use crate::block::{BV, Block};
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::report::{ErrorKey, warn};
 use crate::scopes::Scopes;
@@ -15,7 +14,7 @@ use crate::validator::Validator;
 pub struct Election {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::SuccessionElection, Election::add)
+    ItemLoader::Normal(Item::SuccessionElection, Election::add)
 }
 
 impl Election {
@@ -61,6 +60,20 @@ impl DbKind for Election {
 }
 
 fn validate_candidates(vd: &mut Validator, sc: &mut ScopeContext) {
+    vd.field_validated_block("character_sets", |block, data| {
+        let mut vd = Validator::new(block, data);
+        vd.unknown_block_fields(|_, block| {
+            let mut vd = Validator::new(block, data);
+            vd.field_choice("type", CANDIDATE_TYPES);
+            vd.field_script_value("priority_value", sc);
+            vd.field_trigger("limit", Tooltipped::No, sc);
+        });
+    });
+    vd.field_script_value("priority_value", sc);
+    vd.field_choice(
+        "candidate_policy",
+        &["include_all_candidates", "only_best_candidate", "one_candidate_per_set"],
+    );
     vd.multi_field_validated("add", |bv, data| match bv {
         BV::Value(token) => {
             if !CANDIDATE_TYPES.contains(&token.as_str()) {

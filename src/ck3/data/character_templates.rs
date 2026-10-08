@@ -6,7 +6,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::effect::validate_effect;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::scopes::Scopes;
 use crate::token::Token;
@@ -18,7 +17,7 @@ use crate::validator::Validator;
 pub struct CharacterTemplate {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CharacterTemplate, CharacterTemplate::add)
+    ItemLoader::Normal(Item::CharacterTemplate, CharacterTemplate::add)
 }
 
 impl CharacterTemplate {
@@ -101,6 +100,7 @@ impl DbKind for CharacterTemplate {
             vd.field_target("faith", sc, Scopes::Faith);
             vd.multi_field_validated_block_sc("random_faith", sc, validate_random_faith);
         }
+        vd.field_item_or_target("rite", sc, Item::Rite, Scopes::Rite);
         if from_block.has_key("dynasty_house") {
             vd.field_value("dynasty_house");
         } else {

@@ -165,6 +165,7 @@ impl ReportBuilderFull {
         self.pointers.push(PointedMessage { loc: eloc.into_loc(), length, msg: Some(msg.into()) });
         self
     }
+
     pub fn opt_loc_msg<E: ErrorLoc, S: Into<String>>(mut self, eloc: Option<E>, msg: S) -> Self {
         if let Some(eloc) = eloc {
             let length = eloc.loc_length();

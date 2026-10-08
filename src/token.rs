@@ -33,6 +33,24 @@ pub struct Loc {
 }
 
 impl Loc {
+    /// Compare locations by file path, line, column, and then the macro call sites they were
+    /// expanded from. Unlike the derived ordering, this does not depend on the order in which
+    /// files were loaded or macros were expanded, so it is the same in every run.
+    pub fn stable_cmp(self, other: Loc) -> Ordering {
+        self.fullpath()
+            .cmp(other.fullpath())
+            .then(self.line.cmp(&other.line))
+            .then(self.column.cmp(&other.column))
+            .then_with(|| {
+                let la = self.link_idx.and_then(|link| MACRO_MAP.get_loc(link));
+                let lb = other.link_idx.and_then(|link| MACRO_MAP.get_loc(link));
+                match (la, lb) {
+                    (Some(la), Some(lb)) => la.stable_cmp(lb),
+                    (la, lb) => la.is_some().cmp(&lb.is_some()),
+                }
+            })
+    }
+
     #[must_use]
     pub(crate) fn for_file(
         pathname: PathBuf,

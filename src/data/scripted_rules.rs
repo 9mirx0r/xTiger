@@ -4,7 +4,6 @@ use crate::block::Block;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::{Game, GameFlags};
 use crate::helpers::TigerHashMap;
 use crate::item::{Item, ItemLoader};
 use crate::parse::pdxfile::parse_pdx_internal;
@@ -18,7 +17,7 @@ use crate::trigger::validate_trigger;
 pub struct ScriptedRule {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3.union(GameFlags::Vic3), Item::ScriptedRule, ScriptedRule::add)
+    ItemLoader::Normal(Item::ScriptedRule, ScriptedRule::add)
 }
 
 impl ScriptedRule {
@@ -59,16 +58,7 @@ struct ScriptedRuleScopeContext {
 /// Processed version of game-specific `SCRIPTED_RULES`.
 static SCRIPTED_RULE_SCOPES_MAP: LazyLock<TigerHashMap<&'static str, ScriptedRuleScopeContext>> =
     LazyLock::new(|| {
-        let rules = match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => crate::ck3::tables::rules::SCRIPTED_RULES,
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => crate::vic3::tables::rules::SCRIPTED_RULES,
-            #[cfg(feature = "imperator")]
-            Game::Imperator => unimplemented!(),
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => unimplemented!(),
-        };
+        let rules = crate::ck3::tables::rules::SCRIPTED_RULES;
         build_scripted_rule_hashmap(rules)
     });
 

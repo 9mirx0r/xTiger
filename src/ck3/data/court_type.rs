@@ -4,7 +4,6 @@ use crate::ck3::validate::validate_cost;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::scopes::Scopes;
@@ -16,7 +15,7 @@ use crate::validator::Validator;
 pub struct CourtType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CourtType, CourtType::add)
+    ItemLoader::Normal(Item::CourtType, CourtType::add)
 }
 
 impl CourtType {

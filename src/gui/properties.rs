@@ -122,6 +122,7 @@ pub enum WidgetProperty {
     alpha,
     alwaystransparent,
     animate_negative_changes,
+    animated_progress_value,
     animation,
     animation_speed,
     attachto,
@@ -364,6 +365,7 @@ pub enum WidgetProperty {
     ontextedited,
     onvaluechanged,
     open_sound,
+    overflowed_items_visibility,
     overframe,
     oversound,
     page,
@@ -503,6 +505,7 @@ pub enum WidgetProperty {
     widgetanchor,
     widgetid,
     width,
+    wrap_basedon,
     wrap_count,
     wrap_length,
     zoom,
@@ -941,6 +944,9 @@ impl GuiValidation {
             useragent => UncheckedValue,
             uv_scale => CVector2f,
             value => NumberOrInt32,
+            animated_progress_value => UncheckedValue,
+            overflowed_items_visibility => Choice(&["hide", "show"]),
+            wrap_basedon => Choice(&["parent"]),
             video => Item(Item::File),
             viewportwidget => Widget,
             visible => Boolean,
@@ -1076,6 +1082,7 @@ impl WidgetProperty {
 
             tooltip_enabled => GameFlags::Vic3 | GameFlags::Imperator | GameFlags::Eu5,
             tooltip_visible | tooltip_when_disabled => GameFlags::Ck3,
+            animated_progress_value | overflowed_items_visibility | wrap_basedon => GameFlags::Ck3,
             max_height | min_height | video | wrap_count => {
                 GameFlags::Ck3 | GameFlags::Vic3 | GameFlags::Eu5
             }

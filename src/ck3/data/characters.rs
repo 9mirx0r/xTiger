@@ -9,7 +9,7 @@ use atomic_enum::atomic_enum;
 
 use crate::block::{BV, Block, Comparator, Eq::*};
 use crate::ck3::data::houses::House;
-use crate::ck3::validate::validate_portrait_modifier_overrides;
+use crate::ck3::validate::{validate_portrait_colors, validate_portrait_modifier_overrides};
 use crate::context::ScopeContext;
 use crate::date::Date;
 use crate::effect::{validate_effect, validate_effect_field};
@@ -27,7 +27,6 @@ use crate::token::Token;
 use crate::tooltipped::Tooltipped;
 use crate::validate::validate_color;
 use crate::validator::Validator;
-use crate::variables::Variables;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Gender {
@@ -101,15 +100,6 @@ impl Characters {
         } else {
             let msg = format!("character {item} not defined in history/characters/");
             err(ErrorKey::MissingItem).msg(msg).loc(item).push();
-        }
-    }
-
-    pub fn scan_variables(&self, registry: &mut Variables) {
-        for item in self.characters.values() {
-            registry.scan(&item.block);
-        }
-        for item in &self.duplicates {
-            registry.scan(&item.block);
         }
     }
 
@@ -369,6 +359,10 @@ impl Character {
                         data.verify_exists(Item::Faith, value);
                         return None;
                     }
+                    "rite" => {
+                        data.verify_exists(Item::Rite, value);
+                        return None;
+                    }
                     "culture" => {
                         data.verify_exists(Item::Culture, value);
                         return None;
@@ -449,7 +443,7 @@ impl Character {
                     vd.field_item("killer", Item::Character);
                     return Some((Death, key.clone()));
                 }
-                "effect" => {
+                "effect" | "effect_even_if_dead" => {
                     validate_effect(block, data, sc, Tooltipped::No);
                     return None;
                 }
@@ -562,7 +556,7 @@ impl Character {
 
         if self.key.as_str().contains('.') {
             let msg =
-                format!("`character:{}` will not work because of the dot in the id", &self.key);
+                format!("`character:{}` will not work because of the dot in the id", self.key);
             let info = "script code will not be able to refer to this character";
             warn(ErrorKey::CharacterId).msg(msg).info(info).loc(&self.key).push();
         }
@@ -573,6 +567,7 @@ impl Character {
         }
 
         vd.field_item("dna", Item::Dna);
+        vd.field_bool("obscured");
         vd.field_bool("female");
         vd.field_integer("martial");
         vd.field_integer("prowess");
@@ -595,6 +590,7 @@ impl Character {
         // religion and faith both mean faith here
         vd.field_item("religion", Item::Faith);
         vd.field_item("faith", Item::Faith);
+        vd.field_item("rite", Item::Rite);
 
         vd.field_item("culture", Item::Culture);
 
@@ -613,6 +609,7 @@ impl Character {
                 validate_portrait_modifier_overrides,
             );
             vd.field_validated_block("hair", validate_color);
+            vd.field_validated_block("colors", validate_portrait_colors);
         });
 
         let mut life_events = Vec::new();

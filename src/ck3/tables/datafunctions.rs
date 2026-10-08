@@ -111,7 +111,6 @@ const DATATYPE_AND_SCOPE: &[(Datatype, Scopes)] = &[
     (Ck3(Accolade), Scopes::Accolade),
     (Ck3(AccoladeType), Scopes::AccoladeType),
     (Ck3(Decision), Scopes::Decision),
-    (Ck3(FaithDoctrine), Scopes::Doctrine),
     (Ck3(ActivityType), Scopes::ActivityType),
     (Ck3(CultureTradition), Scopes::CultureTradition),
     (Ck3(CulturePillar), Scopes::CulturePillar),

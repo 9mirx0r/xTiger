@@ -3,7 +3,6 @@ use crate::ck3::modif::ModifKinds;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::scopes::Scopes;
@@ -15,7 +14,7 @@ use crate::validator::{Validator, ValueValidator};
 pub struct ConfederationType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ConfederationType, ConfederationType::add)
+    ItemLoader::Normal(Item::ConfederationType, ConfederationType::add)
 }
 
 impl ConfederationType {

@@ -1,1 +1,1 @@
-Moved to the wiki on GitHub: https://github.com/amtep/tiger/wiki/Todo
+Plans and known problems are tracked in the issues: https://github.com/9mirx0r/xTiger/issues

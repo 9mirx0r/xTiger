@@ -119,6 +119,8 @@ pub fn validate_event(event: &Event, data: &Everything, sc: &mut ScopeContext) {
     // TODO: check that artifacts are not in the same position as a character
     vd.multi_field_validated_block_sc("artifact", sc, validate_artifact);
     vd.field_validated_block_sc("court_scene", sc, validate_court_scene);
+    vd.field_value("queue_icon");
+    vd.field_item("queue_name", Item::Localization);
     if let Some(token) = vd.field_value("theme") {
         data.verify_exists(Item::EventTheme, token);
         data.validate_call(Item::EventTheme, token, &event.block, sc);
@@ -346,6 +348,7 @@ fn validate_portrait(v: &BV, data: &Everything, sc: &mut ScopeContext) {
             // TODO: is this only useful when animation is prisondungeon ?
             vd.field_bool("override_imprisonment_visuals");
             vd.field_bool("animate_if_dead");
+            vd.field_integer_range("stacking_order", -100..=100);
         }
     }
 }

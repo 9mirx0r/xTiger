@@ -6,7 +6,6 @@
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
-#[cfg(any(feature = "ck3", feature = "vic3"))]
 use std::sync::RwLock;
 
 use anyhow::Result;
@@ -14,10 +13,8 @@ use rayon::{Scope, scope};
 use strum::IntoEnumIterator;
 use thiserror::Error;
 
-#[cfg(any(feature = "ck3", feature = "vic3"))]
 use crate::block::BV;
 use crate::block::Block;
-#[cfg(feature = "ck3")]
 use crate::ck3::data::{
     characters::Characters,
     climate::Climate,
@@ -32,11 +29,9 @@ use crate::ck3::data::{
     traits::Traits,
     wars::Wars,
 };
-#[cfg(feature = "ck3")]
 use crate::ck3::tables::misc::*;
 use crate::config_load::{check_for_legacy_ignore, load_filter};
 use crate::context::ScopeContext;
-#[cfg(any(feature = "ck3", feature = "vic3"))]
 use crate::data::data_binding::DataBindings;
 use crate::data::{
     assets::Assets,
@@ -47,57 +42,27 @@ use crate::data::{
     scripted_effects::{Effect, Effects},
     scripted_triggers::{Trigger, Triggers},
 };
-#[cfg(feature = "jomini")]
 use crate::data::{
     coa::Coas, events::Events, music::Musics, script_values::ScriptValues,
     scripted_lists::ScriptedLists, scripted_modifiers::ScriptedModifiers,
 };
 use crate::db::{Db, DbKind};
 use crate::dds::DdsFiles;
-#[cfg(feature = "eu5")]
-use crate::eu5::data::provinces::Eu5Provinces;
-#[cfg(feature = "eu5")]
-use crate::eu5::tables::misc::*;
 use crate::fileset::{FileEntry, FileKind, FileStage, Fileset};
-use crate::game::Game;
-#[cfg(any(feature = "ck3", feature = "vic3"))]
 use crate::helpers::TigerHashSet;
-#[cfg(feature = "hoi4")]
-use crate::hoi4::data::{
-    events::Hoi4Events, gfx::Gfx, music::Hoi4Musics, provinces::Hoi4Provinces,
-};
-#[cfg(feature = "hoi4")]
-use crate::hoi4::tables::misc::*;
-#[cfg(feature = "imperator")]
-use crate::imperator::data::{decisions::Decisions, provinces::ImperatorProvinces};
-#[cfg(feature = "imperator")]
-use crate::imperator::tables::misc::*;
 use crate::item::{Item, ItemExt, ItemLoader};
 use crate::lowercase::Lowercase;
 use crate::macros::MACRO_MAP;
+use crate::modfile::ModFile;
 use crate::parse::ParserMemory;
-#[cfg(feature = "vic3")]
-use crate::parse::json::parse_json_file;
 use crate::pdxfile::PdxFile;
-#[cfg(any(feature = "ck3", feature = "vic3"))]
 use crate::report::err;
-#[cfg(feature = "jomini")]
 use crate::report::warn;
 use crate::report::{ErrorKey, OutputStyle, Severity, report, set_output_style};
 use crate::rivers::Rivers;
-#[cfg(feature = "jomini")]
 use crate::scopes::Scopes;
 use crate::token::{Loc, Token};
-#[cfg(feature = "jomini")]
 use crate::variable_scopes::VariableScopes;
-use crate::variables::Variables;
-#[cfg(feature = "vic3")]
-use crate::vic3::data::{
-    buy_packages::BuyPackage, history::History, provinces::Vic3Provinces,
-    strategic_regions::StrategicRegion, terrain::TerrainMask,
-};
-#[cfg(feature = "vic3")]
-use crate::vic3::tables::misc::*;
 
 #[derive(Debug, Error)]
 #[allow(clippy::enum_variant_names)]
@@ -131,7 +96,6 @@ pub struct Everything {
 
     /// A cache of define values (from common/defines) that are missing and that have already been
     /// warned about as missing. This is to avoid duplicate warnings.
-    #[cfg(any(feature = "ck3", feature = "vic3"))]
     warned_defines: RwLock<TigerHashSet<String>>,
 
     /// Tracks all the files (vanilla and mods) that are relevant to the current validation.
@@ -146,97 +110,53 @@ pub struct Everything {
 
     pub(crate) localization: Localization,
 
-    #[cfg(feature = "jomini")]
     pub(crate) scripted_lists: ScriptedLists,
 
     pub(crate) defines: Defines,
 
-    #[cfg(feature = "jomini")]
     pub(crate) events: Events,
-    #[cfg(feature = "hoi4")]
-    pub(crate) events_hoi4: Hoi4Events,
-    #[cfg(feature = "imperator")]
-    pub(crate) decisions_imperator: Decisions,
 
-    #[cfg(feature = "jomini")]
     pub(crate) scripted_modifiers: ScriptedModifiers,
     pub(crate) on_actions: OnActions,
 
-    #[cfg(feature = "ck3")]
     pub(crate) interaction_cats: CharacterInteractionCategories,
 
-    #[cfg(feature = "ck3")]
     pub(crate) provinces_ck3: Ck3Provinces,
-    #[cfg(feature = "vic3")]
-    pub(crate) provinces_vic3: Vic3Provinces,
-    #[cfg(feature = "imperator")]
-    pub(crate) provinces_imperator: ImperatorProvinces,
-    #[cfg(feature = "eu5")]
-    pub(crate) provinces_eu5: Eu5Provinces,
-    #[cfg(feature = "hoi4")]
-    pub(crate) provinces_hoi4: Hoi4Provinces,
 
-    #[cfg(feature = "ck3")]
     pub(crate) province_histories: ProvinceHistories,
-    #[cfg(feature = "ck3")]
     pub(crate) province_properties: ProvinceProperties,
-    #[cfg(feature = "ck3")]
     pub(crate) province_terrains: ProvinceTerrains,
 
-    #[cfg(feature = "ck3")]
     pub(crate) gameconcepts: GameConcepts,
 
-    #[cfg(feature = "ck3")]
     pub(crate) titles: Titles,
 
-    #[cfg(feature = "ck3")]
     pub(crate) characters: Characters,
 
-    #[cfg(feature = "jomini")]
     pub(crate) script_values: ScriptValues,
 
     pub(crate) triggers: Triggers,
     pub(crate) effects: Effects,
 
-    #[cfg(feature = "ck3")]
     pub(crate) traits: Traits,
 
-    #[cfg(feature = "ck3")]
     pub(crate) title_history: TitleHistories,
 
-    #[cfg(feature = "ck3")]
     pub(crate) menatarmstypes: MenAtArmsTypes,
 
     pub(crate) gui: Gui,
-    #[cfg(any(feature = "ck3", feature = "vic3"))]
     pub(crate) data_bindings: DataBindings,
 
-    #[cfg(feature = "hoi4")]
-    pub(crate) gfx: Gfx,
     pub(crate) assets: Assets,
-    #[cfg(feature = "hoi4")]
-    pub(crate) music_hoi4: Hoi4Musics,
-    #[cfg(feature = "jomini")]
     pub(crate) music: Musics,
 
-    #[cfg(feature = "jomini")]
     pub(crate) coas: Coas,
 
-    #[cfg(feature = "vic3")]
-    pub(crate) history: History,
-
-    #[cfg(feature = "ck3")]
     pub(crate) wars: Wars,
 
-    pub(crate) variables: Variables,
-
-    #[cfg(feature = "jomini")]
     pub(crate) global_scopes: VariableScopes,
-    #[cfg(feature = "jomini")]
     pub(crate) global_list_scopes: VariableScopes,
-    #[cfg(feature = "jomini")]
     pub(crate) variable_scopes: VariableScopes,
-    #[cfg(feature = "jomini")]
     pub(crate) variable_list_scopes: VariableScopes,
 }
 
@@ -252,7 +172,6 @@ macro_rules! load_all_generic {
     };
 }
 
-#[cfg(feature = "ck3")]
 macro_rules! load_all_ck3 {
     ($s: ident, $t: ident) => {
         $s.spawn(|_| $t.fileset.handle(&mut $t.events, &$t.parser));
@@ -278,138 +197,6 @@ macro_rules! load_all_ck3 {
     };
 }
 
-#[cfg(feature = "vic3")]
-macro_rules! load_all_vic3 {
-    ($s: ident, $t: ident) => {
-        $s.spawn(|_| $t.fileset.handle(&mut $t.events, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.history, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.provinces_vic3, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.data_bindings, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.coas, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.scripted_lists, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.scripted_modifiers, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.script_values, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.music, &$t.parser));
-        $s.spawn(|_| {
-            Everything::load_json(
-                &$t.fileset,
-                &mut $t.database,
-                Item::TerrainMask,
-                TerrainMask::add_json,
-            );
-        });
-    };
-}
-
-#[cfg(feature = "imperator")]
-macro_rules! load_all_imperator {
-    ($s: ident, $t: ident) => {
-        $s.spawn(|_| $t.fileset.handle(&mut $t.events, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.decisions_imperator, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.provinces_imperator, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.coas, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.scripted_lists, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.scripted_modifiers, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.script_values, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.music, &$t.parser));
-    };
-}
-
-#[cfg(feature = "eu5")]
-macro_rules! load_all_eu5 {
-    ($s: ident, $t: ident) => {
-        $s.spawn(|_| $t.fileset.handle(&mut $t.events, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.coas, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.provinces_eu5, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.scripted_lists, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.scripted_modifiers, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.script_values, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.music, &$t.parser));
-    };
-}
-
-#[cfg(feature = "hoi4")]
-macro_rules! load_all_hoi4 {
-    ($s: ident, $t: ident) => {
-        $s.spawn(|_| $t.fileset.handle(&mut $t.events_hoi4, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.gfx, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.provinces_hoi4, &$t.parser));
-        $s.spawn(|_| $t.fileset.handle(&mut $t.music_hoi4, &$t.parser));
-    };
-}
-
-macro_rules! scan_all_generic {
-    ($s: ident) => {
-        $s.triggers.scan_variables(&mut $s.variables);
-        $s.effects.scan_variables(&mut $s.variables);
-        $s.on_actions.scan_variables(&mut $s.variables);
-    };
-}
-
-#[cfg(feature = "ck3")]
-macro_rules! scan_all_ck3 {
-    ($s: ident) => {
-        $s.events.scan_variables(&mut $s.variables);
-        $s.interaction_cats.scan_variables(&mut $s.variables);
-        $s.province_histories.scan_variables(&mut $s.variables);
-        $s.titles.scan_variables(&mut $s.variables);
-        $s.characters.scan_variables(&mut $s.variables);
-        $s.traits.scan_variables(&mut $s.variables);
-        $s.title_history.scan_variables(&mut $s.variables);
-        $s.menatarmstypes.scan_variables(&mut $s.variables);
-        $s.music.scan_variables(&mut $s.variables);
-        $s.scripted_lists.scan_variables(&mut $s.variables);
-        $s.coas.scan_variables(&mut $s.variables);
-        $s.scripted_modifiers.scan_variables(&mut $s.variables);
-        $s.script_values.scan_variables(&mut $s.variables);
-    };
-}
-
-#[cfg(feature = "vic3")]
-macro_rules! scan_all_vic3 {
-    ($s: ident) => {
-        $s.events.scan_variables(&mut $s.variables);
-        $s.history.scan_variables(&mut $s.variables);
-        $s.coas.scan_variables(&mut $s.variables);
-        $s.scripted_lists.scan_variables(&mut $s.variables);
-        $s.scripted_modifiers.scan_variables(&mut $s.variables);
-        $s.script_values.scan_variables(&mut $s.variables);
-        $s.music.scan_variables(&mut $s.variables);
-    };
-}
-
-#[cfg(feature = "imperator")]
-macro_rules! scan_all_imperator {
-    ($s: ident) => {
-        $s.events.scan_variables(&mut $s.variables);
-        $s.decisions_imperator.scan_variables(&mut $s.variables);
-        $s.coas.scan_variables(&mut $s.variables);
-        $s.scripted_lists.scan_variables(&mut $s.variables);
-        $s.scripted_modifiers.scan_variables(&mut $s.variables);
-        $s.script_values.scan_variables(&mut $s.variables);
-        $s.music.scan_variables(&mut $s.variables);
-    };
-}
-
-#[cfg(feature = "eu5")]
-macro_rules! scan_all_eu5 {
-    ($s: ident) => {
-        $s.events.scan_variables(&mut $s.variables);
-        $s.coas.scan_variables(&mut $s.variables);
-        $s.scripted_lists.scan_variables(&mut $s.variables);
-        $s.scripted_modifiers.scan_variables(&mut $s.variables);
-        $s.script_values.scan_variables(&mut $s.variables);
-        $s.music.scan_variables(&mut $s.variables);
-    };
-}
-#[cfg(feature = "hoi4")]
-macro_rules! scan_all_hoi4 {
-    ($s: ident) => {
-        $s.events_hoi4.scan_variables(&mut $s.variables);
-        $s.music_hoi4.scan_variables(&mut $s.variables);
-    };
-}
-
 impl Everything {
     /// Create a new `Everything` instance, ready for validating a mod.
     ///
@@ -430,18 +217,7 @@ impl Everything {
     ) -> Result<Self> {
         let mut fileset = Fileset::new(vanilla_dir, mod_root.to_path_buf(), replace_paths);
 
-        let config_file_name = match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => "ck3-tiger.conf",
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => "vic3-tiger.conf",
-            #[cfg(feature = "imperator")]
-            Game::Imperator => "imperator-tiger.conf",
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => "eu5-tiger.conf",
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => "hoi4-tiger.conf",
-        };
+        let config_file_name = "ck3-tiger.conf";
 
         let config_file = match config_filepath {
             Some(path) => path.to_path_buf(),
@@ -465,30 +241,20 @@ impl Everything {
         fileset.scan_all()?;
         fileset.finalize();
 
-        #[cfg(feature = "jomini")]
         let global_scopes = VariableScopes::new("global_var:");
-        #[cfg(feature = "jomini")]
         let global_list_scopes = VariableScopes::new("global list ");
-        #[cfg(feature = "jomini")]
         let variable_scopes = VariableScopes::new("var:");
-        #[cfg(feature = "jomini")]
         let variable_list_scopes = VariableScopes::new("variable list ");
 
-        #[cfg(feature = "ck3")]
-        if Game::is_ck3() {
-            variable_list_scopes
-                .config_override("lover_object_of_importance", Scopes::Character | Scopes::Flag);
-            variable_list_scopes
-                .config_override("lover_object_of_importance_2", Scopes::Character | Scopes::Flag);
-            variable_scopes.config_override("random_location", Scopes::Province | Scopes::Value);
-            variable_scopes
-                .config_override("task_contract_object", Scopes::Character | Scopes::Artifact);
-        }
+        variable_list_scopes
+            .config_override("lover_object_of_importance", Scopes::Character | Scopes::Flag);
+        variable_list_scopes
+            .config_override("lover_object_of_importance_2", Scopes::Character | Scopes::Flag);
+        variable_scopes.config_override("random_location", Scopes::Province | Scopes::Value);
+        variable_scopes
+            .config_override("task_contract_object", Scopes::Character | Scopes::Artifact);
 
-        #[cfg(feature = "jomini")]
-        if Game::is_jomini()
-            && let Some(block) = config.get_field_block("scope_override")
-        {
+        if let Some(block) = config.get_field_block("scope_override") {
             for (key, token) in block.iter_assignments() {
                 let mut scopes = Scopes::empty();
                 if token.lowercase_is("all") {
@@ -520,80 +286,37 @@ impl Everything {
             fileset,
             dds: DdsFiles::default(),
             config,
-            #[cfg(any(feature = "ck3", feature = "vic3"))]
             warned_defines: RwLock::new(TigerHashSet::default()),
             database: Db::default(),
             localization: Localization::default(),
-            #[cfg(feature = "jomini")]
             scripted_lists: ScriptedLists::default(),
             defines: Defines::default(),
-            #[cfg(feature = "jomini")]
             events: Events::default(),
-            #[cfg(feature = "hoi4")]
-            events_hoi4: Hoi4Events::default(),
-            #[cfg(feature = "imperator")]
-            decisions_imperator: Decisions::default(),
-            #[cfg(feature = "jomini")]
             scripted_modifiers: ScriptedModifiers::default(),
             on_actions: OnActions::default(),
-            #[cfg(feature = "ck3")]
             interaction_cats: CharacterInteractionCategories::default(),
-            #[cfg(feature = "ck3")]
             provinces_ck3: Ck3Provinces::default(),
-            #[cfg(feature = "vic3")]
-            provinces_vic3: Vic3Provinces::default(),
-            #[cfg(feature = "imperator")]
-            provinces_imperator: ImperatorProvinces::default(),
-            #[cfg(feature = "eu5")]
-            provinces_eu5: Eu5Provinces::default(),
-            #[cfg(feature = "hoi4")]
-            provinces_hoi4: Hoi4Provinces::default(),
-            #[cfg(feature = "ck3")]
             province_histories: ProvinceHistories::default(),
-            #[cfg(feature = "ck3")]
             province_properties: ProvinceProperties::default(),
-            #[cfg(feature = "ck3")]
             province_terrains: ProvinceTerrains::default(),
-            #[cfg(feature = "ck3")]
             gameconcepts: GameConcepts::default(),
-            #[cfg(feature = "ck3")]
             titles: Titles::default(),
-            #[cfg(feature = "ck3")]
             characters: Characters::default(),
-            #[cfg(feature = "jomini")]
             script_values: ScriptValues::default(),
             triggers: Triggers::default(),
             effects: Effects::default(),
-            #[cfg(feature = "ck3")]
             traits: Traits::default(),
-            #[cfg(feature = "ck3")]
             title_history: TitleHistories::default(),
-            #[cfg(feature = "ck3")]
             menatarmstypes: MenAtArmsTypes::default(),
             gui: Gui::default(),
-            #[cfg(any(feature = "ck3", feature = "vic3"))]
             data_bindings: DataBindings::default(),
-            #[cfg(feature = "hoi4")]
-            gfx: Gfx::default(),
             assets: Assets::default(),
-            #[cfg(feature = "hoi4")]
-            music_hoi4: Hoi4Musics::default(),
-            #[cfg(feature = "jomini")]
             music: Musics::default(),
-            #[cfg(feature = "jomini")]
             coas: Coas::default(),
-            #[cfg(feature = "vic3")]
-            history: History::default(),
-            #[cfg(feature = "ck3")]
             wars: Wars::default(),
-            variables: Variables::new(),
-            #[cfg(feature = "jomini")]
             global_scopes,
-            #[cfg(feature = "jomini")]
             global_list_scopes,
-            #[cfg(feature = "jomini")]
             variable_scopes,
-            #[cfg(feature = "jomini")]
             variable_list_scopes,
         })
     }
@@ -633,27 +356,15 @@ impl Everything {
         style
     }
 
+    /// Report the mods that `modfile` says it depends on but that were not loaded with it.
+    pub fn check_dependencies(&self, modfile: &ModFile) {
+        modfile.check_dependencies(self.fileset.loaded_mod_names());
+    }
+
     pub fn load_output_settings(&self, default_colors: bool) {
         set_output_style(self.load_output_styles(default_colors));
     }
 
-    #[cfg(feature = "vic3")]
-    fn load_json<F>(fileset: &Fileset, db: &mut Db, itype: Item, add_json: F)
-    where
-        F: Fn(&mut Db, Block) + Sync + Send,
-    {
-        for block in fileset.filter_map_under(&PathBuf::from(itype.path()), |entry| {
-            if entry.filename().to_string_lossy().ends_with(".json") {
-                parse_json_file(entry)
-            } else {
-                None
-            }
-        }) {
-            add_json(db, block);
-        }
-    }
-
-    #[cfg(feature = "ck3")]
     fn load_reader_export(&mut self) {
         let path = PathBuf::from("reader_export");
         for entry in self.fileset.get_files_under(&path) {
@@ -693,14 +404,11 @@ impl Everything {
 
     fn load_all_normal_pdx_files(&mut self) {
         for loader in inventory::iter::<ItemLoader> {
-            if loader.for_game(Game::game()) {
-                self.load_pdx_files(loader);
-            }
+            self.load_pdx_files(loader);
         }
     }
 
     pub fn load_all(&mut self) {
-        #[cfg(feature = "ck3")]
         self.load_reader_export();
         self.load_all_normal_pdx_files();
 
@@ -709,55 +417,10 @@ impl Everything {
 
             scope(|s| {
                 load_all_generic!(s, self);
-                match Game::game() {
-                    #[cfg(feature = "ck3")]
-                    Game::Ck3 => {
-                        load_all_ck3!(s, self);
-                    }
-                    #[cfg(feature = "vic3")]
-                    Game::Vic3 => {
-                        load_all_vic3!(s, self);
-                    }
-                    #[cfg(feature = "imperator")]
-                    Game::Imperator => {
-                        load_all_imperator!(s, self);
-                    }
-                    #[cfg(feature = "eu5")]
-                    Game::Eu5 => {
-                        load_all_eu5!(s, self);
-                    }
-                    #[cfg(feature = "hoi4")]
-                    Game::Hoi4 => {
-                        load_all_hoi4!(s, self);
-                    }
-                }
+                load_all_ck3!(s, self);
             });
 
             self.database.add_subitems();
-            scan_all_generic!(self);
-            match Game::game() {
-                #[cfg(feature = "ck3")]
-                Game::Ck3 => {
-                    scan_all_ck3!(self);
-                }
-                #[cfg(feature = "vic3")]
-                Game::Vic3 => {
-                    scan_all_vic3!(self);
-                }
-                #[cfg(feature = "imperator")]
-                Game::Imperator => {
-                    scan_all_imperator!(self);
-                }
-                #[cfg(feature = "eu5")]
-                Game::Eu5 => {
-                    scan_all_eu5!(self);
-                }
-                #[cfg(feature = "hoi4")]
-                Game::Hoi4 => {
-                    scan_all_hoi4!(self);
-                }
-            }
-            self.database.scan_variables(&mut self.variables);
         });
     }
 
@@ -772,7 +435,6 @@ impl Everything {
         s.spawn(|_| self.dds.validate());
     }
 
-    #[cfg(feature = "ck3")]
     fn validate_all_ck3<'a>(&'a self, s: &Scope<'a>) {
         s.spawn(|_| self.events.validate(self));
         s.spawn(|_| self.interaction_cats.validate(self));
@@ -796,93 +458,22 @@ impl Everything {
         s.spawn(|_| Climate::validate_all(&self.database, self));
     }
 
-    #[cfg(feature = "vic3")]
-    fn validate_all_vic3<'a>(&'a self, s: &Scope<'a>) {
-        if std::env::var("TIGER_CHECK_MODIFS").is_ok() {
-            for line in std::io::stdin().lines().map_while(Result::ok) {
-                if !line.starts_with(' ')
-                    && let Some(name) = line.strip_suffix(":")
-                {
-                    eprintln!("checking modif {name}");
-                    let loc: Loc = FileEntry::new(
-                        "stdin".into(),
-                        FileStage::NoStage,
-                        FileKind::Vanilla,
-                        "stdin".into(),
-                    )
-                    .into();
-                    let name_token = Token::new(name, loc);
-                    crate::vic3::tables::modifs::lookup_engine_modif(
-                        &name_token,
-                        &Lowercase::new(name),
-                        self,
-                        Some(Severity::Error),
-                    );
-                }
-            }
-        }
-        s.spawn(|_| self.events.validate(self));
-        s.spawn(|_| self.history.validate(self));
-        s.spawn(|_| self.provinces_vic3.validate(self));
-        s.spawn(|_| self.data_bindings.validate(self));
-        s.spawn(|_| self.coas.validate(self));
-        s.spawn(|_| self.scripted_lists.validate(self));
-        s.spawn(|_| self.scripted_modifiers.validate(self));
-        s.spawn(|_| self.script_values.validate(self));
-        s.spawn(|_| self.music.validate(self));
-        s.spawn(|_| StrategicRegion::crosscheck(self));
-        s.spawn(|_| BuyPackage::crosscheck(self));
-    }
-
-    #[cfg(feature = "imperator")]
-    fn validate_all_imperator<'a>(&'a self, s: &Scope<'a>) {
-        s.spawn(|_| self.events.validate(self));
-        s.spawn(|_| self.decisions_imperator.validate(self));
-        s.spawn(|_| self.provinces_imperator.validate(self));
-        s.spawn(|_| self.coas.validate(self));
-        s.spawn(|_| self.scripted_lists.validate(self));
-        s.spawn(|_| self.scripted_modifiers.validate(self));
-        s.spawn(|_| self.script_values.validate(self));
-        s.spawn(|_| self.music.validate(self));
-    }
-
-    #[cfg(feature = "eu5")]
-    fn validate_all_eu5<'a>(&'a self, s: &Scope<'a>) {
-        s.spawn(|_| self.events.validate(self));
-        s.spawn(|_| self.coas.validate(self));
-        s.spawn(|_| self.provinces_eu5.validate(self));
-        s.spawn(|_| self.scripted_lists.validate(self));
-        s.spawn(|_| self.scripted_modifiers.validate(self));
-        s.spawn(|_| self.script_values.validate(self));
-        s.spawn(|_| self.music.validate(self));
-    }
-
-    #[cfg(feature = "hoi4")]
-    fn validate_all_hoi4<'a>(&'a self, s: &Scope<'a>) {
-        s.spawn(|_| self.events_hoi4.validate(self));
-        s.spawn(|_| self.provinces_hoi4.validate(self));
-        s.spawn(|_| self.gfx.validate(self));
-        s.spawn(|_| self.music_hoi4.validate(self));
-    }
-
     pub fn validate_all(&self) {
         scope(|s| {
             self.validate_all_generic(s);
-            match Game::game() {
-                #[cfg(feature = "ck3")]
-                Game::Ck3 => self.validate_all_ck3(s),
-                #[cfg(feature = "vic3")]
-                Game::Vic3 => self.validate_all_vic3(s),
-                #[cfg(feature = "imperator")]
-                Game::Imperator => self.validate_all_imperator(s),
-                #[cfg(feature = "eu5")]
-                Game::Eu5 => self.validate_all_eu5(s),
-                #[cfg(feature = "hoi4")]
-                Game::Hoi4 => self.validate_all_hoi4(s),
-            }
+            self.validate_all_ck3(s);
             s.spawn(|_| self.database.validate(self));
         });
+        self.events.validate_deferred(self);
+        // Themes are called by events, and backgrounds and transitions by both.
+        self.database.validate_deferred(Item::EventTheme, self);
+        self.database.validate_deferred(Item::EventBackground, self);
+        self.database.validate_deferred(Item::EventTransition, self);
         self.localization.validate_pass2(self);
+        self.global_scopes.finalize();
+        self.global_list_scopes.finalize();
+        self.variable_scopes.finalize();
+        self.variable_list_scopes.finalize();
     }
 
     pub fn check_rivers(&mut self) {
@@ -891,7 +482,6 @@ impl Everything {
         rivers.validate(self);
     }
 
-    #[cfg(feature = "ck3")]
     pub fn check_pod(&mut self) {
         self.province_histories.check_pod_faiths(self, &self.titles);
         self.characters.check_pod_flags(self);
@@ -908,7 +498,6 @@ impl Everything {
         self.database.has_property(itype, key, property, self)
     }
 
-    #[cfg(feature = "ck3")] // vic3 happens not to use
     pub(crate) fn item_lc_has_property(
         &self,
         itype: Item,
@@ -918,7 +507,6 @@ impl Everything {
         self.database.lc_has_property(itype, key, property, self)
     }
 
-    #[cfg(feature = "ck3")]
     fn item_exists_ck3(&self, itype: Item, key: &str) -> bool {
         match itype {
             Item::ActivityState => ACTIVITY_STATES.contains(&key),
@@ -958,91 +546,6 @@ impl Everything {
         }
     }
 
-    #[cfg(feature = "vic3")]
-    fn item_exists_vic3(&self, itype: Item, key: &str) -> bool {
-        match itype {
-            Item::Approval => APPROVALS.contains(&key),
-            Item::Attitude => ATTITUDES.contains(&&*key.to_lowercase()),
-            Item::CharacterArchetype => CHARACTER_ARCHETYPES.contains(&key),
-            Item::Coa => self.coas.exists(key),
-            Item::CoaTemplate => self.coas.template_exists(key),
-            Item::CountryTier => COUNTRY_TIERS.contains(&key),
-            Item::DlcFeature => DLC_FEATURES_VIC3.contains(&key),
-            Item::Event => self.events.exists(key),
-            Item::EventCategory => EVENT_CATEGORIES.contains(&key),
-            Item::EventNamespace => self.events.namespace_exists(key),
-            Item::GeneAttribute => self.assets.attribute_exists(key),
-            Item::InfamyThreshold => INFAMY_THRESHOLDS.contains(&key),
-            Item::Level => LEVELS.contains(&key),
-            Item::Music => self.music.exists(key),
-            Item::RelationsThreshold => RELATIONS.contains(&key),
-            Item::ScriptedList => self.scripted_lists.exists(key),
-            Item::ScriptedModifier => self.scripted_modifiers.exists(key),
-            Item::ScriptValue => self.script_values.exists(key),
-            Item::SecretGoal => SECRET_GOALS.contains(&key),
-            Item::Sound => self.valid_sound(key),
-            Item::Strata => STRATA.contains(&key),
-            Item::TerrainKey => TERRAIN_KEYS.contains(&key),
-            Item::TransferOfPower => TRANSFER_OF_POWER.contains(&key),
-            _ => self.database.exists(itype, key),
-        }
-    }
-
-    #[cfg(feature = "imperator")]
-    fn item_exists_imperator(&self, itype: Item, key: &str) -> bool {
-        match itype {
-            Item::Coa => self.coas.exists(key),
-            Item::CoaTemplate => self.coas.template_exists(key),
-            Item::DlcName => DLC_NAME_IMPERATOR.contains(&key),
-            Item::Decision => self.decisions_imperator.exists(key),
-            Item::Event => self.events.exists(key),
-            Item::EventNamespace => self.events.namespace_exists(key),
-            Item::GeneAttribute => self.assets.attribute_exists(key),
-            Item::Music => self.music.exists(key),
-            Item::Province => self.provinces_imperator.exists(key),
-            Item::ScriptedList => self.scripted_lists.exists(key),
-            Item::ScriptedModifier => self.scripted_modifiers.exists(key),
-            Item::ScriptValue => self.script_values.exists(key),
-            Item::Sound => self.valid_sound(key),
-            _ => self.database.exists(itype, key),
-        }
-    }
-
-    #[cfg(feature = "eu5")]
-    fn item_exists_eu5(&self, itype: Item, key: &str) -> bool {
-        match itype {
-            Item::Coa => self.coas.exists(key),
-            Item::CoaTemplate => self.coas.template_exists(key),
-            Item::DlcFeature => DLC_FEATURES_EU5.contains(&key),
-            Item::Event => self.events.exists(key),
-            Item::EventNamespace => self.events.namespace_exists(key),
-            Item::GeneAttribute => self.assets.attribute_exists(key),
-            Item::Music => self.music.exists(key),
-            Item::ScriptedList => self.scripted_lists.exists(key),
-            Item::ScriptedModifier => self.scripted_modifiers.exists(key),
-            Item::ScriptValue => self.script_values.exists(key),
-            Item::Sound => self.valid_sound(key),
-            Item::Currency => CURRENCIES.contains(&key),
-            Item::CharacterTraitCategory => CHARACTER_TRAIT_CATEGORY.contains(&key),
-            _ => self.database.exists(itype, key),
-        }
-    }
-
-    #[cfg(feature = "hoi4")]
-    fn item_exists_hoi4(&self, itype: Item, key: &str) -> bool {
-        match itype {
-            Item::AiStrategyType => AI_STRATEGY_TYPES.contains(&key),
-            Item::Event => self.events_hoi4.exists(key),
-            Item::EventNamespace => self.events_hoi4.namespace_exists(key),
-            Item::Music => self.music_hoi4.exists(key),
-            Item::MusicAsset => self.assets.music_exists(key),
-            Item::Pdxmesh => self.gfx.mesh_exists(key),
-            Item::Province => self.provinces_hoi4.exists(key),
-            Item::Sprite => self.gfx.sprite_exists(key),
-            _ => self.database.exists(itype, key),
-        }
-    }
-
     pub(crate) fn item_exists(&self, itype: Item, key: &str) -> bool {
         match itype {
             Item::Asset => self.assets.asset_exists(key),
@@ -1056,7 +559,6 @@ impl Everything {
             Item::GuiType => self.gui.type_exists(&Lowercase::new(key)),
             Item::Localization => self.localization.exists(key),
             Item::OnAction => self.on_actions.exists(key),
-            #[cfg(feature = "jomini")]
             Item::Pdxmesh => self.assets.mesh_exists(key),
             Item::ScriptedEffect => self.effects.exists(key),
             Item::ScriptedTrigger => self.triggers.exists(key),
@@ -1065,25 +567,13 @@ impl Everything {
             Item::TextureFile => self.assets.texture_exists(key),
             Item::WidgetName => self.gui.name_exists(key),
             Item::Directory | Item::Shortcut => true, // TODO
-            _ => match Game::game() {
-                #[cfg(feature = "ck3")]
-                Game::Ck3 => self.item_exists_ck3(itype, key),
-                #[cfg(feature = "vic3")]
-                Game::Vic3 => self.item_exists_vic3(itype, key),
-                #[cfg(feature = "imperator")]
-                Game::Imperator => self.item_exists_imperator(itype, key),
-                #[cfg(feature = "eu5")]
-                Game::Eu5 => self.item_exists_eu5(itype, key),
-                #[cfg(feature = "hoi4")]
-                Game::Hoi4 => self.item_exists_hoi4(itype, key),
-            },
+            _ => self.item_exists_ck3(itype, key),
         }
     }
 
     /// Return true iff the item `key` is found with a case insensitive match.
     /// This function is **incomplete**. It only contains the item types for which case insensitive
     /// matches are needed; this is currently the ones used in `src/ck3/tables/modif.rs`.
-    #[cfg(feature = "ck3")]
     fn item_exists_lc_ck3(&self, itype: Item, key: &Lowercase) -> bool {
         match itype {
             Item::MenAtArmsBase => self.menatarmstypes.base_exists_lc(key),
@@ -1095,64 +585,11 @@ impl Everything {
 
     /// Return true iff the item `key` is found with a case insensitive match.
     /// This function is **incomplete**. It only contains the item types for which case insensitive
-    /// matches are needed; this is currently the ones used in `src/vic3/tables/modif.rs`.
-    #[cfg(feature = "vic3")]
-    fn item_exists_lc_vic3(&self, itype: Item, key: &Lowercase) -> bool {
-        match itype {
-            Item::TerrainKey => TERRAIN_KEYS.contains(&key.as_str()),
-            _ => self.database.exists_lc(itype, key),
-        }
-    }
-
-    /// Return true iff the item `key` is found with a case insensitive match.
-    /// This function is **incomplete**. It only contains the item types for which case insensitive
-    /// matches are needed; this is currently the ones used in `src/imperator/tables/modif.rs`.
-    #[cfg(feature = "imperator")]
-    fn item_exists_lc_imperator(&self, itype: Item, key: &Lowercase) -> bool {
-        #[allow(clippy::match_single_binding)]
-        match itype {
-            _ => self.database.exists_lc(itype, key),
-        }
-    }
-
-    /// Return true iff the item `key` is found with a case insensitive match.
-    /// This function is **incomplete**. It only contains the item types for which case insensitive
-    /// matches are needed.
-    #[cfg(feature = "eu5")]
-    fn item_exists_lc_eu5(&self, itype: Item, key: &Lowercase) -> bool {
-        self.database.exists_lc(itype, key)
-    }
-
-    /// Return true iff the item `key` is found with a case insensitive match.
-    /// This function is **incomplete**. It only contains the item types for which case insensitive
-    /// matches are needed.
-    #[cfg(feature = "hoi4")]
-    fn item_exists_lc_hoi4(&self, itype: Item, key: &Lowercase) -> bool {
-        #[allow(clippy::match_single_binding)]
-        match itype {
-            Item::EventNamespace => self.events_hoi4.namespace_exists_lc(key),
-            _ => self.database.exists_lc(itype, key),
-        }
-    }
-
-    /// Return true iff the item `key` is found with a case insensitive match.
-    /// This function is **incomplete**. It only contains the item types for which case insensitive
     /// matches are needed; this is currently the ones used in modif lookups.
     pub(crate) fn item_exists_lc(&self, itype: Item, key: &Lowercase) -> bool {
         #[allow(clippy::match_single_binding)]
         match itype {
-            _ => match Game::game() {
-                #[cfg(feature = "ck3")]
-                Game::Ck3 => self.item_exists_lc_ck3(itype, key),
-                #[cfg(feature = "vic3")]
-                Game::Vic3 => self.item_exists_lc_vic3(itype, key),
-                #[cfg(feature = "imperator")]
-                Game::Imperator => self.item_exists_lc_imperator(itype, key),
-                #[cfg(feature = "eu5")]
-                Game::Eu5 => self.item_exists_lc_eu5(itype, key),
-                #[cfg(feature = "hoi4")]
-                Game::Hoi4 => self.item_exists_lc_hoi4(itype, key),
-            },
+            _ => self.item_exists_lc_ck3(itype, key),
         }
     }
 
@@ -1185,37 +622,8 @@ impl Everything {
             Item::Entry => self.fileset.verify_entry_exists(key, token, max_sev),
             Item::File => self.fileset.verify_exists_implied(key, token, max_sev),
             Item::Localization => self.localization.verify_exists_implied(key, token, max_sev),
-            Item::Music => match Game::game() {
-                #[cfg(feature = "ck3")]
-                Game::Ck3 => self.music.verify_exists_implied(key, token, max_sev),
-                #[cfg(feature = "vic3")]
-                Game::Vic3 => self.music.verify_exists_implied(key, token, max_sev),
-                #[cfg(feature = "imperator")]
-                Game::Imperator => self.music.verify_exists_implied(key, token, max_sev),
-                #[cfg(feature = "eu5")]
-                Game::Eu5 => self.music.verify_exists_implied(key, token, max_sev),
-                #[cfg(feature = "hoi4")]
-                Game::Hoi4 => self.music_hoi4.verify_exists_implied(key, token, max_sev),
-            },
-            Item::Province => match Game::game() {
-                #[cfg(feature = "ck3")]
-                Game::Ck3 => self.provinces_ck3.verify_exists_implied(key, token, max_sev),
-                #[cfg(feature = "vic3")]
-                Game::Vic3 => self.provinces_vic3.verify_exists_implied(key, token, max_sev),
-                #[cfg(feature = "imperator")]
-                Game::Imperator => {
-                    self.provinces_imperator.verify_exists_implied(key, token, max_sev);
-                }
-                #[cfg(feature = "eu5")]
-                Game::Eu5 => {
-                    self.provinces_eu5.verify_exists_implied(key, token, max_sev);
-                }
-                #[cfg(feature = "hoi4")]
-                #[cfg(feature = "hoi4")]
-                Game::Hoi4 => {
-                    self.provinces_hoi4.verify_exists_implied(key, token, max_sev);
-                }
-            },
+            Item::Music => self.music.verify_exists_implied(key, token, max_sev),
+            Item::Province => self.provinces_ck3.verify_exists_implied(key, token, max_sev),
             Item::TextureFile => {
                 if let Some(entry) = self.assets.get_texture(key) {
                     // TODO: avoid allocating a string here
@@ -1274,7 +682,6 @@ impl Everything {
         self.verify_exists_implied_max_sev(itype, key, token, Severity::Error);
     }
 
-    #[cfg(feature = "ck3")]
     pub(crate) fn verify_icon(&self, define: &str, token: &Token, suffix: &str) {
         if let Some(icon_path) = self.get_defined_string_warn(token, define) {
             let pathname = format!("{icon_path}/{token}{suffix}");
@@ -1283,7 +690,6 @@ impl Everything {
         }
     }
 
-    #[cfg(feature = "ck3")]
     pub(crate) fn mark_used_icon(&self, define: &str, token: &Token, suffix: &str) {
         if let Some(icon_path) = self.get_defined_string_warn(token, define) {
             let pathname = format!("{icon_path}/{token}{suffix}");
@@ -1327,45 +733,34 @@ impl Everything {
     }
 
     pub(crate) fn get_trigger(&self, key: &Token) -> Option<&Trigger> {
-        #[cfg(any(feature = "ck3", feature = "eu5"))]
-        if Game::is_ck3() || Game::is_eu5() {
-            if let Some(trigger) = self.triggers.get(key.as_str()) {
-                return Some(trigger);
-            }
-            if let Some(trigger) = self.events.get_trigger(key) {
-                return Some(trigger);
-            }
-            return None;
+        if let Some(trigger) = self.triggers.get(key.as_str()) {
+            return Some(trigger);
         }
-        self.triggers.get(key.as_str())
+        if let Some(trigger) = self.events.get_trigger(key) {
+            return Some(trigger);
+        }
+        None
     }
 
     pub(crate) fn get_effect(&self, key: &Token) -> Option<&Effect> {
-        #[cfg(any(feature = "ck3", feature = "eu5"))]
-        if Game::is_ck3() || Game::is_eu5() {
-            if let Some(effect) = self.effects.get(key.as_str()) {
-                return Some(effect);
-            }
-            if let Some(effect) = self.events.get_effect(key) {
-                return Some(effect);
-            }
-            return None;
+        if let Some(effect) = self.effects.get(key.as_str()) {
+            return Some(effect);
         }
-        self.effects.get(key.as_str())
+        if let Some(effect) = self.events.get_effect(key) {
+            return Some(effect);
+        }
+        None
     }
 
-    #[cfg(feature = "ck3")]
     pub(crate) fn get_defined_string(&self, key: &str) -> Option<&Token> {
         self.defines.get_bv(key).and_then(BV::get_value)
     }
 
-    #[cfg(any(feature = "ck3", feature = "vic3"))]
     pub(crate) fn get_defined_array(&self, key: &str) -> Option<&Block> {
         self.defines.get_bv(key).and_then(BV::get_block)
     }
 
     #[allow(clippy::missing_panics_doc)] // only panics on poisoned mutex
-    #[cfg(feature = "ck3")]
     pub(crate) fn get_defined_string_warn(&self, token: &Token, key: &str) -> Option<&Token> {
         let result = self.get_defined_string(key);
         if result.is_none() {
@@ -1380,7 +775,6 @@ impl Everything {
     }
 
     #[allow(clippy::missing_panics_doc)] // only panics on poisoned mutex
-    #[cfg(any(feature = "ck3", feature = "vic3"))]
     pub(crate) fn get_defined_array_warn(&self, token: &Token, key: &str) -> Option<&Block> {
         let result = self.get_defined_array(key);
         if result.is_none() {
@@ -1394,7 +788,6 @@ impl Everything {
         result
     }
 
-    #[cfg(feature = "ck3")]
     pub fn iter_keys_ck3<'a>(&'a self, itype: Item) -> Box<dyn Iterator<Item = &'a Token> + 'a> {
         match itype {
             Item::Coa => Box::new(self.coas.iter_keys()),
@@ -1422,70 +815,6 @@ impl Everything {
         }
     }
 
-    #[cfg(feature = "vic3")]
-    fn iter_keys_vic3<'a>(&'a self, itype: Item) -> Box<dyn Iterator<Item = &'a Token> + 'a> {
-        match itype {
-            Item::Coa => Box::new(self.coas.iter_keys()),
-            Item::CoaTemplate => Box::new(self.coas.iter_template_keys()),
-            Item::Event => Box::new(self.events.iter_keys()),
-            Item::EventNamespace => Box::new(self.events.iter_namespace_keys()),
-            Item::Music => Box::new(self.music.iter_keys()),
-            Item::GeneAttribute => Box::new(self.assets.iter_attribute_keys()),
-            Item::ScriptedList => Box::new(self.scripted_lists.iter_keys()),
-            Item::ScriptedModifier => Box::new(self.scripted_modifiers.iter_keys()),
-            Item::ScriptValue => Box::new(self.script_values.iter_keys()),
-            _ => Box::new(self.database.iter_keys(itype)),
-        }
-    }
-
-    #[cfg(feature = "imperator")]
-    fn iter_keys_imperator<'a>(&'a self, itype: Item) -> Box<dyn Iterator<Item = &'a Token> + 'a> {
-        match itype {
-            Item::Coa => Box::new(self.coas.iter_keys()),
-            Item::CoaTemplate => Box::new(self.coas.iter_template_keys()),
-            Item::Decision => Box::new(self.decisions_imperator.iter_keys()),
-            Item::Event => Box::new(self.events.iter_keys()),
-            Item::EventNamespace => Box::new(self.events.iter_namespace_keys()),
-            Item::GeneAttribute => Box::new(self.assets.iter_attribute_keys()),
-            Item::Music => Box::new(self.music.iter_keys()),
-            Item::Province => Box::new(self.provinces_imperator.iter_keys()),
-            Item::ScriptedList => Box::new(self.scripted_lists.iter_keys()),
-            Item::ScriptedModifier => Box::new(self.scripted_modifiers.iter_keys()),
-            Item::ScriptValue => Box::new(self.script_values.iter_keys()),
-            _ => Box::new(self.database.iter_keys(itype)),
-        }
-    }
-
-    #[cfg(feature = "eu5")]
-    fn iter_keys_eu5<'a>(&'a self, itype: Item) -> Box<dyn Iterator<Item = &'a Token> + 'a> {
-        match itype {
-            Item::Coa => Box::new(self.coas.iter_keys()),
-            Item::CoaTemplate => Box::new(self.coas.iter_template_keys()),
-            Item::Event => Box::new(self.events.iter_keys()),
-            Item::EventNamespace => Box::new(self.events.iter_namespace_keys()),
-            Item::Music => Box::new(self.music.iter_keys()),
-            Item::GeneAttribute => Box::new(self.assets.iter_attribute_keys()),
-            Item::ScriptedList => Box::new(self.scripted_lists.iter_keys()),
-            Item::ScriptedModifier => Box::new(self.scripted_modifiers.iter_keys()),
-            Item::ScriptValue => Box::new(self.script_values.iter_keys()),
-            _ => Box::new(self.database.iter_keys(itype)),
-        }
-    }
-
-    #[cfg(feature = "hoi4")]
-    fn iter_keys_hoi4<'a>(&'a self, itype: Item) -> Box<dyn Iterator<Item = &'a Token> + 'a> {
-        match itype {
-            Item::Event => Box::new(self.events_hoi4.iter_keys()),
-            Item::EventNamespace => Box::new(self.events_hoi4.iter_namespace_keys()),
-            Item::Music => Box::new(self.music_hoi4.iter_keys()),
-            Item::MusicAsset => Box::new(self.assets.iter_music_keys()),
-            Item::Pdxmesh => Box::new(self.gfx.iter_mesh_keys()),
-            Item::Province => Box::new(self.provinces_hoi4.iter_keys()),
-            Item::Sprite => Box::new(self.gfx.iter_sprite_keys()),
-            _ => Box::new(self.database.iter_keys(itype)),
-        }
-    }
-
     pub fn iter_keys<'a>(&'a self, itype: Item) -> Box<dyn Iterator<Item = &'a Token> + 'a> {
         match itype {
             Item::Asset => Box::new(self.assets.iter_asset_keys()),
@@ -1498,7 +827,6 @@ impl Everything {
             Item::GuiType => Box::new(self.gui.iter_type_keys()),
             Item::Localization => Box::new(self.localization.iter_keys()),
             Item::OnAction => Box::new(self.on_actions.iter_keys()),
-            #[cfg(feature = "jomini")]
             Item::Pdxmesh => Box::new(self.assets.iter_mesh_keys()),
             Item::ScriptedEffect => Box::new(self.effects.iter_keys()),
             Item::ScriptedTrigger => Box::new(self.triggers.iter_keys()),
@@ -1506,72 +834,32 @@ impl Everything {
             Item::TextIcon => Box::new(self.gui.iter_texticon_keys()),
             Item::TextureFile => Box::new(self.assets.iter_texture_keys()),
             Item::WidgetName => Box::new(self.gui.iter_names()),
-            _ => match Game::game() {
-                #[cfg(feature = "ck3")]
-                Game::Ck3 => self.iter_keys_ck3(itype),
-                #[cfg(feature = "vic3")]
-                Game::Vic3 => self.iter_keys_vic3(itype),
-                #[cfg(feature = "imperator")]
-                Game::Imperator => self.iter_keys_imperator(itype),
-                #[cfg(feature = "eu5")]
-                Game::Eu5 => self.iter_keys_eu5(itype),
-                #[cfg(feature = "hoi4")]
-                Game::Hoi4 => self.iter_keys_hoi4(itype),
-            },
+            _ => self.iter_keys_ck3(itype),
         }
     }
 
-    #[cfg(feature = "jomini")]
     fn valid_sound(&self, name: &str) -> bool {
         // TODO: verify that file:/ values work
         if let Some(filename) = name.strip_prefix("file:/") {
             self.fileset.exists(filename)
         } else {
-            let sounds_set = match Game::game() {
-                #[cfg(feature = "ck3")]
-                Game::Ck3 => &crate::ck3::tables::sounds::SOUNDS_SET,
-                #[cfg(feature = "vic3")]
-                Game::Vic3 => &crate::vic3::tables::sounds::SOUNDS_SET,
-                #[cfg(feature = "imperator")]
-                Game::Imperator => &crate::imperator::tables::sounds::SOUNDS_SET,
-                #[cfg(feature = "eu5")]
-                Game::Eu5 => &crate::eu5::tables::sounds::SOUNDS_SET,
-                #[cfg(feature = "hoi4")]
-                Game::Hoi4 => unimplemented!(),
-            };
+            let sounds_set = &crate::ck3::tables::sounds::SOUNDS_SET;
             sounds_set.contains(&Lowercase::new(name))
         }
     }
 
     /// Return true iff a script value of the given name is defined.
     #[allow(clippy::unused_self)]
-    #[allow(unused_variables)] // hoi4 does not use `name`
     pub(crate) fn script_value_exists(&self, name: &str) -> bool {
-        if Game::is_jomini() {
-            #[cfg(feature = "jomini")]
-            return self.script_values.exists(name);
-        }
-        false
+        self.script_values.exists(name)
     }
 
     pub(crate) fn event_check_scope(&self, id: &Token, sc: &mut ScopeContext) {
-        if Game::is_hoi4() {
-            #[cfg(feature = "hoi4")]
-            self.events_hoi4.check_scope(id, sc, self);
-        } else {
-            #[cfg(feature = "jomini")]
-            self.events.check_scope(id, sc, self);
-        }
+        self.events.check_scope(id, sc, self);
     }
 
     pub(crate) fn event_validate_call(&self, id: &Token, sc: &mut ScopeContext) {
-        if Game::is_hoi4() {
-            #[cfg(feature = "hoi4")]
-            self.events_hoi4.validate_call(id, self, sc);
-        } else {
-            #[cfg(feature = "jomini")]
-            self.events.validate_call(id, self, sc);
-        }
+        self.events.validate_call(id, self, sc);
     }
 }
 
@@ -1589,7 +877,6 @@ mod benchmark {
     use crate::benches;
     use divan::{self, Bencher};
 
-    #[cfg(feature = "ck3")]
     #[divan::bench(args = benches::ck3::bench_mods())]
     fn load_provinces_ck3(bencher: Bencher, (vanilla_dir, modpath): (&str, &PathBuf)) {
         bencher
@@ -1599,19 +886,6 @@ mod benchmark {
             })
             .bench_local_refs(|everything| {
                 everything.fileset.handle(&mut everything.provinces_ck3, &everything.parser);
-            });
-    }
-
-    #[cfg(feature = "vic3")]
-    #[divan::bench(args = benches::vic3::bench_mods())]
-    fn load_provinces_vic3(bencher: Bencher, (vanilla_dir, modpath): (&str, &PathBuf)) {
-        bencher
-            .with_inputs(|| {
-                Everything::new(None, Some(Path::new(vanilla_dir)), None, None, modpath, vec![])
-                    .unwrap()
-            })
-            .bench_local_refs(|everything| {
-                everything.fileset.handle(&mut everything.provinces_vic3, &everything.parser);
             });
     }
 

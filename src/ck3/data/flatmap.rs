@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::scopes::Scopes;
 use crate::token::Token;
@@ -12,7 +11,7 @@ use crate::validator::Validator;
 pub struct FlatMapStyle {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::FlatMapStyle, FlatMapStyle::add)
+    ItemLoader::Normal(Item::FlatMapStyle, FlatMapStyle::add)
 }
 
 impl FlatMapStyle {

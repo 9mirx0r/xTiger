@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader, LoadAsFile, Recursive};
 use crate::pdxfile::PdxEncoding;
 use crate::report::{ErrorKey, Severity, untidy, warn};
@@ -12,7 +11,7 @@ use crate::validator::Validator;
 pub struct Font {}
 
 inventory::submit! {
-    ItemLoader::Full(GameFlags::jomini(), Item::Font, PdxEncoding::Utf8OptionalBom, ".font", LoadAsFile::No, Recursive::Yes, Font::add)
+    ItemLoader::Full(Item::Font, PdxEncoding::Utf8OptionalBom, ".font", LoadAsFile::No, Recursive::Yes, Font::add)
 }
 
 impl Font {
@@ -47,14 +46,7 @@ impl DbKind for Font {
             let mut vd = Validator::new(block, data);
             vd.field_validated_value("style", |_, mut vd| {
                 for mut vd in vd.split('|') {
-                    vd.choice(&[
-                        "regular",
-                        #[cfg(feature = "eu5")]
-                        "semibold",
-                        "bold",
-                        "extrabold",
-                        "italic",
-                    ]);
+                    vd.choice(&["regular", "bold", "extrabold", "italic"]);
                 }
             });
             vd.field_item("fontfiles", Item::Fontfiles);

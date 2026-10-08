@@ -2,7 +2,6 @@ use crate::block::{BV, Block};
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::scopes::Scopes;
 use crate::token::Token;
@@ -13,7 +12,7 @@ use crate::validator::Validator;
 pub struct ScriptedAnimation {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ScriptedAnimation, ScriptedAnimation::add)
+    ItemLoader::Normal(Item::ScriptedAnimation, ScriptedAnimation::add)
 }
 
 impl ScriptedAnimation {

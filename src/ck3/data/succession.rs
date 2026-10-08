@@ -2,7 +2,6 @@ use crate::block::Block;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::scopes::Scopes;
 use crate::token::Token;
@@ -12,7 +11,7 @@ use crate::validator::Validator;
 pub struct SuccessionAppointment {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::SuccessionAppointment, SuccessionAppointment::add)
+    ItemLoader::Normal(Item::SuccessionAppointment, SuccessionAppointment::add)
 }
 
 impl SuccessionAppointment {
@@ -34,6 +33,11 @@ impl DbKind for SuccessionAppointment {
 
         vd.field_bool("allow_children");
         vd.field_bool("allow_same_tier_candidates");
+        vd.field_choice("allowed_candidate_tier", &["lower", "lower_or_equal", "any"]);
+        vd.field_bool("use_investment_cap");
+        vd.field_bool("keep_top_tier_titles_together");
+        vd.field_choice("allow_out_of_realm_investment", &["none", "all", "landed", "landless"]);
+        vd.field_bool("cooldown");
     }
 }
 

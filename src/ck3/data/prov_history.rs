@@ -15,7 +15,6 @@ use crate::scopes::Scopes;
 use crate::token::Token;
 use crate::tooltipped::Tooltipped;
 use crate::validator::Validator;
-use crate::variables::Variables;
 
 #[derive(Clone, Debug, Default)]
 pub struct ProvinceHistories {
@@ -32,12 +31,6 @@ impl ProvinceHistories {
             province.block.append(&mut block);
         } else {
             self.provinces.insert(id, ProvinceHistory::new(key, block));
-        }
-    }
-
-    pub fn scan_variables(&self, registry: &mut Variables) {
-        for item in self.provinces.values() {
-            registry.scan(&item.block);
         }
     }
 
@@ -118,6 +111,7 @@ impl ProvinceHistory {
         vd.field_item("culture", Item::Culture);
         vd.field_item("religion", Item::Faith);
         vd.field_item("faith", Item::Faith);
+        vd.field_item("rite", Item::Rite);
         if let Some(token) = vd.field_value("holding")
             && !token.is("auto")
             && !token.is("none")

@@ -3,7 +3,6 @@ use crate::ck3::modif::ModifKinds;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader, LoadAsFile, Recursive};
 use crate::modif::validate_modifs;
 use crate::pdxfile::PdxEncoding;
@@ -28,19 +27,19 @@ pub struct SituationHistory {}
 pub struct SituationGroupType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Situation, Situation::add)
+    ItemLoader::Normal(Item::Situation, Situation::add)
 }
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::SituationCatalyst, SituationCatalyst::add)
+    ItemLoader::Normal(Item::SituationCatalyst, SituationCatalyst::add)
 }
 
 inventory::submit! {
-    ItemLoader::Full(GameFlags::Ck3, Item::SituationHistory, PdxEncoding::Utf8Bom, ".txt", LoadAsFile::Yes, Recursive::No,  SituationHistory::add)
+    ItemLoader::Full(Item::SituationHistory, PdxEncoding::Utf8Bom, ".txt", LoadAsFile::Yes, Recursive::No,  SituationHistory::add)
 }
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::SituationGroupType, SituationGroupType::add)
+    ItemLoader::Normal(Item::SituationGroupType, SituationGroupType::add)
 }
 
 impl Situation {
@@ -137,6 +136,8 @@ impl DbKind for Situation {
             vd.field_trigger_rooted("trigger", Tooltipped::No, Scopes::Situation);
             vd.field_item("reference", Item::File);
         });
+        vd.field_list_items("ending_decisions", Item::Decision);
+        vd.field_list_items("situation_decisions", Item::Decision);
         vd.field_item("situation_group_type", Item::SituationGroupType);
         vd.field_integer("sort_order");
 
@@ -239,6 +240,7 @@ fn validate_participant_group(key: &Token, block: &Block, data: &Everything, sit
         sc.define_name("situation_sub_region", Scopes::SituationSubRegion, key);
         sc
     }
+
     fn sc_with_group(key: &Token) -> ScopeContext {
         let mut sc = sc_builder(key);
         sc.define_name("situation_participant_group", Scopes::SituationParticipantGroup, key);
@@ -253,6 +255,7 @@ fn validate_participant_group(key: &Token, block: &Block, data: &Everything, sit
     data.verify_exists_implied(Item::Localization, &loca, key);
 
     vd.field_item("icon", Item::File);
+    vd.field_list("gui_tags");
     vd.field_bool("auto_add_rulers");
     vd.field_bool("auto_add_landless_rulers");
     vd.field_validated("map_color", validate_possibly_named_color);
@@ -273,6 +276,7 @@ fn validate_phase(key: &Token, block: &Block, data: &Everything, situation: &Tok
         sc.define_name("situation_sub_region", Scopes::SituationSubRegion, key);
         sc
     }
+
     fn sc_builder2(key: &Token) -> ScopeContext {
         let mut sc = ScopeContext::new(Scopes::Situation, key);
         sc.define_name("situation_sub_region", Scopes::SituationSubRegion, key);
@@ -290,6 +294,7 @@ fn validate_phase(key: &Token, block: &Block, data: &Everything, situation: &Tok
     vd.field_effect_builder("on_start", Tooltipped::No, sc_builder);
     vd.field_effect_builder("on_end", Tooltipped::No, sc_builder);
     vd.field_item("illustration", Item::File);
+    vd.field_item("texture", Item::File);
     vd.field_item("icon", Item::File);
     vd.field_item("map_province_effect", Item::ProvinceEffect);
     vd.field_numeric_range("map_province_effect_intensity", 0.0..=1.0);
@@ -374,7 +379,7 @@ fn validate_modifier_set(block: &Block, data: &Everything) {
         let vd = Validator::new(block, data);
         validate_modifs(block, data, ModifKinds::Character, vd);
     });
-    vd.multi_field_validated_block("doctrine_character_modifier", |block, data| {
+    vd.multi_field_validated_block("faith_character_modifier", |block, data| {
         let mut vd = Validator::new(block, data);
         vd.field_item("name", Item::Localization);
         vd.field_item("doctrine", Item::Doctrine);

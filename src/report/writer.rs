@@ -7,7 +7,6 @@ use strum::{EnumCount as _, IntoEnumIterator};
 use unicode_width::UnicodeWidthChar;
 
 use crate::fileset::{FileKind, FileStage};
-use crate::game::Game;
 use crate::report::errors::Errors;
 use crate::report::output_style::Styled;
 use crate::report::report_struct::pointer_indentation;
@@ -261,18 +260,7 @@ pub(crate) fn kind_tag<'a>(errors: &'a Errors<'a>, kind: FileKind) -> &'a str {
         FileKind::Internal => "Internal",
         FileKind::Clausewitz => "Clausewitz",
         FileKind::Jomini => "Jomini",
-        FileKind::Vanilla => match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => "CK3",
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => "Vic3",
-            #[cfg(feature = "imperator")]
-            Game::Imperator => "Imperator",
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => "EU5",
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => "Hoi4",
-        },
+        FileKind::Vanilla => "CK3",
         FileKind::Dlc(idx) => &errors.loaded_dlcs_labels[idx as usize],
         FileKind::LoadedMod(idx) => &errors.loaded_mods_labels[idx as usize],
         FileKind::Mod => "MOD",
@@ -281,12 +269,6 @@ pub(crate) fn kind_tag<'a>(errors: &'a Errors<'a>, kind: FileKind) -> &'a str {
 
 fn stage_tag(stage: FileStage) -> &'static str {
     match stage {
-        #[cfg(feature = "eu5")]
-        FileStage::LoadingScreen => "(loadscreen)",
-        #[cfg(feature = "eu5")]
-        FileStage::MainMenu => "(menu)",
-        #[cfg(feature = "eu5")]
-        FileStage::InGame => "",
         FileStage::NoStage => "",
     }
 }

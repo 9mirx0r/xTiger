@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::scopes::Scopes;
 use crate::token::Token;
@@ -12,7 +11,7 @@ use crate::validator::Validator;
 pub struct MottoInsert {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::MottoInsert, MottoInsert::add)
+    ItemLoader::Normal(Item::MottoInsert, MottoInsert::add)
 }
 
 impl MottoInsert {
@@ -38,7 +37,7 @@ impl DbKind for MottoInsert {
 pub struct Motto {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Motto, Motto::add)
+    ItemLoader::Normal(Item::Motto, Motto::add)
 }
 
 impl Motto {

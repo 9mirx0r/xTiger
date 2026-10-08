@@ -5,7 +5,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::scopes::Scopes;
@@ -18,7 +17,7 @@ use crate::validator::Validator;
 pub struct Government {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::GovernmentType, Government::add)
+    ItemLoader::Normal(Item::GovernmentType, Government::add)
 }
 
 impl Government {
@@ -154,6 +153,8 @@ impl DbKind for Government {
         vd.field_item("vassal_contract_group", Item::SubjectContractGroup);
         vd.field_item("house_unity", Item::HouseUnity);
         vd.field_item("domicile_type", Item::DomicileType);
+        vd.field_list_items("possible_grant_vassal_governments", Item::GovernmentType);
+        vd.field_script_value_rooted("grant_vassal_ai_will_do", Scopes::Character);
 
         vd.field_script_value_builder("opinion_of_liege", |key| {
             let mut sc = ScopeContext::new(Scopes::Character, key);

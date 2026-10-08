@@ -1,7 +1,9 @@
 //! Miscellaneous tables used to back `Item` variants.
 
-// LAST UPDATED CK3 VERSION 1.16
-// Taken from common/character_interactions/_character_interactions.info
+// LAST UPDATED CK3 VERSION 1.20.0.2
+// Taken from the game's own error message for an invalid `ai_recipients`.
+// The list in _character_interactions.info is out of date: it has `challenger` and `antipopes`,
+// which the game rejects, and lacks `religious_head_challenger(s)`.
 pub const AI_TARGETS: &[&str] = &[
     "known_secrets",
     "scheme_targets",
@@ -11,6 +13,7 @@ pub const AI_TARGETS: &[&str] = &[
     "neighboring_top_overlords_including_tributary_borders",
     "neighboring_top_overlords_connected_by_land",
     "peer_vassals",
+    "scripted_relations",
     "guests",
     "dynasty",
     "courtiers",
@@ -25,15 +28,22 @@ pub const AI_TARGETS: &[&str] = &[
     "top_liege",
     "suzerain",
     "top_suzerain",
+    "diarch",
     "self",
     "head_of_faith",
+    "other_faith_heads",
+    "head_of_rite",
+    "subordinates",
+    "superior",
+    "top_superior",
+    "realm_priest_superior",
+    "realm_priest_top_superior",
     "spouses",
-    "family",
     "children",
+    "family",
     "primary_war_enemies",
     "war_enemies",
     "war_allies",
-    "scripted_relations",
     "activity_host",
     "activity_guests",
     "contacts",
@@ -45,8 +55,13 @@ pub const AI_TARGETS: &[&str] = &[
     "sub_realm_domicile_owners",
     "nearby_domicile_owners",
     "situation_participant_group",
-    // undocumented
-    "diarch",
+    "faith_holy_order_leaders",
+    "rulers_in_clerical_region",
+    "clerical_region_rulers_in_realm",
+    "puppets",
+    "religious_head_challenger",
+    "religious_head_challengers",
+    "papabile",
 ];
 
 // LAST UPDATED CK3 VERSION 1.11.3
@@ -190,6 +205,7 @@ pub const CUSTOM_RELIGION_LOCAS: &[&str] = &[
     "PriestNeuter",
     "PriestNeuterPlural",
     "ReligiousHeadName",
+    "ReligiousHeadNameFemale",
     "ReligiousHeadTitleName",
     "ReligiousSymbol",
     "ReligiousSymbol2",
@@ -263,6 +279,7 @@ pub const DLC_FEATURES_CK3: &[&str] = &[
     "landless_adventurer",
     "coronations",
     "all_under_heaven",
+    "by_god_alone",
     "merit_admin",
     "advanced_aspirations",
     "barter_troops",
@@ -404,6 +421,8 @@ pub const GOVERNMENT_RULES: &[&str] = &[
     "mercenary",
     "state_faith",
     "treasury",
+    "treasury_vassal_development",
+    "add_religious_subordinates_for_treasury",
     "merit",
     "uses_county_fertility",
     "replenishes_county_fertility",
@@ -677,6 +696,11 @@ pub const COMMON_DIRS: &[&str] = &[
     "common/raids/intents",
     "common/religion/doctrine_group_types",
     "common/religion/doctrine_types",
+    "common/religion/faith_types",
+    "common/religion/rite_icons",
+    "common/religion/rite_names",
+    "common/religion/rite_types",
+    "common/religion/tenet_types",
     "common/religion/holy_site_types",
     "common/religion/religion_family_types",
     "common/religion/religion_types",

@@ -4,7 +4,7 @@ use crate::block::Block;
 use crate::context::ScopeContext;
 use crate::everything::Everything;
 use crate::fileset::{FileEntry, FileHandler};
-use crate::helpers::{BANNED_NAMES, TigerHashMap, limited_item_prefix_should_insert};
+use crate::helpers::{BANNED_NAMES, TigerHashMap, check_dup_item};
 use crate::item::Item;
 use crate::macros::{MACRO_MAP, MacroCache};
 use crate::parse::ParserMemory;
@@ -15,7 +15,6 @@ use crate::token::Token;
 use crate::tooltipped::Tooltipped;
 use crate::validate::{validate_modifiers, validate_scripted_modifier_calls};
 use crate::validator::Validator;
-use crate::variables::Variables;
 
 #[derive(Debug, Default)]
 pub struct ScriptedModifiers {
@@ -27,22 +26,16 @@ impl ScriptedModifiers {
         if BANNED_NAMES.contains(&key.as_str()) {
             let msg = "scripted modifier has the same name as an important builtin";
             err(ErrorKey::NameConflict).strong().msg(msg).loc(key).push();
-        } else if let Some(name) =
-            limited_item_prefix_should_insert(Item::ScriptedModifier, key, |key| {
+        } else {
+            check_dup_item(Item::ScriptedModifier, &key, |key| {
                 // TODO: here and in triggers and effects, get rid of the clone somehow.
                 self.scripted_modifiers.get(key).map(|entry| &entry.key)
-            })
-        {
+            });
+            let name = key;
             if block.source.is_some() {
                 MACRO_MAP.insert_or_get_loc(name.loc);
             }
             self.scripted_modifiers.insert(name.as_str(), ScriptedModifier::new(name, block));
-        }
-    }
-
-    pub fn scan_variables(&self, registry: &mut Variables) {
-        for item in self.scripted_modifiers.values() {
-            registry.scan(&item.block);
         }
     }
 
@@ -110,7 +103,7 @@ impl ScriptedModifier {
         if !self.cached_compat(key, &[], sc, data) {
             let mut our_sc = ScopeContext::new_unrooted(Scopes::all(), &self.key);
             our_sc.set_strict_scopes(false);
-            self.cache.insert(key, &[], Tooltipped::No, false, our_sc.clone());
+            self.cache.insert_pending(key, &[], Tooltipped::No, false, our_sc.clone());
             let mut vd = Validator::new(&self.block, data);
             validate_modifiers(&mut vd, &mut our_sc);
             validate_scripted_modifier_calls(vd, data, &mut our_sc);
@@ -151,7 +144,7 @@ impl ScriptedModifier {
             our_sc.set_strict_scopes(false);
             // Insert the dummy sc before continuing. That way, if we recurse, we'll hit
             // that dummy context instead of macro-expanding again.
-            self.cache.insert(key, args, Tooltipped::No, false, our_sc.clone());
+            self.cache.insert_pending(key, args, Tooltipped::No, false, our_sc.clone());
             let mut vd = Validator::new(&block, data);
             validate_modifiers(&mut vd, &mut our_sc);
             validate_scripted_modifier_calls(vd, data, &mut our_sc);

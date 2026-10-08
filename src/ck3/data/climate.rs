@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::helpers::TigerHashSet;
 use crate::item::{Item, ItemLoader, LoadAsFile, Recursive};
 use crate::pdxfile::PdxEncoding;
@@ -13,7 +12,7 @@ use crate::validator::Validator;
 pub struct Climate {}
 
 inventory::submit! {
-    ItemLoader::Full(GameFlags::Ck3, Item::Climate, PdxEncoding::Utf8OptionalBom, ".txt", LoadAsFile::No, Recursive::No, Climate::add)
+    ItemLoader::Full(Item::Climate, PdxEncoding::Utf8OptionalBom, ".txt", LoadAsFile::No, Recursive::No, Climate::add)
 }
 
 impl Climate {

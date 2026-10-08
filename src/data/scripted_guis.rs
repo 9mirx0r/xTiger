@@ -8,7 +8,6 @@ use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::effect::validate_effect;
 use crate::everything::Everything;
-use crate::game::{Game, GameFlags};
 use crate::item::{Item, ItemLoader};
 use crate::report::{ErrorKey, err, warn};
 use crate::scopes::Scopes;
@@ -23,7 +22,7 @@ use crate::validator::Validator;
 pub struct ScriptedGui {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::jomini(), Item::ScriptedGui, ScriptedGui::add)
+    ItemLoader::Normal(Item::ScriptedGui, ScriptedGui::add)
 }
 
 impl ScriptedGui {
@@ -96,9 +95,8 @@ impl ScriptedGui {
                 return;
             }
 
-            let ghw = Game::is_ck3()
-                && chain.codes[0].name.is("GreatHolyWarWindow")
-                && chain.codes[1].name.is("GetScope");
+            let ghw =
+                chain.codes[0].name.is("GreatHolyWarWindow") && chain.codes[1].name.is("GetScope");
 
             if !ghw {
                 if !chain.codes[0].name.is("GuiScope") {
@@ -136,7 +134,6 @@ impl ScriptedGui {
             }
             let mut sc = ScopeContext::new(scope, &code.name);
             if ghw {
-                #[cfg(feature = "ck3")]
                 sc.define_name("great_holy_war", Scopes::GreatHolyWar, &chain.codes[0].name);
             }
 

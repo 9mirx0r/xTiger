@@ -5,29 +5,18 @@ use std::borrow::Cow;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
-#[cfg(feature = "ck3")]
 use tiger_tables::ck3::misc::CUSTOM_RELIGION_LOCAS;
 pub use tiger_tables::datatype::Datatype;
 use tiger_tables::datatype::*;
 
 use crate::context::ScopeContext;
-#[cfg(feature = "jomini")]
 use crate::data::customloca::CustomLocalization;
 use crate::data::localization::Language;
-#[cfg(feature = "jomini")]
 use crate::data::scripted_guis::ScriptedGui;
 use crate::datacontext::DataContext;
 use crate::everything::Everything;
-use crate::game::Game;
 use crate::helpers::BiTigerHashMap;
-#[cfg(feature = "hoi4")]
-use crate::helpers::is_country_tag;
-#[cfg(feature = "hoi4")]
-use crate::hoi4::data::scripted_localisation::ScriptedLocalisation;
 use crate::item::Item;
-#[cfg(feature = "hoi4")]
-use crate::report::Severity;
-#[cfg(feature = "jomini")]
 use crate::report::err;
 use crate::report::{ErrorKey, warn};
 use crate::scopes::Scopes;
@@ -62,7 +51,6 @@ pub struct Code {
 
 /// `CodeArg` represents a single argument of a [`Code`].
 #[derive(Clone, Debug)]
-#[allow(dead_code)] // hoi4 does not use CodeChain
 pub enum CodeArg {
     /// An argument that is itself a [`CodeChain`], though it doesn't need the `[` `]` around it.
     Chain(CodeChain),
@@ -73,7 +61,6 @@ pub enum CodeArg {
 }
 
 impl CodeChain {
-    #[cfg(feature = "ck3")]
     pub fn as_gameconcept(&self) -> Option<&Token> {
         if self.codes.len() == 1 && self.codes[0].arguments.is_empty() {
             Some(&self.codes[0].name)
@@ -91,7 +78,6 @@ impl CodeChain {
         }
     }
 
-    #[cfg(feature = "jomini")]
     pub fn without_last(&self) -> Self {
         if self.codes.is_empty() {
             CodeChain { codes: Box::new([]) }
@@ -120,7 +106,6 @@ enum LookupResult {
 /// * `lang`: The language being validated, can be `None` when not applicable (such as in gui files).
 ///   Many custom localizations are only meant for one language, and the keys they use only need
 ///   to exist in that language.
-#[cfg(feature = "jomini")]
 fn validate_custom(token: &Token, data: &Everything, scopes: Scopes, lang: Option<Language>) {
     data.verify_exists(Item::CustomLocalization, token);
     if let Some((key, block)) = data.get_key_block(Item::CustomLocalization, token.as_str()) {
@@ -136,7 +121,6 @@ fn validate_custom(token: &Token, data: &Everything, scopes: Scopes, lang: Optio
 /// * `expect_arg`: The form of argument expected by the promote or function.
 /// * `lang`: The language of the localization file in which this code appears. This is just passed through.
 /// * `format`: The formatting code for this code chain. This just passed through.
-#[cfg(feature = "jomini")]
 fn validate_argument(
     arg: &CodeArg,
     data: &Everything,
@@ -212,7 +196,6 @@ fn validate_argument(
 /// * `expect_promote` is true iff the chain is expected to end on a promote rather than on a function.
 ///   Promotes and functions are very similar but they are defined separately in the datafunction tables
 ///   and usually only a function can end a chain.
-#[allow(unused_variables)] // TODO HOI4: use `format`
 #[allow(clippy::too_many_arguments)] // Can't really cut anything
 pub fn validate_datatypes(
     chain: &CodeChain,
@@ -225,29 +208,22 @@ pub fn validate_datatypes(
     expect_promote: bool,
 ) -> Datatype {
     let mut curtype = Datatype::Unknown;
-    #[allow(unused_mut)] // imperator does not need the mut
     let mut codes = Cow::from(&chain.codes[..]);
-    #[cfg(any(feature = "ck3", feature = "vic3"))]
     let mut macro_count = 0;
     // Have to loop with `while` instead of `for` because the array can mutate during the loop because of macro substitution
     let mut i = 0;
-    let mut in_variable = false;
     while i < codes.len() {
-        #[cfg(any(feature = "ck3", feature = "vic3"))]
-        if Game::is_ck3() || Game::is_vic3() {
-            while let Some(binding) = data.data_bindings.get(codes[i].name.as_str()) {
-                if let Some(replacement) = binding.replace(&codes[i]) {
-                    macro_count += 1;
-                    if macro_count > 255 {
-                        let msg =
-                            format!("substituted data bindings {macro_count} times, giving up");
-                        err(ErrorKey::Macro).msg(msg).loc(&codes[i].name).push();
-                        return Datatype::Unknown;
-                    }
-                    codes.to_mut().splice(i..=i, replacement.codes);
-                } else {
+        while let Some(binding) = data.data_bindings.get(codes[i].name.as_str()) {
+            if let Some(replacement) = binding.replace(&codes[i]) {
+                macro_count += 1;
+                if macro_count > 255 {
+                    let msg = format!("substituted data bindings {macro_count} times, giving up");
+                    err(ErrorKey::Macro).msg(msg).loc(&codes[i].name).push();
                     return Datatype::Unknown;
                 }
+                codes.to_mut().splice(i..=i, replacement.codes);
+            } else {
+                return Datatype::Unknown;
             }
         }
 
@@ -317,18 +293,6 @@ pub fn validate_datatypes(
             }
         }
 
-        if Game::is_hoi4() && !found && !is_first && code.name.is("FROM") {
-            // FROM can be chained, regardless of datatype
-            found = true;
-            // TODO HOI4: this could be just the scope types.
-            rtype = Datatype::Unknown;
-        } else if Game::is_hoi4() && !found && !is_first && code.name.is("OWNER") {
-            // OWNER can be chained off of FROM
-            found = true;
-            // TODO HOI4: this could be just the scope types.
-            rtype = Datatype::Unknown;
-        }
-
         if !found {
             // Properly reporting these errors is tricky because `code.name`
             // might be found in any or all of the functions and promotes tables.
@@ -365,70 +329,7 @@ pub fn validate_datatypes(
             }
         }
 
-        #[cfg(feature = "vic3")]
-        // Vic3 allows the three-letter country codes to be used unadorned as datatypes.
-        if Game::is_vic3()
-            && !found
-            && is_first
-            && data.item_exists(Item::Country, code.name.as_str())
-        {
-            found = true;
-            args = Args::Args(&[]);
-            rtype = Datatype::Vic3(Vic3Datatype::Country);
-        }
-
-        #[cfg(feature = "imperator")]
-        if Game::is_imperator()
-            && !found
-            && is_first
-            && data.item_exists(Item::Country, code.name.as_str())
-        {
-            found = true;
-            args = Args::Args(&[]);
-            rtype = Datatype::Imperator(ImperatorDatatype::Country);
-        }
-
-        // In vic3, game concepts are unadorned, like [concept_ideology]
-        // Each concept also generates a [concept_ideology_desc]
-        #[cfg(feature = "vic3")]
-        if Game::is_vic3()
-            && !found
-            && is_first
-            && is_last
-            && code.name.as_str().starts_with("concept_")
-        {
-            found = true;
-            if let Some(concept) = code.name.as_str().strip_suffix("_desc") {
-                data.verify_exists_implied(Item::GameConcept, concept, &code.name);
-            } else {
-                data.verify_exists(Item::GameConcept, &code.name);
-            }
-            args = Args::Args(&[]);
-            rtype = Datatype::CString;
-        }
-
-        // In eu5, game concepts are unadorned, like [manpower]
-        // Each concept also generates a [manpower_icon] and [manpower_with_icon]
-        #[cfg(feature = "eu5")]
-        if Game::is_eu5() && !found && is_first && is_last {
-            found = true;
-            if let Some(concept) = code.name.as_str().strip_suffix("_with_icon") {
-                data.verify_exists_implied(Item::GameConcept, concept, &code.name);
-            } else if let Some(concept) = code.name.as_str().strip_suffix("_icon") {
-                data.verify_exists_implied(Item::GameConcept, concept, &code.name);
-            } else {
-                data.verify_exists(Item::GameConcept, &code.name);
-            }
-            args = Args::Args(&[]);
-            rtype = Datatype::CString;
-        }
-
-        #[cfg(feature = "ck3")]
-        if Game::is_ck3()
-            && !found
-            && is_first
-            && is_last
-            && data.item_exists(Item::GameConcept, code.name.as_str())
+        if !found && is_first && is_last && data.item_exists(Item::GameConcept, code.name.as_str())
         {
             let game_concept_formatting =
                 format.is_some_and(|fmt| fmt.as_str().contains('E') || fmt.as_str().contains('e'));
@@ -445,10 +346,10 @@ pub fn validate_datatypes(
             // This is worth warning about.
             // Real life example: [ROOT.Char.Custom2('RelationToMeShort', schemer)]
             if sc.is_name_defined(code.name.as_str(), data).is_some() && !game_concept_formatting {
-                let msg = format!("`{}` is both a named scope and a game concept here", &code.name);
+                let msg = format!("`{}` is both a named scope and a game concept here", code.name);
                 let info = format!(
                     "The game concept will take precedence. Do `{}.Self` if you want the named scope.",
-                    &code.name
+                    code.name
                 );
                 warn(ErrorKey::Datafunctions).msg(msg).info(info).loc(&code.name).push();
             }
@@ -457,16 +358,6 @@ pub fn validate_datatypes(
             args = Args::Args(&[]);
             rtype = Datatype::CString;
         }
-
-        if Game::is_hoi4() && !found && in_variable {
-            // The second part of a variable reference. We don't validate variable names yet.
-            in_variable = false;
-            found = true;
-            // TODO HOI4: this could be just the scope types.
-            rtype = Datatype::Unknown;
-        }
-
-        // TODO HOI4: see about disabling the scope-related logic below.
 
         // See if it's a passed-in scope.
         // It may still be a passed-in scope even if this check doesn't pass, because sc might be a non-strict scope
@@ -498,52 +389,10 @@ pub fn validate_datatypes(
             rtype = Datatype::Unknown;
         }
 
-        #[cfg(feature = "hoi4")]
-        if Game::is_hoi4() && !found && is_country_tag(code.name.as_str()) {
-            found = true;
-            data.verify_exists_max_sev(Item::CountryTag, &code.name, Severity::Warning);
-            rtype = Datatype::Hoi4(Hoi4Datatype::Country);
-        }
-
-        #[cfg(feature = "hoi4")]
-        if Game::is_hoi4()
-            && !found
-            && data.item_exists(Item::ScriptedLocalisation, code.name.as_str())
-        {
-            found = true;
-            rtype = Datatype::CString;
-            if let Some((_, block)) =
-                data.get_key_block(Item::ScriptedLocalisation, code.name.as_str())
-            {
-                ScriptedLocalisation::validate_loca_call(block, data, lang);
-            }
-        }
-
-        #[cfg(feature = "hoi4")]
-        if Game::is_hoi4() && !found && code.name.starts_with("?") {
-            // It's a variable reference
-            // TODO HOI4: validate the variable reference
-            found = true;
-            // TODO HOI4: this could be just the scope types.
-            rtype = Datatype::Unknown;
-            let reference = code.name.strip_prefix("?").unwrap();
-            // Is it a two-part reference?
-            if reference.lowercase_is("global") || reference.is("FROM") || reference.is("PREV") {
-                in_variable = true;
-            } else if is_country_tag(reference.as_str()) {
-                in_variable = true;
-                data.verify_exists_max_sev(Item::CountryTag, &reference, Severity::Warning);
-            } else if reference.is_integer() {
-                // Literal numbers are allowed after `?`, and if they have a decimal part they will
-                // be split at the `.` by the loop we're in.
-                in_variable = true;
-            }
-        }
-
         // If it's still not found, warn and exit.
         if !found {
             // TODO: If there is a Custom of the same name, suggest that
-            let msg = format!("unknown datafunction {}", &code.name);
+            let msg = format!("unknown datafunction {}", code.name);
             if let Some(alternative) = lookup_alternative(code.name.as_str()) {
                 let info = format!("did you mean {alternative}?");
                 warn(ErrorKey::Datafunctions).msg(msg).info(info).loc(&code.name).push();
@@ -567,9 +416,8 @@ pub fn validate_datatypes(
             return Datatype::Unknown;
         }
 
-        #[cfg(feature = "jomini")]
         // TODO: handle the case where there is a previous `datacontext = [GetScriptedGui(...)]`
-        if Game::is_jomini() && is_first {
+        if is_first {
             let name = if code.name.is("GetScriptedGui") {
                 // Get the name from GetScriptedGui('name')
                 if let Some(CodeArg::Literal(name)) = code.arguments.first() {
@@ -594,9 +442,7 @@ pub fn validate_datatypes(
             }
         }
 
-        #[cfg(feature = "ck3")]
-        if Game::is_ck3()
-            && curtype != Datatype::Ck3(Ck3Datatype::Faith)
+        if curtype != Datatype::Ck3(Ck3Datatype::Faith)
             && (code.name.is("Custom") && code.arguments.len() == 1)
             || (code.name.is("Custom2") && code.arguments.len() == 2)
         {
@@ -615,42 +461,7 @@ pub fn validate_datatypes(
             }
         }
 
-        #[cfg(feature = "vic3")]
-        if Game::is_vic3()
-            && code.name.is("GetCustom")
-            && code.arguments.len() == 1
-            && let CodeArg::Literal(ref token) = code.arguments[0]
-        {
-            if let Some(scopes) = scope_from_datatype(curtype) {
-                validate_custom(token, data, scopes, lang);
-            } else if curtype == Datatype::Unknown
-                || curtype == Datatype::AnyScope
-                || curtype == Datatype::TopScope
-            {
-                // TODO: is a TopScope even valid to pass to .GetCustom? verify
-                validate_custom(token, data, Scopes::all(), lang);
-            }
-        }
-
-        #[cfg(feature = "imperator")]
-        if Game::is_imperator()
-            && code.name.is("Custom")
-            && code.arguments.len() == 1
-            && let CodeArg::Literal(ref token) = code.arguments[0]
-        {
-            if let Some(scopes) = scope_from_datatype(curtype) {
-                validate_custom(token, data, scopes, lang);
-            } else if curtype == Datatype::Unknown
-                || curtype == Datatype::AnyScope
-                || curtype == Datatype::TopScope
-            {
-                // TODO: is a TopScope even valid to pass to .Custom? verify
-                validate_custom(token, data, Scopes::all(), lang);
-            }
-        }
-
         // TODO: handle GetDefineAtIndex too. No examples in vanilla.
-        #[cfg(feature = "jomini")]
         if code.name.is("GetDefine")
             && code.arguments.len() == 2
             && let CodeArg::Literal(ref token1) = code.arguments[0]
@@ -663,7 +474,6 @@ pub fn validate_datatypes(
             }
         }
 
-        // TODO: vic3 docs say that `Localize` can take a `CustomLocalization` as well
         if code.name.is("Localize")
             && code.arguments.len() == 1
             && let CodeArg::Literal(ref token) = code.arguments[0]
@@ -676,12 +486,10 @@ pub fn validate_datatypes(
             }
         }
 
-        #[cfg(feature = "jomini")]
         if let Args::Args(a) = args {
             for (i, arg) in a.iter().enumerate() {
                 // Handle |E that contain a SelectLocalization that chooses between two gameconcepts
-                if Game::is_jomini()
-                    && code.name.is("SelectLocalization")
+                if code.name.is("SelectLocalization")
                     && i > 0
                     && let CodeArg::Chain(chain) = &code.arguments[i]
                     && chain.codes.len() == 1
@@ -722,18 +530,7 @@ pub fn validate_datatypes(
 }
 
 fn lookup_global_promote(lookup_name: &str) -> Option<(Args, Datatype)> {
-    let global_promotes_map = match Game::game() {
-        #[cfg(feature = "ck3")]
-        Game::Ck3 => &crate::ck3::tables::datafunctions::GLOBAL_PROMOTES_MAP,
-        #[cfg(feature = "vic3")]
-        Game::Vic3 => &crate::vic3::tables::datafunctions::GLOBAL_PROMOTES_MAP,
-        #[cfg(feature = "imperator")]
-        Game::Imperator => &crate::imperator::tables::datafunctions::GLOBAL_PROMOTES_MAP,
-        #[cfg(feature = "eu5")]
-        Game::Eu5 => &crate::eu5::tables::datafunctions::GLOBAL_PROMOTES_MAP,
-        #[cfg(feature = "hoi4")]
-        Game::Hoi4 => &crate::hoi4::tables::datafunctions::GLOBAL_PROMOTES_MAP,
-    };
+    let global_promotes_map = &crate::ck3::tables::datafunctions::GLOBAL_PROMOTES_MAP;
 
     if let result @ Some(_) = global_promotes_map.get(lookup_name).copied() {
         return result;
@@ -748,18 +545,7 @@ fn lookup_global_promote(lookup_name: &str) -> Option<(Args, Datatype)> {
 }
 
 fn lookup_global_function(lookup_name: &str) -> Option<(Args, Datatype)> {
-    let global_functions_map = match Game::game() {
-        #[cfg(feature = "ck3")]
-        Game::Ck3 => &crate::ck3::tables::datafunctions::GLOBAL_FUNCTIONS_MAP,
-        #[cfg(feature = "vic3")]
-        Game::Vic3 => &crate::vic3::tables::datafunctions::GLOBAL_FUNCTIONS_MAP,
-        #[cfg(feature = "imperator")]
-        Game::Imperator => &crate::imperator::tables::datafunctions::GLOBAL_FUNCTIONS_MAP,
-        #[cfg(feature = "eu5")]
-        Game::Eu5 => &crate::eu5::tables::datafunctions::GLOBAL_FUNCTIONS_MAP,
-        #[cfg(feature = "hoi4")]
-        Game::Hoi4 => &crate::hoi4::tables::datafunctions::GLOBAL_FUNCTIONS_MAP,
-    };
+    let global_functions_map = &crate::ck3::tables::datafunctions::GLOBAL_FUNCTIONS_MAP;
     global_functions_map.get(lookup_name).copied()
 }
 
@@ -794,18 +580,7 @@ fn lookup_promote_or_function(ltype: Datatype, vec: &[(Datatype, Args, Datatype)
 }
 
 fn lookup_promote(lookup_name: &str, ltype: Datatype) -> LookupResult {
-    let promotes_map = match Game::game() {
-        #[cfg(feature = "ck3")]
-        Game::Ck3 => &crate::ck3::tables::datafunctions::PROMOTES_MAP,
-        #[cfg(feature = "vic3")]
-        Game::Vic3 => &crate::vic3::tables::datafunctions::PROMOTES_MAP,
-        #[cfg(feature = "imperator")]
-        Game::Imperator => &crate::imperator::tables::datafunctions::PROMOTES_MAP,
-        #[cfg(feature = "eu5")]
-        Game::Eu5 => &crate::eu5::tables::datafunctions::PROMOTES_MAP,
-        #[cfg(feature = "hoi4")]
-        Game::Hoi4 => &crate::hoi4::tables::datafunctions::PROMOTES_MAP,
-    };
+    let promotes_map = &crate::ck3::tables::datafunctions::PROMOTES_MAP;
 
     promotes_map
         .get(lookup_name)
@@ -813,18 +588,7 @@ fn lookup_promote(lookup_name: &str, ltype: Datatype) -> LookupResult {
 }
 
 fn lookup_function(lookup_name: &str, ltype: Datatype) -> LookupResult {
-    let functions_map = match Game::game() {
-        #[cfg(feature = "ck3")]
-        Game::Ck3 => &crate::ck3::tables::datafunctions::FUNCTIONS_MAP,
-        #[cfg(feature = "vic3")]
-        Game::Vic3 => &crate::vic3::tables::datafunctions::FUNCTIONS_MAP,
-        #[cfg(feature = "imperator")]
-        Game::Imperator => &crate::imperator::tables::datafunctions::FUNCTIONS_MAP,
-        #[cfg(feature = "eu5")]
-        Game::Eu5 => &crate::eu5::tables::datafunctions::FUNCTIONS_MAP,
-        #[cfg(feature = "hoi4")]
-        Game::Hoi4 => &crate::hoi4::tables::datafunctions::FUNCTIONS_MAP,
-    };
+    let functions_map = &crate::ck3::tables::datafunctions::FUNCTIONS_MAP;
 
     functions_map
         .get(lookup_name)
@@ -852,35 +616,13 @@ impl std::hash::Hash for CaseInsensitiveStr {
 /// Currently it only looks for different-case variants.
 // TODO: make it consider misspellings as well
 fn lookup_alternative(lookup_name: &'static str) -> Option<&'static str> {
-    let lowercase_datatype_set = match Game::game() {
-        #[cfg(feature = "ck3")]
-        Game::Ck3 => &crate::ck3::tables::datafunctions::LOWERCASE_DATATYPE_SET,
-        #[cfg(feature = "vic3")]
-        Game::Vic3 => &crate::vic3::tables::datafunctions::LOWERCASE_DATATYPE_SET,
-        #[cfg(feature = "imperator")]
-        Game::Imperator => &crate::imperator::tables::datafunctions::LOWERCASE_DATATYPE_SET,
-        #[cfg(feature = "eu5")]
-        Game::Eu5 => &crate::eu5::tables::datafunctions::LOWERCASE_DATATYPE_SET,
-        #[cfg(feature = "hoi4")]
-        Game::Hoi4 => &crate::hoi4::tables::datafunctions::LOWERCASE_DATATYPE_SET,
-    };
+    let lowercase_datatype_set = &crate::ck3::tables::datafunctions::LOWERCASE_DATATYPE_SET;
 
     lowercase_datatype_set.get(&CaseInsensitiveStr(lookup_name)).map(|x| x.0)
 }
 
 fn datatype_and_scope_map() -> &'static LazyLock<BiTigerHashMap<Datatype, Scopes>> {
-    match Game::game() {
-        #[cfg(feature = "ck3")]
-        Game::Ck3 => &crate::ck3::tables::datafunctions::DATATYPE_AND_SCOPE_MAP,
-        #[cfg(feature = "vic3")]
-        Game::Vic3 => &crate::vic3::tables::datafunctions::DATATYPE_AND_SCOPE_MAP,
-        #[cfg(feature = "imperator")]
-        Game::Imperator => &crate::imperator::tables::datafunctions::DATATYPE_AND_SCOPE_MAP,
-        #[cfg(feature = "eu5")]
-        Game::Eu5 => &crate::eu5::tables::datafunctions::DATATYPE_AND_SCOPE_MAP,
-        #[cfg(feature = "hoi4")]
-        Game::Hoi4 => &crate::hoi4::tables::datafunctions::DATATYPE_AND_SCOPE_MAP,
-    }
+    &crate::ck3::tables::datafunctions::DATATYPE_AND_SCOPE_MAP
 }
 
 /// Return the scope type that best matches `dtype`, or `None` if there is no match.

@@ -28,26 +28,24 @@ jobs:
         id: version
         shell: bash
         run: |
-          version=v$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          version=v$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "ck3-tiger") | .version')
           pkgdir="ck3-tiger-${{ matrix.name }}-$version"
-          echo "::set-output name=version::$version"
-          echo "::set-output name=pkgdir::$pkgdir"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "pkgdir=$pkgdir" >> "$GITHUB_OUTPUT"
 
       - name: Build
-        run: cargo build --release -p ck3-tiger
+        run: cargo build --release -p ck3-tiger -p xtiger-mcp
 
       - name: Create output dir
         shell: bash
         run: |
           mkdir ${{ steps.version.outputs.pkgdir }}
-          cp -p README.md filter.md TODO.md CONTRIBUTORS.md LICENSE ck3-tiger.conf target/release/ck3-tiger${{ matrix.extension }} target/release/ck3-tiger-auto${{ matrix.extension }} ${{ steps.version.outputs.pkgdir }}
+          cp -p README.md filter.md TODO.md CONTRIBUTORS.md LICENSE ck3-tiger.conf target/release/ck3-tiger${{ matrix.extension }} target/release/ck3-tiger-auto${{ matrix.extension }} target/release/xtiger-mcp${{ matrix.extension }} ${{ steps.version.outputs.pkgdir }}
 
       - name: Archive .zip
-        uses: vimtor/action-zip@v1
         if: ${{ matrix.archive == 'zip' }}
-        with:
-          files: ${{ steps.version.outputs.pkgdir }}/
-          dest: ${{ steps.version.outputs.pkgdir }}.zip
+        shell: pwsh
+        run: Compress-Archive -Path "${{ steps.version.outputs.pkgdir }}" -DestinationPath "${{ steps.version.outputs.pkgdir }}.zip"
 
       - name: Archive .tar.gz
         if: ${{ matrix.archive == 'tar.gz' }}

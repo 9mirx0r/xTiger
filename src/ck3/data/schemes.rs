@@ -6,7 +6,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::report::{ErrorKey, warn};
@@ -15,13 +14,13 @@ use crate::script_value::validate_non_dynamic_script_value;
 use crate::token::Token;
 use crate::tooltipped::Tooltipped;
 use crate::validate::{validate_duration, validate_modifiers_with_base};
-use crate::validator::Validator;
+use crate::validator::{Validator, ValueValidator};
 
 #[derive(Clone, Debug)]
 pub struct Scheme {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Scheme, Scheme::add)
+    ItemLoader::Normal(Item::Scheme, Scheme::add)
 }
 
 impl Scheme {
@@ -90,6 +89,14 @@ impl DbKind for Scheme {
         vd.field_trigger("valid", Tooltipped::No, &mut sc);
 
         vd.field_integer("agent_join_threshold");
+        vd.field_validated_block("starting_agent_slots", |block, data| {
+            let mut vd = Validator::new(block, data);
+            vd.unknown_value_fields(|key, value| {
+                data.verify_exists(Item::AgentType, key);
+                let mut vd = ValueValidator::new(value, data);
+                vd.integer();
+            });
+        });
         vd.field_integer("agent_leave_threshold");
         vd.field_bool("uses_resistance");
 
@@ -185,7 +192,7 @@ impl DbKind for Scheme {
 pub struct AgentType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::AgentType, AgentType::add)
+    ItemLoader::Normal(Item::AgentType, AgentType::add)
 }
 
 impl AgentType {
@@ -232,7 +239,7 @@ impl DbKind for AgentType {
 pub struct SchemePulseAction {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::SchemePulseAction, SchemePulseAction::add)
+    ItemLoader::Normal(Item::SchemePulseAction, SchemePulseAction::add)
 }
 
 impl SchemePulseAction {
@@ -267,7 +274,7 @@ impl DbKind for SchemePulseAction {
 pub struct Countermeasure {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Countermeasure, Countermeasure::add)
+    ItemLoader::Normal(Item::Countermeasure, Countermeasure::add)
 }
 
 impl Countermeasure {

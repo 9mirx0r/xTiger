@@ -6,15 +6,11 @@ use std::str::FromStr;
 use crate::context::ScopeContext;
 use crate::date::Date;
 use crate::everything::Everything;
-#[cfg(feature = "hoi4")]
-use crate::hoi4::variables::validate_variable;
 use crate::item::Item;
 use crate::report::{ErrorKey, Severity, report};
 use crate::scopes::Scopes;
 use crate::token::Token;
 use crate::trigger::validate_target;
-#[cfg(feature = "imperator")]
-use crate::trigger::validate_target_ok_this;
 use crate::validate::validate_identifier;
 
 /// A validator for one `Token`.
@@ -112,7 +108,6 @@ impl<'a> ValueValidator<'a> {
     }
 
     // Expect the value to be the name of a file (possibly with suffix) in the defined path.
-    #[cfg(feature = "ck3")]
     #[allow(dead_code)]
     pub fn icon(&mut self, define: &str, suffix: &str) {
         if self.validated {
@@ -124,7 +119,6 @@ impl<'a> ValueValidator<'a> {
 
     /// Add the given suffix to the value and mark that as a used item, without doing any validation.
     /// This is used for very weakly required localization, for example, where no warning is warranted.
-    #[cfg(feature = "ck3")] // silence dead code warning
     pub fn item_used_with_suffix(&mut self, itype: Item, sfx: &str) {
         let implied = format!("{}{sfx}", self.value);
         self.data.mark_used(itype, &implied);
@@ -150,22 +144,7 @@ impl<'a> ValueValidator<'a> {
         }
     }
 
-    /// Check if the value is be the key of an `itype` item the game database, after removing the prefix `pfx`.
-    /// The item is looked up, and if it exists then this validator is considered validated.
-    /// Return whether the item exists.
-    #[cfg(feature = "vic3")] // silence dead code warning
-    pub fn maybe_prefix_item(&mut self, pfx: &str, itype: Item) -> bool {
-        if let Some(value) = self.value.as_str().strip_prefix(pfx)
-            && self.data.item_exists(itype, value)
-        {
-            self.validated = true;
-            return true;
-        }
-        false
-    }
-
     /// Expect the value to be the name of a file under the directory given here.
-    #[cfg(feature = "ck3")] // silence dead code warning
     pub fn dir_file(&mut self, path: &str) {
         if self.validated {
             return;
@@ -197,18 +176,6 @@ impl<'a> ValueValidator<'a> {
         self.validated = true;
         // TODO: pass max_severity here
         validate_target(&self.value, self.data, sc, outscopes);
-    }
-
-    /// Just like [`ValueValidator::target`], but allows the value to be simply "`this`".
-    /// It is expected to be used judiciously in cases where "`this`" can be correct.
-    #[cfg(feature = "imperator")]
-    pub fn target_ok_this(&mut self, sc: &mut ScopeContext, outscopes: Scopes) {
-        if self.validated {
-            return;
-        }
-        self.validated = true;
-        // TODO: pass max_severity here
-        validate_target_ok_this(&self.value, self.data, sc, outscopes);
     }
 
     /// This is a combination of [`ValueValidator::item`] and [`ValueValidator::target`]. If the field is present
@@ -318,43 +285,6 @@ impl<'a> ValueValidator<'a> {
         self.value.expect_number();
     }
 
-    /// Expect the value to be a number with up to 5 decimals within the `range` provided.
-    /// (5 decimals is the limit accepted by the game engine in most contexts).
-    #[cfg(feature = "vic3")]
-    pub fn numeric_range<R: RangeBounds<f64>>(&mut self, range: R) {
-        if self.validated {
-            return;
-        }
-        let sev = Severity::Error.at_most(self.max_severity);
-        self.validated = true;
-        // TODO: pass max_severity here
-        if let Some(f) = self.value.expect_number()
-            && !range.contains(&f)
-        {
-            let low = match range.start_bound() {
-                Bound::Unbounded => None,
-                Bound::Included(&f) => Some(format!("{f} (inclusive)")),
-                Bound::Excluded(&f) => Some(format!("{f}")),
-            };
-            let high = match range.end_bound() {
-                Bound::Unbounded => None,
-                Bound::Included(&f) => Some(format!("{f} (inclusive)")),
-                Bound::Excluded(&f) => Some(format!("{f}")),
-            };
-            let msg;
-            if let (Some(low), Some(high)) = (low.as_ref(), high.as_ref()) {
-                msg = format!("should be between {low} and {high}");
-            } else if let Some(low) = low {
-                msg = format!("should be at least {low}");
-            } else if let Some(high) = high {
-                msg = format!("should be at most {high}");
-            } else {
-                unreachable!(); // could not have failed the contains check
-            }
-            report(ErrorKey::Range, sev).msg(msg).loc(self).push();
-        }
-    }
-
     /// Expect the value to be a number with any number of decimals.
     #[allow(dead_code)] // not used yet
     pub fn precise_numeric(&mut self) {
@@ -394,17 +324,6 @@ impl<'a> ValueValidator<'a> {
             let msg = format!("expected one of {}", choices.join(", "));
             report(ErrorKey::Choice, sev).msg(msg).loc(self).push();
         }
-    }
-
-    /// Expect the value to be a variable reference
-    #[cfg(feature = "hoi4")]
-    pub fn variable(&mut self, sc: &mut ScopeContext) {
-        if self.validated {
-            return;
-        }
-        self.validated = true;
-        let sev = Severity::Error.at_most(self.max_severity);
-        validate_variable(&self.value, self.data, sc, sev);
     }
 
     /// Check if the value is equal to the given string.

@@ -5,7 +5,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
 use crate::fileset::{FileEntry, FileHandler};
-use crate::game::{Game, GameFlags};
 use crate::helpers::{TigerHashMap, dup_error, exact_dup_advice};
 use crate::item::{Item, ItemLoader, LoadAsFile, Recursive};
 use crate::parse::ParserMemory;
@@ -17,7 +16,6 @@ use crate::tooltipped::Tooltipped;
 use crate::trigger::validate_trigger_max_sev;
 use crate::validate::{validate_color, validate_possibly_named_color};
 use crate::validator::Validator;
-use crate::variables::Variables;
 
 #[derive(Clone, Debug, Default)]
 pub struct Coas {
@@ -57,19 +55,6 @@ impl Coas {
                 }
             }
             self.coas.insert(key.as_str(), Coa::new(key.clone(), bv.clone()));
-        }
-    }
-
-    pub fn scan_variables(&self, registry: &mut Variables) {
-        for item in self.coas.values() {
-            if let Some(block) = &item.bv.get_block() {
-                registry.scan(block);
-            }
-        }
-        for item in self.templates.values() {
-            if let Some(block) = &item.bv.get_block() {
-                registry.scan(block);
-            }
         }
     }
 
@@ -212,21 +197,6 @@ pub fn validate_coa_layout(block: &Block, data: &Everything) {
         }
         vd.multi_field_validated_block("instance", validate_instance);
     });
-
-    #[cfg(any(feature = "vic3", feature = "eu5"))]
-    if Game::is_vic3() || Game::is_eu5() {
-        vd.multi_field_validated_block("sub", |subblock, data| {
-            let mut vd = Validator::new(subblock, data);
-            vd.set_max_severity(Severity::Warning);
-            vd.field_item("parent", Item::Coa);
-            vd.multi_field_validated_block("instance", validate_instance_offset);
-            for field in &["color1", "color2", "color3", "color4", "color5"] {
-                vd.field_validated(field, |bv, data| {
-                    validate_coa_color(bv, Some(block), data);
-                });
-            }
-        });
-    }
 }
 
 fn validate_coa_color(bv: &BV, block: Option<&Block>, data: &Everything) {
@@ -261,7 +231,7 @@ fn validate_coa_color(bv: &BV, block: Option<&Block>, data: &Everything) {
 pub struct CoaTemplateList {}
 
 inventory::submit! {
-    ItemLoader::Full(GameFlags::all(), Item::CoaTemplateList, PdxEncoding::Utf8OptionalBom, ".txt", LoadAsFile::No, Recursive::Maybe, CoaTemplateList::add)
+    ItemLoader::Full(Item::CoaTemplateList, PdxEncoding::Utf8OptionalBom, ".txt", LoadAsFile::No, Recursive::Maybe, CoaTemplateList::add)
 }
 
 impl CoaTemplateList {
@@ -369,41 +339,10 @@ where
         let mut vd = Validator::new(block, data);
         vd.set_max_severity(Severity::Warning);
         let mut sc;
-        match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => {
-                sc = ScopeContext::new(Scopes::Character, key); // TODO: may be unset
-                sc.define_name("faith", Scopes::Faith, key);
-                sc.define_name("culture", Scopes::Culture, key);
-                sc.define_name("title", Scopes::LandedTitle, key); // TODO: may be unset
-            }
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => {
-                // TODO: Exact scope depends on the context of use of this coa list.
-                // Should check again with exact scope at point of use.
-                sc = ScopeContext::new(
-                    Scopes::Country | Scopes::CountryDefinition | Scopes::PowerBloc,
-                    key,
-                );
-                sc.define_name(
-                    "target",
-                    Scopes::Country | Scopes::CountryDefinition | Scopes::PowerBloc,
-                    key,
-                );
-            }
-            #[cfg(feature = "imperator")]
-            Game::Imperator => {
-                // TODO: what is the correct scope here?
-                sc = ScopeContext::new(Scopes::Country, key);
-            }
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => {
-                // TODO: what is the correct scope here?
-                sc = ScopeContext::new(Scopes::Country, key);
-            }
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => unimplemented!(),
-        }
+        sc = ScopeContext::new(Scopes::Character, key); // TODO: may be unset
+        sc.define_name("faith", Scopes::Faith, key);
+        sc.define_name("culture", Scopes::Culture, key);
+        sc.define_name("title", Scopes::LandedTitle, key); // TODO: may be unset
         vd.multi_field_validated_block("trigger", |block, data| {
             validate_trigger_max_sev(block, data, &mut sc, Tooltipped::No, Severity::Warning);
         });
@@ -420,23 +359,19 @@ where
     });
 }
 
-#[cfg(feature = "ck3")]
 #[derive(Clone, Debug)]
 pub struct CoaDynamicDefinition {}
 
-#[cfg(feature = "ck3")]
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CoaDynamicDefinition, CoaDynamicDefinition::add)
+    ItemLoader::Normal(Item::CoaDynamicDefinition, CoaDynamicDefinition::add)
 }
 
-#[cfg(feature = "ck3")]
 impl CoaDynamicDefinition {
     pub fn add(db: &mut Db, key: Token, block: Block) {
         db.add(Item::CoaDynamicDefinition, key, block, Box::new(Self {}));
     }
 }
 
-#[cfg(feature = "ck3")]
 impl DbKind for CoaDynamicDefinition {
     fn validate(&self, key: &Token, block: &Block, data: &Everything) {
         let mut vd = Validator::new(block, data);
@@ -462,18 +397,6 @@ fn validate_instance(block: &Block, data: &Everything) {
     vd.field_precise_numeric("rotation");
     vd.field_precise_numeric("depth");
     vd.ban_field("offset", || "sub blocks");
-}
-
-/// Just like [`validate_instance`], but takes offset instead of position
-#[cfg(any(feature = "vic3", feature = "eu5"))]
-fn validate_instance_offset(block: &Block, data: &Everything) {
-    let mut vd = Validator::new(block, data);
-    vd.set_max_severity(Severity::Warning);
-    vd.field_list_precise_numeric_exactly("offset", 2);
-    vd.field_validated_block("scale", validate_scale);
-    vd.field_precise_numeric("rotation");
-    vd.field_precise_numeric("depth");
-    vd.ban_field("position", || "colored and textured emblems");
 }
 
 fn validate_scale(block: &Block, data: &Everything) {

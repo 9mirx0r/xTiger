@@ -3,10 +3,7 @@ use std::{mem::forget, path::PathBuf};
 
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand, error::ErrorKind};
-#[cfg(any(feature = "ck3", feature = "imperator", feature = "hoi4"))]
 use tiger_lib::ModFile;
-#[cfg(any(feature = "vic3", feature = "eu5"))]
-use tiger_lib::ModMetadata;
 use tiger_lib::{
     Everything, disable_ansi_colors, emit_reports, get_version_from_launcher, set_show_loaded_mods,
     set_show_vanilla, suppress_from_json, validate_config_file,
@@ -41,24 +38,16 @@ enum Commands {
 
 #[derive(Args)]
 struct ValidateArgs {
-    #[cfg(any(feature = "vic3", feature = "eu5"))]
-    /// Path to folder of mod to check.
-    modpath: PathBuf,
-    #[cfg(any(feature = "ck3", feature = "imperator", feature = "hoi4"))]
     /// Path to .mod file of mod to check.
     modpath: PathBuf,
-    #[cfg_attr(feature = "ck3", clap(visible_alias = "ck3"))]
-    #[cfg_attr(feature = "vic3", clap(visible_alias = "vic3"))]
-    #[cfg_attr(feature = "imperator", clap(visible_alias = "imperator"))]
+    #[clap(visible_alias = "ck3")]
     #[clap(long)]
     /// Path to game main directory.
     game: Option<PathBuf>,
-    #[cfg_attr(not(any(feature = "vic3", feature = "eu5")), clap(skip))]
-    #[cfg_attr(any(feature = "vic3", feature = "eu5"), clap(long))]
+    #[clap(skip)]
     /// Path to game workshop directory.
     workshop: Option<PathBuf>,
-    #[cfg_attr(not(any(feature = "ck3", feature = "imperator", feature = "hoi4")), clap(skip))]
-    #[cfg_attr(any(feature = "ck3", feature = "imperator", feature = "hoi4"), clap(long))]
+    #[clap(long)]
     /// Path to paradox directory
     paradox: Option<PathBuf>,
     /// Path to custom .conf file.
@@ -80,7 +69,6 @@ struct ValidateArgs {
     #[clap(long)]
     unused: bool,
     /// Do checks specific to the Princes of Darkness mod
-    #[cfg(feature = "ck3")]
     #[clap(long)]
     pod: bool,
     /// Omit color from the output. False by default.
@@ -204,7 +192,6 @@ pub fn run(
                 );
             }
 
-            #[cfg(feature = "ck3")]
             if args.pod {
                 eprintln!("Doing special checks for the Princes of Darkness mod.");
             }
@@ -216,7 +203,6 @@ pub fn run(
 
             let mut everything;
 
-            #[cfg(any(feature = "ck3", feature = "imperator", feature = "hoi4"))]
             {
                 if args.modpath.is_dir() {
                     args.modpath.push("descriptor.mod");
@@ -238,20 +224,7 @@ pub fn run(
                     &modpath,
                     modfile.replace_paths(),
                 )?;
-            }
-            #[cfg(any(feature = "vic3", feature = "eu5"))]
-            {
-                let metadata = ModMetadata::read(&args.modpath)?;
-                eprintln!("Using mod directory: {}", metadata.modpath().display());
-
-                everything = Everything::new(
-                    args.config.as_deref(),
-                    args.game.as_deref(),
-                    args.workshop.as_deref(),
-                    args.paradox.as_deref(),
-                    &args.modpath,
-                    metadata.replace_paths(),
-                )?;
+                everything.check_dependencies(&modfile);
             }
 
             // Print a blank line between the preamble and the first report:
@@ -283,7 +256,6 @@ pub fn run(
             everything.validate_all();
             everything.check_rivers();
 
-            #[cfg(feature = "ck3")]
             if args.pod {
                 everything.check_pod();
             }

@@ -9,6 +9,7 @@ pub trait ErrorLoc {
     fn loc_length(&self) -> usize {
         1
     }
+
     fn into_loc(self) -> Loc;
 }
 

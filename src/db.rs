@@ -14,16 +14,10 @@ use strum::EnumCount;
 use crate::block::Block;
 use crate::context::ScopeContext;
 use crate::everything::Everything;
-use crate::game::Game;
 use crate::helpers::{TigerHashMap, TigerHashSet, dup_error, exact_dup_advice, exact_dup_error};
 use crate::item::Item;
-#[cfg(any(feature = "vic3", feature = "eu5"))]
-use crate::item::ItemExt;
 use crate::lowercase::Lowercase;
-#[cfg(any(feature = "vic3", feature = "eu5"))]
-use crate::report::{ErrorKey, err};
 use crate::token::Token;
-use crate::variables::Variables;
 
 pub type FlagValidator = fn(&Token, &Everything);
 
@@ -78,90 +72,20 @@ impl Db {
         kind: Box<dyn DbKind>,
         exact_dup_ok: bool,
     ) {
-        if Game::is_vic3() || Game::is_eu5() {
-            #[cfg(any(feature = "vic3", feature = "eu5"))]
-            if let Some((prefix, name)) = key.split_once(':') {
-                if !item.injectable() {
-                    let msg = format!("cannot use prefixes with {item}");
-                    err(ErrorKey::Prefixes).msg(msg).loc(key).push();
-                    return;
-                }
-                match prefix.as_str() {
-                    "INJECT" => {
-                        if let Some(other) = self.database[item as usize].get_mut(name.as_str()) {
-                            other.inject(block, kind);
-                        } else {
-                            let msg = "injecting into a non-existing item";
-                            err(ErrorKey::Prefixes).msg(msg).loc(name).push();
-                        }
-                    }
-                    "REPLACE" => {
-                        if self.database[item as usize].contains_key(name.as_str()) {
-                            self.add_inner2(item, name, block, kind);
-                        } else {
-                            let msg = "replacing a non-existing item";
-                            err(ErrorKey::Prefixes).msg(msg).loc(name).push();
-                        }
-                    }
-                    "TRY_INJECT" => {
-                        if let Some(other) = self.database[item as usize].get_mut(name.as_str()) {
-                            other.inject(block, kind);
-                        }
-                    }
-                    "TRY_REPLACE" => {
-                        if self.database[item as usize].contains_key(name.as_str()) {
-                            self.add_inner2(item, name, block, kind);
-                        }
-                    }
-                    "REPLACE_OR_CREATE" => {
-                        self.add_inner2(item, name, block, kind);
-                    }
-                    "INJECT_OR_CREATE" => {
-                        if let Some(other) = self.database[item as usize].get_mut(name.as_str()) {
-                            other.inject(block, kind);
-                        } else {
-                            self.add_inner2(item, name, block, kind);
-                        }
-                    }
-                    _ => {
-                        let msg = format!("unknown prefix `{prefix}`");
-                        err(ErrorKey::Prefixes).msg(msg).loc(prefix).push();
-                    }
+        if let Some(other) = self.database[item as usize].get(key.as_str())
+            && other.key.loc.kind >= key.loc.kind
+        {
+            if other.block.equivalent(&block) {
+                if exact_dup_ok {
+                    exact_dup_advice(&key, &other.key, &item.to_string());
+                } else {
+                    exact_dup_error(&key, &other.key, &item.to_string());
                 }
             } else {
-                #[allow(clippy::collapsible_else_if)]
-                if item.injectable() {
-                    if let Some(other) = self.database[item as usize].get(key.as_str()) {
-                        let msg =
-                            format!("must have a prefix such as `REPLACE:` to replace {item}");
-                        err(ErrorKey::Prefixes)
-                            .msg(msg)
-                            .loc(key)
-                            .loc_msg(&other.key, "original here")
-                            .push();
-                    } else {
-                        self.add_inner2(item, key, block, kind);
-                    }
-                } else {
-                    self.add_inner2(item, key, block, kind);
-                }
+                dup_error(&key, &other.key, &item.to_string());
             }
-        } else {
-            if let Some(other) = self.database[item as usize].get(key.as_str())
-                && other.key.loc.kind >= key.loc.kind
-            {
-                if other.block.equivalent(&block) {
-                    if exact_dup_ok {
-                        exact_dup_advice(&key, &other.key, &item.to_string());
-                    } else {
-                        exact_dup_error(&key, &other.key, &item.to_string());
-                    }
-                } else {
-                    dup_error(&key, &other.key, &item.to_string());
-                }
-            }
-            self.add_inner2(item, key, block, kind);
         }
+        self.add_inner2(item, key, block, kind);
     }
 
     /// Actually add the item to the database, replacing any of the same name that were there before.
@@ -170,19 +94,9 @@ impl Db {
         self.database[item as usize].insert(key.as_str(), DbEntry { key, block, kind });
     }
 
-    #[cfg(feature = "hoi4")]
-    pub fn set_flag_validator(&mut self, item: Item, f: FlagValidator) {
-        self.flags[item as usize].1 = Some(f);
-    }
-
     pub fn add_flag(&mut self, item: Item, key: Token) {
         self.items_lc[item as usize].insert(Lowercase::new(key.as_str()), key.as_str());
         self.flags[item as usize].0.insert(key);
-    }
-
-    #[cfg(feature = "hoi4")]
-    pub fn add_anonymous(&mut self, ident: Token, block: Block, kind: Box<dyn DbKind>) {
-        self.anonymous.push(DbEntry { key: ident, block, kind });
     }
 
     pub fn add_subitems(&mut self) {
@@ -197,14 +111,6 @@ impl Db {
                 self.database[itype] = queue;
             } else {
                 self.database[itype].extend(queue);
-            }
-        }
-    }
-
-    pub fn scan_variables(&self, registry: &mut Variables) {
-        for map in &self.database {
-            for entry in map.values() {
-                registry.scan(&entry.block);
             }
         }
     }
@@ -258,7 +164,6 @@ impl Db {
         }
     }
 
-    #[cfg(feature = "ck3")] // vic3 happens not to use
     pub fn lc_has_property(
         &self,
         item: Item,
@@ -274,7 +179,6 @@ impl Db {
         }
     }
 
-    #[cfg(feature = "ck3")] // vic3 happens not to use
     pub fn set_property(&mut self, item: Item, key: &str, property: &str) {
         if let Some(entry) = self.database[item as usize].get_mut(key) {
             entry.kind.set_property(&entry.key, &entry.block, property);
@@ -293,6 +197,14 @@ impl Db {
         if let Some(entry) = self.database[item as usize].get(key.as_str()) {
             entry.kind.validate_call(&entry.key, &entry.block, key, block, data, sc);
         }
+    }
+
+    /// Run the deferred validation of all items of this type. See [`DbKind::validate_deferred`].
+    #[allow(dead_code)]
+    pub fn validate_deferred(&self, item: Item, data: &Everything) {
+        self.database[item as usize].par_iter().for_each(|(_, entry)| {
+            entry.kind.validate_deferred(&entry.key, &entry.block, data);
+        });
     }
 
     #[allow(dead_code)]
@@ -336,13 +248,7 @@ pub struct DbEntry {
     kind: Box<dyn DbKind>,
 }
 
-impl DbEntry {
-    #[cfg(any(feature = "vic3", feature = "eu5"))]
-    fn inject(&mut self, mut block: Block, kind: Box<dyn DbKind>) {
-        self.block.append(&mut block);
-        self.kind.merge_in(kind);
-    }
-}
+impl DbEntry {}
 
 #[allow(dead_code)]
 pub trait DbKind: Debug + AsAny + Sync + Send {
@@ -361,6 +267,7 @@ pub trait DbKind: Debug + AsAny + Sync + Send {
     ) -> bool {
         false
     }
+
     fn validate_call(
         &self,
         _key: &Token,
@@ -371,6 +278,9 @@ pub trait DbKind: Debug + AsAny + Sync + Send {
         _sc: &mut ScopeContext,
     ) {
     }
+
+    /// Validate the calls that `validate_call` recorded for later.
+    fn validate_deferred(&self, _key: &Token, _block: &Block, _data: &Everything) {}
 
     fn validate_use(
         &self,

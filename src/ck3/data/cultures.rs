@@ -5,7 +5,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::report::{ErrorKey, err};
@@ -19,7 +18,7 @@ use crate::validator::{Validator, ValueValidator};
 pub struct CultureEra {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CultureEra, CultureEra::add)
+    ItemLoader::Normal(Item::CultureEra, CultureEra::add)
 }
 
 impl CultureEra {
@@ -65,7 +64,7 @@ impl DbKind for CultureEra {
 pub struct Culture {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Culture, Culture::add)
+    ItemLoader::Normal(Item::Culture, Culture::add)
 }
 
 impl Culture {
@@ -165,7 +164,7 @@ impl DbKind for Culture {
 pub struct CulturePillar {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CulturePillar, CulturePillar::add)
+    ItemLoader::Normal(Item::CulturePillar, CulturePillar::add)
 }
 
 impl CulturePillar {
@@ -251,7 +250,7 @@ impl DbKind for CulturePillar {
 pub struct CultureTradition {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CultureTradition, CultureTradition::add)
+    ItemLoader::Normal(Item::CultureTradition, CultureTradition::add)
 }
 
 impl CultureTradition {
@@ -286,6 +285,17 @@ impl DbKind for CultureTradition {
             let loca = format!("{key}_desc");
             data.verify_exists_implied(Item::Localization, &loca, key);
         }
+        vd.field_validated_block("partners", |block, data| {
+            let mut vd = Validator::new(block, data);
+            vd.field_integer("number_of_spouses");
+            vd.field_integer("number_of_consorts");
+            vd.field_validated_block("number_of_consorts_by_tier", |block, data| {
+                let mut vd = Validator::new(block, data);
+                for tier in &["barony", "county", "duchy", "kingdom", "empire", "hegemony"] {
+                    vd.field_integer(tier);
+                }
+            });
+        });
         vd.field_validated_block("parameters", validate_parameters);
         vd.field_value("category");
         vd.field_validated_block("layers", |block, data| {
@@ -333,7 +343,7 @@ impl DbKind for CultureTradition {
             sc
         });
         validate_modifiers(&mut vd);
-        vd.multi_field_validated_block("doctrine_character_modifier", |block, data| {
+        vd.multi_field_validated_block("faith_character_modifier", |block, data| {
             let mut vd = Validator::new(block, data);
             vd.field_item("doctrine", Item::Doctrine);
             vd.field_item("name", Item::Localization);
@@ -403,7 +413,7 @@ fn validate_modifiers(vd: &mut Validator) {
 pub struct CultureAesthetic {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CultureAesthetic, CultureAesthetic::add)
+    ItemLoader::Normal(Item::CultureAesthetic, CultureAesthetic::add)
 }
 
 impl CultureAesthetic {
@@ -437,7 +447,7 @@ impl DbKind for CultureAesthetic {
 pub struct CultureCreationName {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CultureCreationName, CultureCreationName::add)
+    ItemLoader::Normal(Item::CultureCreationName, CultureCreationName::add)
 }
 
 impl CultureCreationName {
@@ -480,7 +490,7 @@ impl DbKind for CultureCreationName {
 pub struct NameEquivalency {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::NameEquivalency, NameEquivalency::add)
+    ItemLoader::Normal(Item::NameEquivalency, NameEquivalency::add)
 }
 
 impl NameEquivalency {

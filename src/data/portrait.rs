@@ -3,7 +3,6 @@ use crate::context::ScopeContext;
 use crate::data::genes::{AccessoryGene, Gene};
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::{Game, GameFlags};
 use crate::item::{Item, ItemLoader, LoadAsFile, Recursive};
 use crate::pdxfile::PdxEncoding;
 use crate::report::{Confidence, ErrorKey, Severity, err, warn};
@@ -17,7 +16,7 @@ use crate::validator::Validator;
 pub struct PortraitModifierGroup {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::jomini(), Item::PortraitModifierGroup, PortraitModifierGroup::add)
+    ItemLoader::Normal(Item::PortraitModifierGroup, PortraitModifierGroup::add)
 }
 
 impl PortraitModifierGroup {
@@ -35,14 +34,11 @@ impl DbKind for PortraitModifierGroup {
         sc.define_name("age", Scopes::Value, key);
         sc.define_name("culture", Scopes::Culture, key);
         sc.define_name("current_weight", Scopes::Value, key);
-        #[cfg(feature = "ck3")]
-        if Game::is_ck3() {
-            sc.define_name("highest_held_title_tier", Scopes::Value, key);
-            sc.define_name("faith", Scopes::Faith, key);
-            sc.define_name("government", Scopes::GovernmentType, key);
-            sc.define_name("prowess", Scopes::Value, key);
-            sc.define_name("ruler_designer", Scopes::Bool, key);
-        }
+        sc.define_name("highest_held_title_tier", Scopes::Value, key);
+        sc.define_name("faith", Scopes::Faith, key);
+        sc.define_name("government", Scopes::GovernmentType, key);
+        sc.define_name("prowess", Scopes::Value, key);
+        sc.define_name("ruler_designer", Scopes::Bool, key);
         sc.define_name("female", Scopes::Bool, key);
         sc.define_name("weight_for_portrait", Scopes::Value, key);
         sc.define_name("year_of_birth", Scopes::Value, key);
@@ -60,7 +56,7 @@ impl DbKind for PortraitModifierGroup {
             caller = "";
         }
 
-        if !Game::is_imperator() && !caller.is_empty() {
+        if !caller.is_empty() {
             let loca = format!("PORTRAIT_MODIFIER_{key}");
             data.verify_exists_implied(Item::Localization, &loca, key);
         }
@@ -120,7 +116,7 @@ fn validate_portrait_modifier(
     {
         caller = "";
     }
-    if !Game::is_imperator() && !caller.is_empty() {
+    if !caller.is_empty() {
         let loca = format!("PORTRAIT_MODIFIER_{caller}_{key}");
         data.verify_exists_implied(Item::Localization, &loca, key);
     }
@@ -132,17 +128,9 @@ fn validate_portrait_modifier(
 
     vd.multi_field_validated_block("dna_modifiers", validate_dna_modifiers);
 
-    #[cfg(feature = "vic3")]
-    if Game::is_vic3() {
-        sc.define_name("character", Scopes::Character, key);
-        sc.define_name("pop", Scopes::Pop, key);
-    }
     vd.multi_field_validated_block_sc("weight", sc, validate_modifiers_with_base);
 
-    #[cfg(feature = "ck3")]
-    if Game::is_ck3() {
-        vd.field_bool("skip_if_overridden");
-    }
+    vd.field_bool("skip_if_overridden");
 }
 
 fn validate_add_accessory_modifiers(
@@ -175,7 +163,7 @@ fn validate_add_accessory_modifiers(
 pub struct PortraitAnimation {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::all(), Item::PortraitAnimation, PortraitAnimation::add)
+    ItemLoader::Normal(Item::PortraitAnimation, PortraitAnimation::add)
 }
 
 impl PortraitAnimation {
@@ -184,28 +172,15 @@ impl PortraitAnimation {
     }
 }
 
-const BODY_TYPES: &[&str] = &[
-    "male",
-    "female",
-    "boy",
-    "girl",
-    #[cfg(any(feature = "vic3", feature = "eu5"))]
-    "adolescent_boy",
-    #[cfg(any(feature = "vic3", feature = "eu5"))]
-    "adolescent_girl",
-    #[cfg(any(feature = "vic3", feature = "imperator", feature = "eu5"))]
-    "infant",
-];
+const BODY_TYPES: &[&str] = &["male", "female", "boy", "girl"];
 
 impl DbKind for PortraitAnimation {
     fn validate(&self, key: &Token, block: &Block, data: &Everything) {
         let mut vd = Validator::new(block, data);
         data.verify_exists(Item::Localization, key);
 
-        if Game::is_ck3() {
-            vd.field_validated_block("default", validate_animation);
-        }
-        let has_default = Game::is_ck3() && block.has_key("default");
+        vd.field_validated_block("default", validate_animation);
+        let has_default = block.has_key("default");
 
         vd.field_bool("barbershop");
 
@@ -238,9 +213,7 @@ fn validate_animation(block: &Block, data: &Everything) {
         vd.field_value("torso"); // TODO
     });
 
-    if Game::is_ck3() {
-        vd.field_bool("force");
-    }
+    vd.field_bool("force");
 
     vd.multi_field_validated_block("portrait_modifier", |block, data| {
         let mut vd = Validator::new(block, data);
@@ -273,6 +246,14 @@ fn validate_animation(block: &Block, data: &Everything) {
             let vd = Validator::new(block, data);
             validate_portrait_modifiers(block, data, vd);
         });
+        vd.multi_field_validated_block("portrait_modifier_set", |block, data| {
+            let mut vd = Validator::new(block, data);
+            vd.multi_field_validated_block("portrait_modifier", |block, data| {
+                let vd = Validator::new(block, data);
+                validate_portrait_modifiers(block, data, vd);
+            });
+            vd.multi_field_item("portrait_modifier_pack", Item::PortraitModifierPack);
+        });
         vd.field_item("portrait_modifier_pack", Item::PortraitModifierPack);
     });
 }
@@ -281,7 +262,7 @@ fn validate_animation(block: &Block, data: &Everything) {
 pub struct PortraitModifierPack {}
 
 inventory::submit! {
-    ItemLoader::Full(GameFlags::all(), Item::PortraitModifierPack, PdxEncoding::Utf8Bom, ".modifierpack", LoadAsFile::No, Recursive::No, PortraitModifierPack::add)
+    ItemLoader::Full(Item::PortraitModifierPack, PdxEncoding::Utf8Bom, ".modifierpack", LoadAsFile::No, Recursive::No, PortraitModifierPack::add)
 }
 
 impl PortraitModifierPack {
@@ -316,7 +297,7 @@ fn validate_portrait_modifiers(_block: &Block, data: &Everything, mut vd: Valida
 pub struct PortraitCamera {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::all(), Item::PortraitCamera, PortraitCamera::add)
+    ItemLoader::Normal(Item::PortraitCamera, PortraitCamera::add)
 }
 
 impl PortraitCamera {
@@ -356,9 +337,6 @@ impl DbKind for PortraitCamera {
 pub fn validate_dna_modifiers(block: &Block, data: &Everything) {
     let mut vd = Validator::new(block, data);
 
-    #[cfg(feature = "imperator")]
-    let modes = &["add", "replace", "modify", "replace_template"];
-    #[cfg(not(feature = "imperator"))]
     let modes = &["add", "replace", "modify", "modify_multiply"];
 
     vd.multi_field_validated_block("morph", |block, data| {

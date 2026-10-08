@@ -7,7 +7,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::effect::validate_effect;
-use crate::game::GameFlags;
 use crate::helpers::{TigerHashMap, TigerHashSet};
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
@@ -24,7 +23,7 @@ use crate::validator::Validator;
 pub struct LegendType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::LegendType, LegendType::add)
+    ItemLoader::Normal(Item::LegendType, LegendType::add)
 }
 
 impl LegendType {
@@ -195,7 +194,7 @@ fn validate_ai_chance(block: &Block, data: &Everything) {
 pub struct LegendSeed {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::LegendSeed, LegendSeed::add)
+    ItemLoader::Normal(Item::LegendSeed, LegendSeed::add)
 }
 
 impl LegendSeed {
@@ -297,7 +296,7 @@ pub struct LegendChronicle {
 }
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::LegendChronicle, LegendChronicle::add)
+    ItemLoader::Normal(Item::LegendChronicle, LegendChronicle::add)
 }
 
 impl LegendChronicle {

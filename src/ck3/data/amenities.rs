@@ -3,7 +3,6 @@ use crate::ck3::modif::ModifKinds;
 use crate::ck3::validate::validate_cost;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::report::{ErrorKey, err};
@@ -16,7 +15,7 @@ use crate::validator::Validator;
 pub struct Amenity {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Amenity, Amenity::add)
+    ItemLoader::Normal(Item::Amenity, Amenity::add)
 }
 
 impl Amenity {

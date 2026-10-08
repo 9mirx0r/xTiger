@@ -1,7 +1,6 @@
 use crate::block::{BV, Block};
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader, LoadAsFile, Recursive};
 use crate::pdxfile::PdxEncoding;
 use crate::report::{ErrorKey, err};
@@ -13,7 +12,7 @@ use crate::validator::Validator;
 pub struct LineType {}
 
 inventory::submit! {
-    ItemLoader::Full(GameFlags::Ck3, Item::LineType, PdxEncoding::Utf8Bom, ".lines", LoadAsFile::No, Recursive::No, LineType::add)
+    ItemLoader::Full(Item::LineType, PdxEncoding::Utf8Bom, ".lines", LoadAsFile::No, Recursive::No, LineType::add)
 }
 
 impl LineType {

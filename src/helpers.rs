@@ -1,28 +1,49 @@
 //! Miscellaneous convenience functions.
-use ahash::{HashMap, HashSet, RandomState};
+use ahash::{AHasher, RandomState};
 use bimap::BiHashMap;
 
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
+use std::hash::BuildHasher;
 use std::str::FromStr;
+use std::sync::LazyLock;
 
-use crate::game::Game;
 use crate::item::Item;
-#[cfg(any(feature = "vic3", feature = "eu5"))]
-use crate::report::err;
 use crate::report::{ErrorKey, tips, warn};
-#[cfg(feature = "hoi4")]
-use crate::scopes::Scopes;
 use crate::token::Token;
 
-pub type TigerHashMap<K, V> = HashMap<K, V>;
+/// The hasher for all of Tiger's hash maps and sets.
+///
+/// It uses fixed seeds so that iteration order, and thus the order in which things get validated
+/// and reported, is the same in every run.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TigerBuildHasher;
+
+static TIGER_HASH_STATE: LazyLock<RandomState> = LazyLock::new(|| {
+    RandomState::with_seeds(
+        0x243f_6a88_85a3_08d3,
+        0x1319_8a2e_0370_7344,
+        0xa409_3822_299f_31d0,
+        0x082e_fa98_ec4e_6c89,
+    )
+});
+
+impl BuildHasher for TigerBuildHasher {
+    type Hasher = AHasher;
+    fn build_hasher(&self) -> AHasher {
+        TIGER_HASH_STATE.build_hasher()
+    }
+}
+
+pub type TigerHashMap<K, V> = HashMap<K, V, TigerBuildHasher>;
 pub use ahash::HashMapExt as TigerHashMapExt;
-pub type TigerHashSet<T> = HashSet<T>;
+pub type TigerHashSet<T> = HashSet<T, TigerBuildHasher>;
 pub use ahash::HashSetExt as TigerHashSetExt;
 
 #[macro_export]
 macro_rules! set {
     ( $x:expr ) => {
-        ahash::AHashSet::from($x).into()
+        $crate::helpers::TigerHashSet::from_iter($x)
     };
 }
 
@@ -118,7 +139,6 @@ pub fn stringify_list(v: &[&str]) -> String {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[cfg(feature = "jomini")]
 pub enum TriBool {
     True,
     False,
@@ -142,7 +162,7 @@ pub const BANNED_NAMES: &[&str] = &[
     "take_hostage", // actually used by vanilla CK3
 ];
 
-pub(crate) type BiTigerHashMap<L, R> = BiHashMap<L, R, RandomState, RandomState>;
+pub(crate) type BiTigerHashMap<L, R> = BiHashMap<L, R, TigerBuildHasher, TigerBuildHasher>;
 
 #[derive(Debug, Clone)]
 pub(crate) enum ActionOrEvent {
@@ -201,21 +221,6 @@ impl Display for ActionOrEvent {
     }
 }
 
-pub fn is_country_tag(part: &str) -> bool {
-    part.len() == 3 && part != "NOT" && part.chars().all(|c| c.is_ascii_uppercase())
-}
-
-#[cfg(feature = "hoi4")]
-pub fn expand_scopes_hoi4(mut scopes: Scopes) -> Scopes {
-    if scopes.contains(Scopes::Country) || scopes.contains(Scopes::State) {
-        scopes |= Scopes::CombinedCountryAndState;
-    }
-    if scopes.contains(Scopes::Country) || scopes.contains(Scopes::Character) {
-        scopes |= Scopes::CombinedCountryAndCharacter;
-    }
-    scopes
-}
-
 #[inline]
 pub fn snake_case_to_camel_case(s: &str) -> String {
     let mut temp_s = String::with_capacity(s.len());
@@ -252,135 +257,14 @@ pub fn camel_case_to_separated_words(s: &str) -> String {
     temp_s
 }
 
-/// Used for scripted triggers, effects, and modifiers. Handles the `REPLACE:` etc prefixes, and
-/// returns the name to insert under iff the new item should be inserted.
-pub fn limited_item_prefix_should_insert<'a, 'b, F>(
-    itype: Item,
-    key: Token,
-    get_other: F,
-) -> Option<Token>
+/// Report `key` as a duplicate if `get_other` finds an earlier definition that it overrides.
+pub fn check_dup_item<'a, 'b, F>(itype: Item, key: &Token, get_other: F)
 where
     F: Fn(&'a str) -> Option<&'b Token>,
 {
-    if Game::is_vic3() || Game::is_eu5() {
-        #[allow(clippy::collapsible_else_if)]
-        #[cfg(any(feature = "vic3", feature = "eu5"))]
-        if let Some((prefix, name)) = key.split_once(':') {
-            let other = get_other(name.as_str());
-            match prefix.as_str() {
-                "INJECT" | "TRY_INJECT" | "INJECT_OR_CREATE" => {
-                    let msg = format!("cannot inject {itype}");
-                    err(ErrorKey::Prefixes).msg(msg).loc(prefix).push();
-                }
-                "REPLACE" => {
-                    if other.is_some() {
-                        return Some(name);
-                    }
-                    let msg = "replacing a non-existing item";
-                    err(ErrorKey::Prefixes).msg(msg).loc(name).push();
-                }
-                "TRY_REPLACE" => {
-                    if other.is_some() {
-                        return Some(name);
-                    }
-                }
-                "REPLACE_OR_CREATE" => return Some(name),
-                _ => {
-                    let msg = format!("unknown prefix `{prefix}`");
-                    err(ErrorKey::Prefixes).msg(msg).loc(prefix).push();
-                }
-            }
-        } else {
-            if let Some(other) = get_other(key.as_str()) {
-                let msg = format!("must have prefix such as `REPLACE:` to replace {itype}");
-                err(ErrorKey::Prefixes).msg(msg).loc(key).loc_msg(other, "original here").push();
-            } else {
-                return Some(key);
-            }
-        }
-    } else {
-        if let Some(other) = get_other(key.as_str())
-            && other.loc.kind >= key.loc.kind
-        {
-            dup_error(&key, other, &itype.to_string());
-        }
-        return Some(key);
+    if let Some(other) = get_other(key.as_str())
+        && other.loc.kind >= key.loc.kind
+    {
+        dup_error(key, other, &itype.to_string());
     }
-    None
-}
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "jomini")]
-pub enum PrefixShould {
-    Insert(Token),
-    #[cfg(any(feature = "vic3", feature = "eu5"))]
-    Inject(Token),
-    Ignore,
-}
-
-/// Used for prefixed items other than effects, triggers, and modifiers.
-#[cfg(feature = "jomini")]
-pub fn item_prefix_should<'a, 'b, F>(itype: Item, key: &Token, get_other: F) -> PrefixShould
-where
-    F: Fn(&'a str) -> Option<&'b Token>,
-{
-    if Game::is_vic3() || Game::is_eu5() {
-        #[allow(clippy::collapsible_else_if)]
-        #[cfg(any(feature = "vic3", feature = "eu5"))]
-        if let Some((prefix, name)) = key.split_once(':') {
-            let other = get_other(name.as_str());
-            match prefix.as_str() {
-                "INJECT" => {
-                    if other.is_some() {
-                        return PrefixShould::Inject(name);
-                    }
-                    let msg = "injecting into a non-existing item";
-                    err(ErrorKey::Prefixes).msg(msg).loc(name).push();
-                }
-                "REPLACE" => {
-                    if other.is_some() {
-                        return PrefixShould::Insert(name);
-                    }
-                    let msg = "replacing a non-existing item";
-                    err(ErrorKey::Prefixes).msg(msg).loc(name).push();
-                }
-                "TRY_INJECT" => {
-                    if other.is_some() {
-                        return PrefixShould::Inject(name);
-                    }
-                }
-                "TRY_REPLACE" => {
-                    if other.is_some() {
-                        return PrefixShould::Insert(name);
-                    }
-                }
-                "REPLACE_OR_CREATE" => return PrefixShould::Insert(name),
-                "INJECT_OR_CREATE" => {
-                    if other.is_some() {
-                        return PrefixShould::Inject(name);
-                    }
-                    return PrefixShould::Insert(name);
-                }
-                _ => {
-                    let msg = format!("unknown prefix `{prefix}`");
-                    err(ErrorKey::Prefixes).msg(msg).loc(prefix).push();
-                }
-            }
-        } else {
-            if let Some(other) = get_other(key.as_str()) {
-                let msg = format!("must have prefix such as `REPLACE:` to replace {itype}");
-                err(ErrorKey::Prefixes).msg(msg).loc(key).loc_msg(other, "original here").push();
-            } else {
-                return PrefixShould::Insert(key.clone());
-            }
-        }
-    } else {
-        if let Some(other) = get_other(key.as_str())
-            && other.loc.kind >= key.loc.kind
-        {
-            dup_error(key, other, &itype.to_string());
-        }
-        return PrefixShould::Insert(key.clone());
-    }
-    PrefixShould::Ignore
 }

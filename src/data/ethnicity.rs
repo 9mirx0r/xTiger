@@ -2,7 +2,6 @@ use crate::block::Block;
 use crate::data::genes::Gene;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::{Game, GameFlags};
 use crate::item::{Item, ItemLoader};
 use crate::report::{Confidence, Severity};
 use crate::token::Token;
@@ -13,7 +12,7 @@ use crate::validator::Validator;
 pub struct Ethnicity {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::jomini(), Item::Ethnicity, Ethnicity::add)
+    ItemLoader::Normal(Item::Ethnicity, Ethnicity::add)
 }
 
 impl Ethnicity {
@@ -28,12 +27,7 @@ impl DbKind for Ethnicity {
         vd.set_max_severity(Severity::Warning);
         vd.field_bool("visible");
         if !block.field_value_is("visible", "no") {
-            if Game::is_ck3() {
-                data.verify_exists(Item::Localization, key);
-            } else if Game::is_vic3() {
-                let loca = format!("ethnicity_{key}");
-                data.verify_exists_implied(Item::Localization, &loca, key);
-            }
+            data.verify_exists(Item::Localization, key);
         }
         vd.field_item("template", Item::Ethnicity);
         vd.field_item("using", Item::Culture);
@@ -57,10 +51,7 @@ impl DbKind for Ethnicity {
                             Confidence::Reasonable,
                         );
                     });
-                    #[cfg(feature = "ck3")]
-                    if Game::is_ck3() {
-                        vd.field_list_items("traits", Item::GeneticConstraint);
-                    }
+                    vd.field_list_items("traits", Item::GeneticConstraint);
                 } else {
                     // for color genes
                     data.validate_use(Item::GeneCategory, key, block);

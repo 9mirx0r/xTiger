@@ -4,10 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use console::Term;
-#[cfg(any(feature = "ck3", feature = "imperator", feature = "hoi4"))]
 use tiger_lib::ModFile;
-#[cfg(any(feature = "vic3", feature = "eu5"))]
-use tiger_lib::ModMetadata;
 use tiger_lib::{Everything, emit_reports};
 
 use crate::GameConsts;
@@ -26,7 +23,7 @@ pub fn run(game_consts: &GameConsts) -> Result<()> {
     // Colors are off by default, but enable ANSI support in case the config file turns colors on again.
     #[cfg(windows)]
     let _ = ansiterm::enable_ansi_support().map_err(|_| {
-        eprintln!("Failed to enable ANSI support for Windows10 users. Continuing anyway.")
+        eprintln!("Failed to enable ANSI support for Windows10 users. Continuing anyway.");
     });
 
     eprintln!("This validator was made for {name} version {version}.");
@@ -120,11 +117,8 @@ fn validate_mod(
     let mut everything;
     let mut modpath = modpath;
 
-    #[cfg(any(feature = "ck3", feature = "imperator", feature = "hoi4"))]
     let modfile = ModFile::read(modpath)?;
-    #[cfg(any(feature = "ck3", feature = "imperator", feature = "hoi4"))]
     let modpath_owned = modfile.modpath();
-    #[cfg(any(feature = "ck3", feature = "imperator", feature = "hoi4"))]
     {
         modpath = &modpath_owned;
         if !modpath.is_dir() {
@@ -141,22 +135,10 @@ fn validate_mod(
     eprintln!("Writing error reports to {} ...", output_file.display());
     eprintln!("This will take a few seconds.");
 
-    #[cfg(any(feature = "ck3", feature = "imperator", feature = "hoi4"))]
     {
         everything =
             Everything::new(None, Some(game), workshop, paradox, modpath, modfile.replace_paths())?;
-    }
-    #[cfg(any(feature = "vic3", feature = "eu5"))]
-    {
-        let metadata = ModMetadata::read(modpath)?;
-        everything = Everything::new(
-            None,
-            Some(game),
-            workshop,
-            paradox,
-            modpath,
-            metadata.replace_paths(),
-        )?;
+        everything.check_dependencies(&modfile);
     }
 
     // Unfortunately have to disable the colors by default because
@@ -181,15 +163,10 @@ fn validate_mod(
 }
 
 fn is_local_mod_entry(entry: &DirEntry) -> bool {
-    #[cfg(any(feature = "ck3", feature = "imperator", feature = "hoi4"))]
     {
         let filename = entry.file_name();
         let name = filename.to_string_lossy();
         name.ends_with(".mod") && !name.starts_with("pdx_") && !name.starts_with("ugc")
-    }
-    #[cfg(any(feature = "vic3", feature = "eu5"))]
-    {
-        entry.path().join(".metadata/metadata.json").is_file()
     }
 }
 

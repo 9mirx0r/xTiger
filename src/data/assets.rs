@@ -3,17 +3,14 @@ use std::path::PathBuf;
 use crate::block::{BV, Block};
 use crate::everything::Everything;
 use crate::fileset::{FileEntry, FileHandler};
-use crate::game::Game;
 use crate::helpers::{TigerHashMap, TigerHashSet, dup_error};
 use crate::item::Item;
 use crate::parse::ParserMemory;
 use crate::pdxfile::PdxFile;
-#[cfg(feature = "jomini")]
 use crate::report::{Confidence, Severity};
 use crate::report::{ErrorKey, warn};
 use crate::token::Token;
 use crate::util::SmartJoin;
-#[cfg(feature = "jomini")]
 use crate::validate::validate_numeric_range;
 use crate::validator::Validator;
 
@@ -47,12 +44,10 @@ impl Assets {
         self.assets.values().map(|item| &item.name)
     }
 
-    #[cfg(feature = "jomini")]
     pub fn mesh_exists(&self, key: &str) -> bool {
         if let Some(asset) = self.assets.get(key) { asset.key.is("pdxmesh") } else { false }
     }
 
-    #[cfg(feature = "jomini")]
     pub fn iter_mesh_keys(&self) -> impl Iterator<Item = &Token> {
         self.assets.values().filter(|item| item.key.is("pdxmesh")).map(|item| &item.name)
     }
@@ -73,24 +68,12 @@ impl Assets {
         self.blend_shapes.iter()
     }
 
-    #[cfg(feature = "jomini")]
     pub fn attribute_exists(&self, key: &str) -> bool {
         self.attributes.contains(key)
     }
 
-    #[cfg(feature = "jomini")]
     pub fn iter_attribute_keys(&self) -> impl Iterator<Item = &Token> {
         self.attributes.iter()
-    }
-
-    #[cfg(feature = "hoi4")]
-    pub fn music_exists(&self, key: &str) -> bool {
-        self.musics.contains(key)
-    }
-
-    #[cfg(feature = "hoi4")]
-    pub fn iter_music_keys(&self) -> impl Iterator<Item = &Token> {
-        self.musics.iter()
     }
 
     pub fn texture_exists(&self, key: &str) -> bool {
@@ -200,6 +183,7 @@ impl Asset {
         }
         vd.field_numeric("scale");
         vd.field_numeric("cull_distance");
+        vd.field_value("streaming"); // TODO: vanilla only uses Never
 
         vd.multi_field_validated_block("lod_percentages", |block, data| {
             let mut vd = Validator::new(block, data);
@@ -263,24 +247,16 @@ impl Asset {
         vd.field_bool("get_state_from_parent");
         vd.field_numeric("scale");
         vd.field_numeric("cull_radius");
-        #[cfg(feature = "jomini")]
-        if Game::is_jomini() {
-            vd.multi_field_validated_block("attribute", |block, data| {
-                let mut vd = Validator::new(block, data);
-                vd.req_field("name");
-                vd.req_field_one_of(&["blend_shape", "additive_animation"]);
-                vd.field_item("name", Item::GeneAttribute);
-                if Game::is_eu5() {
-                    vd.field("additive_animation"); // TODO: eu5 link to defined "additive_animation"
-                } else {
-                    vd.field_item("additive_animation", Item::GeneAttribute);
-                }
-                vd.field_item("blend_shape", Item::BlendShape);
-                vd.field_numeric("default");
-            });
-        }
+        vd.multi_field_validated_block("attribute", |block, data| {
+            let mut vd = Validator::new(block, data);
+            vd.req_field("name");
+            vd.req_field_one_of(&["blend_shape", "additive_animation"]);
+            vd.field_item("name", Item::GeneAttribute);
+            vd.field_item("additive_animation", Item::GeneAttribute);
+            vd.field_item("blend_shape", Item::BlendShape);
+            vd.field_numeric("default");
+        });
         vd.multi_field_validated_block("meshsettings", validate_meshsettings);
-        #[cfg(feature = "jomini")]
         vd.multi_field_validated_block("game_data", |block, data| {
             let mut vd = Validator::new(block, data);
             vd.multi_field_validated_block("portrait_entity_user_data", |block, data| {
@@ -364,9 +340,6 @@ impl Asset {
                 let mut vd = Validator::new(block, data);
                 vd.req_tokens_numbers_exactly(3);
             });
-            if Game::is_vic3() || Game::is_eu5() {
-                vd.field("parent_joint"); // TODO: eu5 & vic3
-            }
             vd.field_numeric("scale");
         });
         vd.multi_field_validated_block("attach", |block, data| {
@@ -376,15 +349,6 @@ impl Asset {
                 data.verify_exists(Item::Asset, token);
             });
         });
-    }
-
-    pub fn validate_animation(&self, data: &Everything) {
-        let mut vd = Validator::new(&self.block, data);
-        vd.field_value("name");
-        if let Some(token) = vd.field_value("file") {
-            let path = self.key.loc.pathname().smart_join_parent(token.as_str());
-            data.verify_exists_implied(Item::File, &path.to_string_lossy(), token);
-        }
     }
 
     pub fn validate_animation_set(&self, data: &Everything) {
@@ -405,7 +369,7 @@ impl Asset {
     }
 
     pub fn validate_music(&self, data: &Everything) {
-        if !Game::is_hoi4() {
+        {
             let msg = "`music` assets are only used in Hoi4";
             warn(ErrorKey::WrongGame).msg(msg).loc(&self.key).push();
         }
@@ -423,8 +387,6 @@ impl Asset {
             self.validate_mesh(data);
         } else if self.key.is("entity") {
             self.validate_entity(data);
-        } else if Game::is_hoi4() && self.key.is("animation") {
-            self.validate_animation(data);
         } else if self.key.is("skeletal_animation_set") {
             self.validate_animation_set(data);
         } else if self.key.is("arrowType") {
@@ -442,9 +404,6 @@ fn validate_event(block: &Block, data: &Everything) {
     vd.field_numeric("time");
     vd.field_numeric("life");
     vd.field_numeric("entity_fade_speed");
-    if Game::is_eu5() {
-        vd.field_numeric("entity_editor_id");
-    }
     vd.field_value("state"); // TODO
     vd.field_value("node"); // TODO
     vd.field_value("particle"); // TODO
@@ -469,12 +428,7 @@ fn validate_event(block: &Block, data: &Everything) {
         if let Some(token) = vd.field_value("soundeffect")
             && !token.is("")
         {
-            if Game::is_hoi4() {
-                #[cfg(feature = "hoi4")]
-                data.verify_exists(Item::SoundEffect, token);
-            } else if Game::is_eu5() {
-                // TODO: EU5 sound system is wwise and not documented
-            } else {
+            {
                 data.verify_exists(Item::Sound, token);
             }
         }
@@ -505,7 +459,7 @@ fn validate_meshsettings(block: &Block, data: &Everything) {
     vd.field_value("subpass");
     vd.field_value("shadow_shader");
     vd.field_value("rasterizerstate"); // TODO, choices?
-    if Game::is_vic3() || Game::is_ck3() || Game::is_eu5() {
+    {
         vd.field_list("additional_shader_defines");
     }
 }

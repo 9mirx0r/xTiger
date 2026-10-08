@@ -5,7 +5,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::scopes::Scopes;
@@ -21,7 +20,7 @@ pub struct Building {
 }
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Building, Building::add)
+    ItemLoader::Normal(Item::Building, Building::add)
 }
 
 impl Building {
@@ -251,6 +250,12 @@ fn validate_modifiers(vd: &mut Validator, is_duchy_capital: bool) {
         vd.field_item("parameter", Item::DoctrineParameter);
         validate_modifs(block, data, ModifKinds::Character, vd);
     });
+    vd.multi_field_validated_block("character_rite_modifier", |block, data| {
+        let mut vd = Validator::new(block, data);
+        vd.req_field("parameter");
+        vd.field_item("parameter", Item::DoctrineParameter);
+        validate_modifs(block, data, ModifKinds::Character, vd);
+    });
 
     vd.multi_field_validated_block("province_modifier", |block, data| {
         let vd = Validator::new(block, data);
@@ -263,6 +268,12 @@ fn validate_modifiers(vd: &mut Validator, is_duchy_capital: bool) {
         validate_modifs(block, data, ModifKinds::Province, vd);
     });
     vd.multi_field_validated_block("province_faith_modifier", |block, data| {
+        let mut vd = Validator::new(block, data);
+        vd.req_field("parameter");
+        vd.field_item("parameter", Item::DoctrineParameter);
+        validate_modifs(block, data, ModifKinds::Province, vd);
+    });
+    vd.multi_field_validated_block("province_rite_modifier", |block, data| {
         let mut vd = Validator::new(block, data);
         vd.req_field("parameter");
         vd.field_item("parameter", Item::DoctrineParameter);
@@ -298,6 +309,12 @@ fn validate_modifiers(vd: &mut Validator, is_duchy_capital: bool) {
         vd.field_item("parameter", Item::DoctrineParameter);
         validate_modifs(block, data, ModifKinds::County, vd);
     });
+    vd.multi_field_validated_block("county_rite_modifier", |block, data| {
+        let mut vd = Validator::new(block, data);
+        vd.req_field("parameter");
+        vd.field_item("parameter", Item::DoctrineParameter);
+        validate_modifs(block, data, ModifKinds::County, vd);
+    });
 
     if is_duchy_capital {
         vd.multi_field_validated_block("duchy_capital_county_modifier", |block, data| {
@@ -311,6 +328,12 @@ fn validate_modifiers(vd: &mut Validator, is_duchy_capital: bool) {
             validate_modifs(block, data, ModifKinds::County, vd);
         });
         vd.multi_field_validated_block("duchy_capital_county_faith_modifier", |block, data| {
+            let mut vd = Validator::new(block, data);
+            vd.req_field("parameter");
+            vd.field_item("parameter", Item::DoctrineParameter);
+            validate_modifs(block, data, ModifKinds::County, vd);
+        });
+        vd.multi_field_validated_block("duchy_capital_county_rite_modifier", |block, data| {
             let mut vd = Validator::new(block, data);
             vd.req_field("parameter");
             vd.field_item("parameter", Item::DoctrineParameter);

@@ -7,8 +7,8 @@ use crate::ck3::validate::{
 };
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
+use crate::deferred::DeferredCalls;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::report::Severity;
 use crate::scopes::Scopes;
@@ -19,16 +19,17 @@ use crate::validator::Validator;
 #[derive(Debug)]
 pub struct EventTheme {
     validated_scopes: RwLock<Scopes>,
+    calls: DeferredCalls,
 }
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::EventTheme, EventTheme::add)
+    ItemLoader::Normal(Item::EventTheme, EventTheme::add)
 }
 
 impl EventTheme {
     pub fn new() -> Self {
         let validated_scopes = RwLock::new(Scopes::empty());
-        Self { validated_scopes }
+        Self { validated_scopes, calls: DeferredCalls::default() }
     }
 
     pub fn add(db: &mut Db, key: Token, block: Block) {
@@ -46,48 +47,56 @@ impl DbKind for EventTheme {
     fn validate_call(
         &self,
         _key: &Token,
-        block: &Block,
-        _caller: &Token,
+        _block: &Block,
+        caller: &Token,
         _caller_block: &Block,
-        data: &Everything,
+        _data: &Everything,
         sc: &mut ScopeContext,
     ) {
-        // Check if the passed-in scope type has already been validated for
-        let scopes = sc.scopes(data);
-        if self.validated_scopes.read().unwrap().contains(scopes) {
-            return;
+        self.calls.push(caller, sc);
+    }
+
+    fn validate_deferred(&self, _key: &Token, block: &Block, data: &Everything) {
+        for (_, mut sc) in self.calls.take_sorted(data) {
+            let sc = &mut sc;
+            // Check if the passed-in scope type has already been validated for
+            let scopes = sc.scopes(data);
+            if self.validated_scopes.read().unwrap().contains(scopes) {
+                continue;
+            }
+            *self.validated_scopes.write().unwrap() |= scopes;
+
+            let mut vd = Validator::new(block, data);
+            vd.set_max_severity(Severity::Warning);
+
+            vd.req_field("background");
+            vd.req_field("icon");
+            vd.req_field("sound");
+
+            vd.multi_field_validated_sc("background", sc, validate_theme_background);
+            vd.multi_field_validated_sc("header_background", sc, validate_theme_header_background);
+            vd.multi_field_validated_sc("icon", sc, validate_theme_icon);
+            vd.multi_field_validated_block_sc("sound", sc, validate_theme_sound);
+            vd.multi_field_validated_block_sc("transition", sc, validate_theme_transition);
+            vd.multi_field_validated_sc("effect_2d", sc, validate_theme_effect_2d);
         }
-        *self.validated_scopes.write().unwrap() |= scopes;
-
-        let mut vd = Validator::new(block, data);
-        vd.set_max_severity(Severity::Warning);
-
-        vd.req_field("background");
-        vd.req_field("icon");
-        vd.req_field("sound");
-
-        vd.multi_field_validated_sc("background", sc, validate_theme_background);
-        vd.multi_field_validated_sc("header_background", sc, validate_theme_header_background);
-        vd.multi_field_validated_sc("icon", sc, validate_theme_icon);
-        vd.multi_field_validated_block_sc("sound", sc, validate_theme_sound);
-        vd.multi_field_validated_block_sc("transition", sc, validate_theme_transition);
-        vd.multi_field_validated_sc("effect_2d", sc, validate_theme_effect_2d);
     }
 }
 
 #[derive(Debug)]
 pub struct EventBackground {
     validated_scopes: RwLock<Scopes>,
+    calls: DeferredCalls,
 }
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::EventBackground, EventBackground::add)
+    ItemLoader::Normal(Item::EventBackground, EventBackground::add)
 }
 
 impl EventBackground {
     pub fn new() -> Self {
         let validated_scopes = RwLock::new(Scopes::empty());
-        Self { validated_scopes }
+        Self { validated_scopes, calls: DeferredCalls::default() }
     }
 
     pub fn add(db: &mut Db, key: Token, block: Block) {
@@ -101,50 +110,58 @@ impl DbKind for EventBackground {
     /// Like `EventTheme`, `EventBackground` are validated through the events (and themes) that use them.
     fn validate_call(
         &self,
-        key: &Token,
-        block: &Block,
-        _caller: &Token,
+        _key: &Token,
+        _block: &Block,
+        caller: &Token,
         _caller_block: &Block,
-        data: &Everything,
+        _data: &Everything,
         sc: &mut ScopeContext,
     ) {
-        let scopes = sc.scopes(data);
-        if self.validated_scopes.read().unwrap().contains(scopes) {
-            return;
-        }
-        *self.validated_scopes.write().unwrap() |= scopes;
+        self.calls.push(caller, sc);
+    }
 
-        data.mark_used(Item::Localization, key.as_str());
+    fn validate_deferred(&self, key: &Token, block: &Block, data: &Everything) {
+        for (_, mut sc) in self.calls.take_sorted(data) {
+            let sc = &mut sc;
+            let scopes = sc.scopes(data);
+            if self.validated_scopes.read().unwrap().contains(scopes) {
+                continue;
+            }
+            *self.validated_scopes.write().unwrap() |= scopes;
 
-        let mut vd = Validator::new(block, data);
-        vd.set_max_severity(Severity::Warning);
-        vd.req_field("background");
-        vd.multi_field_validated_block("background", |block, data| {
+            data.mark_used(Item::Localization, key.as_str());
+
             let mut vd = Validator::new(block, data);
             vd.set_max_severity(Severity::Warning);
-            vd.field_trigger("trigger", Tooltipped::No, sc);
-            vd.field_item("reference", Item::File);
-            vd.field_bool("video");
-            vd.field_item("environment", Item::PortraitEnvironment);
-            vd.field_value("ambience");
-            vd.field_item("video_mask", Item::File);
-        });
+            vd.req_field("background");
+            vd.multi_field_validated_block("background", |block, data| {
+                let mut vd = Validator::new(block, data);
+                vd.set_max_severity(Severity::Warning);
+                vd.field_trigger("trigger", Tooltipped::No, sc);
+                vd.field_item("reference", Item::File);
+                vd.field_bool("video");
+                vd.field_item("environment", Item::PortraitEnvironment);
+                vd.field_value("ambience");
+                vd.field_item("video_mask", Item::File);
+            });
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct EventTransition {
     validated_scopes: RwLock<Scopes>,
+    calls: DeferredCalls,
 }
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::EventTransition, EventTransition::add)
+    ItemLoader::Normal(Item::EventTransition, EventTransition::add)
 }
 
 impl EventTransition {
     pub fn new() -> Self {
         let validated_scopes = RwLock::new(Scopes::empty());
-        Self { validated_scopes }
+        Self { validated_scopes, calls: DeferredCalls::default() }
     }
 
     pub fn add(db: &mut Db, key: Token, block: Block) {
@@ -159,30 +176,37 @@ impl DbKind for EventTransition {
     fn validate_call(
         &self,
         _key: &Token,
-        block: &Block,
-        _caller: &Token,
+        _block: &Block,
+        caller: &Token,
         _caller_block: &Block,
-        data: &Everything,
+        _data: &Everything,
         sc: &mut ScopeContext,
     ) {
-        let scopes = sc.scopes(data);
-        if self.validated_scopes.read().unwrap().contains(scopes) {
-            return;
-        }
-        *self.validated_scopes.write().unwrap() |= scopes;
+        self.calls.push(caller, sc);
+    }
 
-        let mut vd = Validator::new(block, data);
-        vd.set_max_severity(Severity::Warning);
-        vd.req_field("transition");
-        vd.multi_field_validated_block("transition", |block, data| {
+    fn validate_deferred(&self, _key: &Token, block: &Block, data: &Everything) {
+        for (_, mut sc) in self.calls.take_sorted(data) {
+            let sc = &mut sc;
+            let scopes = sc.scopes(data);
+            if self.validated_scopes.read().unwrap().contains(scopes) {
+                continue;
+            }
+            *self.validated_scopes.write().unwrap() |= scopes;
+
             let mut vd = Validator::new(block, data);
             vd.set_max_severity(Severity::Warning);
-            vd.field_trigger("trigger", Tooltipped::No, sc);
-            vd.field_item("reference", Item::File);
-            vd.field_bool("video");
-            vd.field_value("ambience");
-            vd.field_item("video_mask", Item::File);
-            vd.field_numeric("duration");
-        });
+            vd.req_field("transition");
+            vd.multi_field_validated_block("transition", |block, data| {
+                let mut vd = Validator::new(block, data);
+                vd.set_max_severity(Severity::Warning);
+                vd.field_trigger("trigger", Tooltipped::No, sc);
+                vd.field_item("reference", Item::File);
+                vd.field_bool("video");
+                vd.field_value("ambience");
+                vd.field_item("video_mask", Item::File);
+                vd.field_numeric("duration");
+            });
+        }
     }
 }

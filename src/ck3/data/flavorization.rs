@@ -1,7 +1,6 @@
 use crate::block::Block;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::token::Token;
 use crate::validator::Validator;
@@ -10,7 +9,7 @@ use crate::validator::Validator;
 pub struct Flavorization {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Flavorization, Flavorization::add)
+    ItemLoader::Normal(Item::Flavorization, Flavorization::add)
 }
 
 impl Flavorization {
@@ -64,6 +63,7 @@ impl DbKind for Flavorization {
             vd.field_bool("top_liege");
             vd.field_bool("only_vassals");
             vd.field_bool("ignore_top_liege_government");
+            vd.field_bool("target_character");
         });
         vd.field_value("flag");
         vd.field_list_items("governments", Item::GovernmentType);
@@ -72,6 +72,15 @@ impl DbKind for Flavorization {
         vd.field_list_items("heritages", Item::CultureHeritage);
         vd.field_list_items("faiths", Item::Faith);
         vd.field_list_items("religions", Item::Religion);
+        vd.field_list_items("rites", Item::Rite);
+        vd.field_list_items("lessee_governments", Item::GovernmentType);
+        vd.field_list_items("lessee_heritages", Item::CultureHeritage);
+        vd.field_list_items("lessee_faiths", Item::Faith);
+        vd.field_list_items("lessee_rites", Item::Rite);
+        vd.field_choice(
+            "special_title",
+            &["head_of_faith", "clerical_region", "clerical_elector", "noble_family"],
+        );
         vd.field_item("council_position", Item::CouncilPosition);
         vd.field_list_items("de_jure_liege", Item::Title);
         vd.field_item("holding", Item::HoldingType);

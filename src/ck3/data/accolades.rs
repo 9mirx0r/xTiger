@@ -7,7 +7,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::desc::validate_desc;
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::report::{ErrorKey, err};
@@ -20,7 +19,7 @@ use crate::validator::Validator;
 pub struct AccoladeIcon {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::AccoladeIcon, AccoladeIcon::add)
+    ItemLoader::Normal(Item::AccoladeIcon, AccoladeIcon::add)
 }
 
 impl AccoladeIcon {
@@ -48,7 +47,7 @@ impl DbKind for AccoladeIcon {
 pub struct AccoladeName {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::AccoladeName, AccoladeName::add)
+    ItemLoader::Normal(Item::AccoladeName, AccoladeName::add)
 }
 
 impl AccoladeName {
@@ -98,7 +97,7 @@ impl DbKind for AccoladeName {
 pub struct AccoladeType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::AccoladeType, AccoladeType::add)
+    ItemLoader::Normal(Item::AccoladeType, AccoladeType::add)
 }
 
 impl AccoladeType {

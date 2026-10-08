@@ -4,7 +4,6 @@ use crate::ck3::validate::validate_cost;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::report::Severity;
@@ -17,7 +16,7 @@ use crate::validator::{Validator, ValueValidator};
 pub struct House {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::House, House::add)
+    ItemLoader::Normal(Item::House, House::add)
 }
 
 impl House {
@@ -51,7 +50,7 @@ impl DbKind for House {
 pub struct HouseAspiration {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::HouseAspiration, HouseAspiration::add)
+    ItemLoader::Normal(Item::HouseAspiration, HouseAspiration::add)
 }
 
 impl HouseAspiration {
@@ -159,7 +158,7 @@ impl DbKind for HouseAspiration {
 pub struct HouseRelationType {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::HouseRelationType, HouseRelationType::add)
+    ItemLoader::Normal(Item::HouseRelationType, HouseRelationType::add)
 }
 
 impl HouseRelationType {

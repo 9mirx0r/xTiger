@@ -3,7 +3,6 @@ use crate::ck3::validate::validate_cost;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::scopes::Scopes;
 use crate::token::Token;
@@ -12,7 +11,7 @@ use crate::token::Token;
 pub struct ScriptedCost {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::ScriptedCost, ScriptedCost::add)
+    ItemLoader::Normal(Item::ScriptedCost, ScriptedCost::add)
 }
 
 impl ScriptedCost {

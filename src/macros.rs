@@ -1,8 +1,10 @@
 //! [`MacroCache`] to cache macro expansions, and [`MacroMap`] to track [`Loc`] use across macro expansions.
 
+use std::cell::{Cell, RefCell};
 use std::hash::Hash;
 use std::num::NonZeroU32;
 use std::sync::{LazyLock, RwLock};
+use std::thread::{ThreadId, current};
 
 use crate::helpers::{BiTigerHashMap, TigerHashMap};
 use crate::token::{Loc, Token};
@@ -33,31 +35,105 @@ impl MacroKey {
     }
 }
 
+/// A cache of validation results, keyed by call site.
+///
+/// While a result is being computed, a placeholder is visible only to the thread computing it, so
+/// that recursive calls terminate. Other threads compute the result themselves instead of seeing
+/// the placeholder.
+///
+/// A result that was computed using the placeholder of an enclosing computation depends on where
+/// the recursion was entered, so it is not cached. This keeps the cached results, and thus the
+/// reports, independent of validation order and thread scheduling.
+#[derive(Debug)]
+pub struct ValidationCache<K, T> {
+    done: RwLock<TigerHashMap<K, T>>,
+    /// Placeholders with the nesting depth at which they were created.
+    pending: RwLock<TigerHashMap<(K, ThreadId), (T, usize)>>,
+}
+
+thread_local! {
+    /// How many cached computations are in progress on this thread, across all caches.
+    static DEPTH: Cell<usize> = const { Cell::new(0) };
+    /// The shallowest depth of a placeholder used by the current computation.
+    static MIN_PENDING_USED: Cell<usize> = const { Cell::new(usize::MAX) };
+    /// The saved `MIN_PENDING_USED` values of the enclosing computations.
+    static PARENT_MIN: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
+}
+
+impl<K: Clone + Eq + Hash, T> ValidationCache<K, T> {
+    pub fn perform<F: FnOnce(&T)>(&self, key: &K, f: F) -> bool {
+        if let Some(x) = self.done.read().unwrap().get(key) {
+            f(x);
+            return true;
+        }
+        if let Some((x, depth)) = self.pending.read().unwrap().get(&(key.clone(), current().id())) {
+            MIN_PENDING_USED.set(MIN_PENDING_USED.get().min(*depth));
+            f(x);
+            return true;
+        }
+        false
+    }
+
+    /// Store a placeholder result that only the current thread will see, and start a computation.
+    /// Must be followed by a call to `insert` with the same key.
+    pub fn insert_pending(&self, key: K, value: T) {
+        let depth = DEPTH.get() + 1;
+        DEPTH.set(depth);
+        PARENT_MIN.with_borrow_mut(|v| v.push(MIN_PENDING_USED.replace(usize::MAX)));
+        self.pending.write().unwrap().insert((key, current().id()), (value, depth));
+    }
+
+    /// Finish a computation started with `insert_pending`.
+    pub fn insert(&self, key: K, value: T) {
+        let depth = DEPTH.get();
+        DEPTH.set(depth - 1);
+        self.pending.write().unwrap().remove(&(key.clone(), current().id()));
+        let used = MIN_PENDING_USED.get();
+        let parent = PARENT_MIN.with_borrow_mut(Vec::pop).unwrap_or(usize::MAX);
+        MIN_PENDING_USED.set(parent.min(if used < depth { used } else { usize::MAX }));
+        if used >= depth {
+            self.done.write().unwrap().insert(key, value);
+        }
+    }
+}
+
+impl<K, T> Default for ValidationCache<K, T> {
+    fn default() -> Self {
+        Self { done: RwLock::default(), pending: RwLock::default() }
+    }
+}
+
 #[derive(Debug)]
 /// A helper for scripted effects, triggers, and modifiers, all of which can
 /// accept macro arguments and which need to be expanded for every macro call.
 ///
 /// The cache helps avoid needless re-expansions for arguments that have already been validated.
 pub struct MacroCache<T> {
-    cache: RwLock<TigerHashMap<MacroKey, T>>,
+    cache: ValidationCache<MacroKey, T>,
 }
 
 impl<T> MacroCache<T> {
-    pub fn perform<F: FnMut(&T)>(
+    pub fn perform<F: FnOnce(&T)>(
         &self,
         key: &Token,
         args: &[(&'static str, Token)],
         tooltipped: Tooltipped,
         negated: bool,
-        mut f: F,
+        f: F,
     ) -> bool {
-        let key = MacroKey::new(key.loc, args, tooltipped, negated);
-        if let Some(x) = self.cache.read().unwrap().get(&key) {
-            f(x);
-            true
-        } else {
-            false
-        }
+        self.cache.perform(&MacroKey::new(key.loc, args, tooltipped, negated), f)
+    }
+
+    /// Store a placeholder result, to be used by recursive calls while validating.
+    pub fn insert_pending(
+        &self,
+        key: &Token,
+        args: &[(&'static str, Token)],
+        tooltipped: Tooltipped,
+        negated: bool,
+        value: T,
+    ) {
+        self.cache.insert_pending(MacroKey::new(key.loc, args, tooltipped, negated), value);
     }
 
     pub fn insert(
@@ -68,14 +144,13 @@ impl<T> MacroCache<T> {
         negated: bool,
         value: T,
     ) {
-        let key = MacroKey::new(key.loc, args, tooltipped, negated);
-        self.cache.write().unwrap().insert(key, value);
+        self.cache.insert(MacroKey::new(key.loc, args, tooltipped, negated), value);
     }
 }
 
 impl<T> Default for MacroCache<T> {
     fn default() -> Self {
-        MacroCache { cache: RwLock::new(TigerHashMap::default()) }
+        MacroCache { cache: ValidationCache::default() }
     }
 }
 

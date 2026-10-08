@@ -4,7 +4,6 @@ use std::str::CharIndices;
 
 use crate::block::Comparator;
 use crate::block::Eq::Single;
-use crate::game::Game;
 use crate::parse::ignore::{IgnoreFilter, IgnoreSize, parse_comment};
 use crate::parse::pdxfile::{CharExt, Cob};
 use crate::report::{ErrorKey, err, register_ignore_filter, untidy, warn};
@@ -158,7 +157,7 @@ pub struct Lexer<'input> {
 
 impl<'input> Lexer<'input> {
     pub fn new(inputs: &'input [Token]) -> Self {
-        assert!(!inputs.is_empty());
+        assert_ne!(inputs.len(), 0);
 
         Lexer {
             inputs,
@@ -301,10 +300,6 @@ impl Iterator for Lexer<'_> {
                             }
                         }
                         let token = id.take_to_token();
-                        if !Game::is_ck3() {
-                            let msg = "reader directives are only for CK3 so far";
-                            err(ErrorKey::WrongGame).msg(msg).loc(&token).push();
-                        }
                         let lexeme = match token.as_str() {
                             "@:register_variable" => {
                                 let msg =
@@ -447,15 +442,6 @@ impl Iterator for Lexer<'_> {
                     let mut id = self.start_cob();
                     while let Some((i, c)) = self.peek() {
                         if c == '\n' {
-                            if Game::is_hoi4() {
-                                // In Hoi4, a newline always terminates a string.
-                                let msg = "quoted string not closed";
-                                let info = "reached end of line";
-                                warn(ErrorKey::ParseError).msg(msg).info(info).loc(self.loc).push();
-                                self.consume();
-                                let token = id.take_to_token();
-                                return Some(Ok((start_i, Lexeme::General(token), i + 1)));
-                            }
                             id.add_char(c);
                             self.consume();
                         } else if c == '\\' && !escaped {
@@ -492,16 +478,6 @@ impl Iterator for Lexer<'_> {
 
                             return Some(Ok((start_i, Lexeme::General(token), i + 1)));
                         } else {
-                            if Game::is_hoi4() && i - start_i == 255 {
-                                let msg = "string too long";
-                                let info = "in Hoi4 strings are limited to 255 bytes";
-                                err(ErrorKey::Overflow)
-                                    .strong()
-                                    .msg(msg)
-                                    .info(info)
-                                    .loc(self.loc)
-                                    .push();
-                            }
                             id.add_char(c);
                             self.consume();
                         }

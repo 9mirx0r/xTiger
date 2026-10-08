@@ -29,7 +29,6 @@ const SCOPE_TO_SCOPE: &[(Scopes, &str, Scopes)] = &[
     (Scopes::Activity, "activity_location", Scopes::Province),
     (Scopes::Activity, "activity_type", Scopes::ActivityType),
     (Scopes::Character, "administrative_contract", Scopes::VassalContract),
-    (Scopes::Character, "administrative_obligation", Scopes::VassalObligationLevel),
     (Scopes::Army, "army_commander", Scopes::Character),
     (Scopes::Army, "army_owner", Scopes::Character),
     (Scopes::Artifact, "artifact_age", Scopes::Value),
@@ -100,14 +99,6 @@ const SCOPE_TO_SCOPE: &[(Scopes, &str, Scopes)] = &[
     (Scopes::Faction, "faction_leader", Scopes::Character),
     (Scopes::Faction, "faction_target", Scopes::Character),
     (Scopes::Faction, "faction_war", Scopes::War),
-    (
-        Scopes::Character
-            .union(Scopes::LandedTitle)
-            .union(Scopes::Province)
-            .union(Scopes::GreatHolyWar),
-        "faith",
-        Scopes::Faith,
-    ),
     (Scopes::Character, "father", Scopes::Character),
     (Scopes::TravelPlan, "final_destination_province", Scopes::Province),
     (Scopes::Faith, "founder", Scopes::Character),
@@ -199,15 +190,6 @@ const SCOPE_TO_SCOPE: &[(Scopes, &str, Scopes)] = &[
     (Scopes::Character, "real_father", Scopes::Character),
     (Scopes::Character, "real_mother", Scopes::Character),
     (Scopes::Character, "realm_priest", Scopes::Character),
-    (
-        Scopes::Character
-            .union(Scopes::LandedTitle)
-            .union(Scopes::Province)
-            .union(Scopes::Faith)
-            .union(Scopes::GreatHolyWar),
-        "religion",
-        Scopes::Religion,
-    ),
     (Scopes::Faith, "religious_head", Scopes::Character),
     (Scopes::Faith, "religious_head_title", Scopes::LandedTitle),
     (Scopes::Regiment, "regiment_controller", Scopes::Character),
@@ -240,7 +222,6 @@ const SCOPE_TO_SCOPE: &[(Scopes, &str, Scopes)] = &[
     (Scopes::Faction, "special_title", Scopes::LandedTitle),
     (Scopes::LandedTitle, "state_faith", Scopes::Faith),
     (Scopes::StoryCycle, "story_owner", Scopes::Character),
-    (Scopes::VassalObligationLevel, "subject_contract_type", Scopes::VassalContract),
     (Scopes::Character, "suzerain", Scopes::Character),
     (Scopes::Scheme, "task_contract", Scopes::TaskContract),
     (Scopes::TaskContract, "task_contract_destination", Scopes::Province),
@@ -263,11 +244,71 @@ const SCOPE_TO_SCOPE: &[(Scopes, &str, Scopes)] = &[
     (Scopes::Character, "top_overlord", Scopes::Character),
     (Scopes::Character, "top_suzerain", Scopes::Character),
     // "value" special
-    (Scopes::VassalObligationLevel, "vassal_contract_type", Scopes::VassalContract),
     (Scopes::Character, "vassal_tax_collector", Scopes::Character),
     (Scopes::CasusBelli, "war", Scopes::War),
     (Scopes::Character, "warden", Scopes::Character),
     (Scopes::None, "yes", Scopes::Bool),
+    (Scopes::None, "event_id", Scopes::Flag),
+    (Scopes::None, "local_player_open_court_event_court_owner", Scopes::Character),
+    (Scopes::Character, "clerical_elector_title", Scopes::LandedTitle),
+    (Scopes::Character, "fallback_succession_character", Scopes::Character),
+    (Scopes::Character, "fallback_succession_title", Scopes::LandedTitle),
+    (Scopes::Character, "holy_order", Scopes::HolyOrder),
+    (Scopes::Character, "puppeteer", Scopes::Character),
+    (Scopes::Character, "religious_head_or_challenger", Scopes::Character),
+    (Scopes::Character, "saint_burial_location", Scopes::Province),
+    (Scopes::Character, "superior", Scopes::Character),
+    (Scopes::Character, "top_superior", Scopes::Character),
+    (Scopes::LandedTitle, "barony_active_holy_site", Scopes::HolySite),
+    (Scopes::LandedTitle, "challenger_sponsor", Scopes::LandedTitle),
+    (Scopes::LandedTitle, "clerical_region_title", Scopes::LandedTitle),
+    (Scopes::LandedTitle, "county_active_holy_site", Scopes::HolySite),
+    (Scopes::LandedTitle, "state_rite", Scopes::Rite),
+    (Scopes::LandedTitle, "title_preferred_capital_county", Scopes::LandedTitle),
+    (Scopes::HolyOrder, "order_faith", Scopes::Faith),
+    (Scopes::HolyOrder, "order_founder", Scopes::Character),
+    (Scopes::HolyOrder, "order_rite", Scopes::Rite),
+    (Scopes::HolyOrder, "order_tenet", Scopes::Tenet),
+    (Scopes::DynastyHouse, "noble_family", Scopes::LandedTitle),
+    (Scopes::Faith, "faith_theocratic_goverment_type", Scopes::GovernmentType),
+    (Scopes::Faith, "main_rite", Scopes::Rite),
+    (Scopes::Faith, "origin_faith", Scopes::Faith),
+    (Scopes::Character.union(Scopes::Faith), "organization", Scopes::Organization),
+    (Scopes::Province, "saint_in_province", Scopes::Character),
+    (Scopes::Character.union(Scopes::LandedTitle).union(Scopes::Province), "rite", Scopes::Rite),
+    (Scopes::Rite, "head_of_rite", Scopes::Character),
+    (Scopes::Rite, "origin_rite", Scopes::Rite),
+    (Scopes::Rite, "rite_faith", Scopes::Faith),
+    (Scopes::Rite, "rite_founder", Scopes::Character),
+    (Scopes::Rite, "rite_type", Scopes::RiteType),
+    (Scopes::Religion, "main_holy_site", Scopes::LandedTitle),
+    (Scopes::HolySite, "holy_site_barony", Scopes::LandedTitle),
+    (Scopes::HolySite, "holy_site_controller", Scopes::LandedTitle),
+    (Scopes::HolySite, "holy_site_county", Scopes::LandedTitle),
+    (Scopes::CouncilTask, "forced_next_councillor", Scopes::Character),
+    (Scopes::GreatProject, "great_project_founder_heir", Scopes::Character),
+    (Scopes::Character, "administrative_obligation", Scopes::VassalObligationLevel),
+    (
+        Scopes::Character
+            .union(Scopes::Faith)
+            .union(Scopes::GreatHolyWar)
+            .union(Scopes::LandedTitle)
+            .union(Scopes::Province)
+            .union(Scopes::Rite),
+        "religion",
+        Scopes::Religion,
+    ),
+    (Scopes::VassalObligationLevel, "subject_contract_type", Scopes::VassalContract),
+    (Scopes::VassalObligationLevel, "vassal_contract_type", Scopes::VassalContract),
+    (
+        Scopes::Character
+            .union(Scopes::GreatHolyWar)
+            .union(Scopes::LandedTitle)
+            .union(Scopes::Province)
+            .union(Scopes::Rite),
+        "faith",
+        Scopes::Faith,
+    ),
 ];
 
 #[inline]
@@ -464,6 +505,14 @@ const SCOPE_PREFIX: &[(Scopes, &str, Scopes, ArgumentValue)] = {
             Scopes::Value,
             Item(Item::SubjectContract),
         ),
+        (Scopes::None, "holy_site", Scopes::HolySite, Item(Item::HolySite)),
+        (Scopes::None, "holy_site_type", Scopes::HolySiteType, Item(Item::HolySite)),
+        (Scopes::None, "rite", Scopes::Rite, Item(Item::Rite)),
+        (Scopes::None, "rite_type", Scopes::RiteType, Item(Item::Rite)),
+        (Scopes::None, "tenet", Scopes::Tenet, UncheckedValue),
+        (Scopes::Character, "puppet", Scopes::Character, UncheckedValue),
+        (Scopes::Activity, "activity_doctrine", Scopes::Doctrine, UncheckedValue),
+        (Scopes::Activity, "activity_tenet", Scopes::Tenet, UncheckedValue),
     ]
 };
 

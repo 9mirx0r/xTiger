@@ -2,7 +2,6 @@ use crate::block::Block;
 use crate::ck3::modif::ModifKinds;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::token::Token;
@@ -12,7 +11,7 @@ use crate::validator::Validator;
 pub struct Relation {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::Relation, Relation::add)
+    ItemLoader::Normal(Item::Relation, Relation::add)
 }
 
 impl Relation {

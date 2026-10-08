@@ -3,7 +3,6 @@ use crate::ck3::modif::ModifKinds;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::scopes::Scopes;
@@ -15,7 +14,7 @@ use crate::validator::Validator;
 pub struct DynastyLegacy {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::DynastyLegacy, DynastyLegacy::add)
+    ItemLoader::Normal(Item::DynastyLegacy, DynastyLegacy::add)
 }
 
 impl DynastyLegacy {
@@ -51,7 +50,7 @@ impl DbKind for DynastyLegacy {
 pub struct DynastyPerk {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::DynastyPerk, DynastyPerk::add)
+    ItemLoader::Normal(Item::DynastyPerk, DynastyPerk::add)
 }
 
 impl DynastyPerk {
@@ -78,7 +77,7 @@ impl DbKind for DynastyPerk {
             vd.field_item("name", Item::Localization);
             validate_modifs(block, data, ModifKinds::Character, vd);
         });
-        vd.multi_field_validated_block("doctrine_character_modifier", |block, data| {
+        vd.multi_field_validated_block("faith_character_modifier", |block, data| {
             let mut vd = Validator::new(block, data);
             vd.field_item("name", Item::Localization);
             vd.field_item("doctrine", Item::Doctrine);

@@ -77,6 +77,7 @@ impl OutputStyle {
         map.insert(Styled::Default, Style::new());
         OutputStyle { map }
     }
+
     pub fn style(&self, output: Styled) -> &Style {
         self.map
             .get(&output)

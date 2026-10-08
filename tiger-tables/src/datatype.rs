@@ -7,21 +7,10 @@ use std::str::FromStr;
 use phf::phf_map;
 use strum_macros::{Display, EnumString};
 
-use crate::game::Game;
-#[cfg(feature = "jomini")]
 use crate::item::Item;
 
 // Load the game-specific datatype definitions
-#[cfg(feature = "ck3")]
 include!("ck3/include/datatypes.rs");
-#[cfg(feature = "vic3")]
-include!("vic3/include/datatypes.rs");
-#[cfg(feature = "imperator")]
-include!("imperator/include/datatypes.rs");
-#[cfg(feature = "eu5")]
-include!("eu5/include/datatypes.rs");
-#[cfg(feature = "hoi4")]
-include!("hoi4/include/datatypes.rs");
 
 /// All the object types used in `[...]` code in localization and gui files.
 ///
@@ -72,16 +61,7 @@ pub enum Datatype {
     void,
 
     // Wrappers for the per-game datatypes
-    #[cfg(feature = "ck3")]
     Ck3(Ck3Datatype),
-    #[cfg(feature = "vic3")]
-    Vic3(Vic3Datatype),
-    #[cfg(feature = "imperator")]
-    Imperator(ImperatorDatatype),
-    #[cfg(feature = "eu5")]
-    Eu5(Eu5Datatype),
-    #[cfg(feature = "hoi4")]
-    Hoi4(Hoi4Datatype),
 }
 
 static STR_DATATYPE_MAP: phf::Map<&'static str, Datatype> = phf_map! {
@@ -117,20 +97,11 @@ impl FromStr for Datatype {
     type Err = strum::ParseError;
     /// Read a Datatype from a string, without requiring the string to use the game-specific wrappers.
     fn from_str(s: &str) -> Result<Self, strum::ParseError> {
-        STR_DATATYPE_MAP.get(s).copied().ok_or(strum::ParseError::VariantNotFound).or_else(|_| {
-            match Game::game() {
-                #[cfg(feature = "ck3")]
-                Game::Ck3 => Ck3Datatype::from_str(s).map(Datatype::Ck3),
-                #[cfg(feature = "vic3")]
-                Game::Vic3 => Vic3Datatype::from_str(s).map(Datatype::Vic3),
-                #[cfg(feature = "imperator")]
-                Game::Imperator => ImperatorDatatype::from_str(s).map(Datatype::Imperator),
-                #[cfg(feature = "eu5")]
-                Game::Eu5 => Eu5Datatype::from_str(s).map(Datatype::Eu5),
-                #[cfg(feature = "hoi4")]
-                Game::Hoi4 => Hoi4Datatype::from_str(s).map(Datatype::Hoi4),
-            }
-        })
+        STR_DATATYPE_MAP
+            .get(s)
+            .copied()
+            .ok_or(strum::ParseError::VariantNotFound)
+            .or_else(|_| Ck3Datatype::from_str(s).map(Datatype::Ck3))
     }
 }
 
@@ -165,16 +136,7 @@ impl Display for Datatype {
             Datatype::uint64 => write!(f, "uint64"),
             Datatype::uint8 => write!(f, "uint8"),
             Datatype::void => write!(f, "void"),
-            #[cfg(feature = "ck3")]
             Datatype::Ck3(dt) => dt.fmt(f),
-            #[cfg(feature = "vic3")]
-            Datatype::Vic3(dt) => dt.fmt(f),
-            #[cfg(feature = "imperator")]
-            Datatype::Imperator(dt) => dt.fmt(f),
-            #[cfg(feature = "eu5")]
-            Datatype::Eu5(dt) => dt.fmt(f),
-            #[cfg(feature = "hoi4")]
-            Datatype::Hoi4(dt) => dt.fmt(f),
         }
     }
 }
@@ -184,11 +146,9 @@ impl Display for Datatype {
 pub enum Arg {
     /// The argument is expected to be a code chain whose final function returns this [`Datatype`],
     /// or a literal that is encoded to be of the expected type.
-    #[cfg(feature = "jomini")]
     DType(Datatype),
     /// The argument is expected to be a literal containing a key to this [`Item`] type, or a code
     /// chain that returns a `CString` (in which case the `Item` lookup is not checked).
-    #[cfg(feature = "jomini")]
     IType(Item),
     /// The argument is considered to be one of the literals in this array, or a code chain that
     /// returns a `CString`.
@@ -204,13 +164,4 @@ pub enum Args {
     Args(&'static [Arg]),
 }
 
-#[cfg(feature = "ck3")]
 pub use crate::ck3::datafunctions::*;
-#[cfg(feature = "eu5")]
-pub use crate::eu5::datafunctions::*;
-#[cfg(feature = "hoi4")]
-pub use crate::hoi4::datafunctions::*;
-#[cfg(feature = "imperator")]
-pub use crate::imperator::datafunctions::*;
-#[cfg(feature = "vic3")]
-pub use crate::vic3::datafunctions::*;

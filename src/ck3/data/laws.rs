@@ -4,7 +4,6 @@ use crate::ck3::validate::validate_cost;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
 use crate::report::{ErrorKey, err};
@@ -17,7 +16,7 @@ use crate::validator::Validator;
 pub struct LawGroup {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::LawGroup, LawGroup::add)
+    ItemLoader::Normal(Item::LawGroup, LawGroup::add)
 }
 
 impl LawGroup {
@@ -27,32 +26,11 @@ impl LawGroup {
 }
 
 impl DbKind for LawGroup {
-    fn add_subitems(&self, _key: &Token, block: &Block, db: &mut Db) {
-        for (key, block) in block.iter_definitions() {
-            for token in block.get_field_values("flag") {
-                db.add_flag(Item::LawFlag, token.clone());
-            }
-            for block in block.get_field_blocks("triggered_flag") {
-                if let Some(token) = block.get_field_value("flag") {
-                    db.add_flag(Item::LawFlag, token.clone());
-                }
-            }
-            db.add(Item::Law, key.clone(), block.clone(), Box::new(Law {}));
-        }
-        for token in block.get_field_values("flag") {
-            db.add_flag(Item::LawFlag, token.clone());
-        }
-    }
-
     fn validate(&self, _key: &Token, block: &Block, data: &Everything) {
         let mut vd = Validator::new(block, data);
 
-        if let Some(token) = vd.field_value("default")
-            && block.get_field_block(token.as_str()).is_none()
-        {
-            let msg = "law not defined in this group";
-            err(ErrorKey::MissingItem).msg(msg).loc(token).push();
-        }
+        vd.field_item("default", Item::Law);
+        vd.field_list("required_government_flag");
         vd.field_bool("cumulative");
 
         vd.multi_field_value("flag");
@@ -60,15 +38,30 @@ impl DbKind for LawGroup {
         vd.field_bool("is_treasury_budget_group");
         vd.field_trigger_rooted("can_change_law_group", Tooltipped::Yes, Scopes::Character);
 
-        // The laws. They are validated in the Law class.
-        vd.unknown_block_fields(|_, _| ());
+        vd.unknown_fields(|_, _| ()); // TODO: other 1.20 law group fields
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Law {}
 
-impl Law {}
+inventory::submit! {
+    ItemLoader::Normal(Item::Law, Law::add)
+}
+
+impl Law {
+    pub fn add(db: &mut Db, key: Token, block: Block) {
+        for token in block.get_field_values("flag") {
+            db.add_flag(Item::LawFlag, token.clone());
+        }
+        for block in block.get_field_blocks("triggered_flag") {
+            if let Some(token) = block.get_field_value("flag") {
+                db.add_flag(Item::LawFlag, token.clone());
+            }
+        }
+        db.add(Item::Law, key, block, Box::new(Self {}));
+    }
+}
 
 impl DbKind for Law {
     fn validate(&self, key: &Token, block: &Block, data: &Everything) {
@@ -83,6 +76,9 @@ impl DbKind for Law {
         let loca = format!("{key}_subname");
         data.mark_used(Item::Localization, &loca);
 
+        vd.req_field("law_group_type");
+        vd.field_item("law_group_type", Item::LawGroup);
+        vd.field_integer("index");
         vd.field_item("pass_phrase", Item::Localization);
         vd.field_item("confirmation_title", Item::Localization);
         vd.field_item("confirmation_button_text", Item::Localization);
@@ -201,6 +197,7 @@ impl DbKind for Law {
             vd.field_numeric("primary_heir_minimum_share");
             vd.field_bool("exclude_rulers");
             vd.field_bool("limit_to_courtiers");
+            vd.field_bool("resign_outside_realm");
         });
 
         vd.field_script_value_no_breakdown("ai_will_do", &mut sc);

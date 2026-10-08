@@ -2,7 +2,6 @@ use crate::block::Block;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
 use crate::scopes::Scopes;
 use crate::token::Token;
@@ -13,7 +12,7 @@ use crate::validator::Validator;
 pub struct PlayableDifficultyInfo {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::PlayableDifficultyInfo, PlayableDifficultyInfo::add)
+    ItemLoader::Normal(Item::PlayableDifficultyInfo, PlayableDifficultyInfo::add)
 }
 
 impl PlayableDifficultyInfo {

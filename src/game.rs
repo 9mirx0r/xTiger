@@ -4,8 +4,6 @@ use std::fmt::{Display, Formatter};
 
 use bitflags::bitflags;
 
-pub use tiger_tables::game::Game;
-
 use crate::helpers::display_choices;
 
 bitflags! {
@@ -20,30 +18,6 @@ bitflags! {
         const Imperator = 0x04;
         const Eu5 = 0x08;
         const Hoi4 = 0x10;
-    }
-}
-
-impl GameFlags {
-    /// Get a [`GameFlags`] value representing the game being validated.
-    /// Useful for checking with `.contains`.
-    pub fn game() -> Self {
-        // Unfortunately we have to translate between the types here.
-        match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => GameFlags::Ck3,
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => GameFlags::Vic3,
-            #[cfg(feature = "imperator")]
-            Game::Imperator => GameFlags::Imperator,
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => GameFlags::Eu5,
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => GameFlags::Hoi4,
-        }
-    }
-
-    pub const fn jomini() -> Self {
-        GameFlags::Ck3.union(GameFlags::Vic3).union(GameFlags::Imperator).union(GameFlags::Eu5)
     }
 }
 
@@ -66,23 +40,5 @@ impl Display for GameFlags {
             vec.push("Hearts of Iron 4");
         }
         display_choices(f, &vec, "and")
-    }
-}
-
-impl From<Game> for GameFlags {
-    /// Convert a [`Game`] into a [`GameFlags`] with just that game's flag set.
-    fn from(game: Game) -> Self {
-        match game {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => GameFlags::Ck3,
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => GameFlags::Vic3,
-            #[cfg(feature = "imperator")]
-            Game::Imperator => GameFlags::Imperator,
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => GameFlags::Eu5,
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => GameFlags::Hoi4,
-        }
     }
 }

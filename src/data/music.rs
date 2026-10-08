@@ -5,7 +5,6 @@ use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
 use crate::fileset::{FileEntry, FileHandler};
-use crate::game::{Game, GameFlags};
 use crate::helpers::{TigerHashMap, dup_error};
 use crate::item::{Item, ItemExt, ItemLoader};
 use crate::parse::ParserMemory;
@@ -16,7 +15,6 @@ use crate::token::Token;
 use crate::tooltipped::Tooltipped;
 use crate::validate::validate_optional_duration_int;
 use crate::validator::Validator;
-use crate::variables::Variables;
 
 #[derive(Clone, Debug, Default)]
 pub struct Musics {
@@ -33,25 +31,8 @@ impl Musics {
         self.musics.insert(key.as_str(), Music { key, block });
     }
 
-    pub fn scan_variables(&self, registry: &mut Variables) {
-        for item in self.musics.values() {
-            registry.scan(&item.block);
-        }
-    }
-
     pub fn exists(&self, key: &str) -> bool {
-        let dlc_music = match Game::game() {
-            #[cfg(feature = "ck3")]
-            Game::Ck3 => crate::ck3::tables::misc::DLC_MUSIC,
-            #[cfg(feature = "vic3")]
-            Game::Vic3 => crate::vic3::tables::misc::DLC_MUSIC,
-            #[cfg(feature = "imperator")]
-            Game::Imperator => crate::imperator::tables::misc::DLC_MUSIC,
-            #[cfg(feature = "eu5")]
-            Game::Eu5 => crate::eu5::tables::misc::DLC_MUSIC,
-            #[cfg(feature = "hoi4")]
-            Game::Hoi4 => crate::hoi4::tables::misc::DLC_MUSIC,
-        };
+        let dlc_music = crate::ck3::tables::misc::DLC_MUSIC;
         self.musics.contains_key(key) || dlc_music.contains(&key)
     }
 
@@ -115,40 +96,24 @@ impl Music {
     pub fn validate(&self, data: &Everything) {
         let mut vd = Validator::new(&self.block, data);
 
-        if Game::is_eu5() {
-            vd.field_integer("priority");
-            vd.field("culture_tag");
-        } else {
-            let scope = match Game::game() {
-                #[cfg(feature = "ck3")]
-                Game::Ck3 => Scopes::Character,
-                #[cfg(feature = "vic3")]
-                Game::Vic3 => Scopes::Country,
-                #[cfg(feature = "imperator")]
-                Game::Imperator => Scopes::Country,
-                #[cfg(feature = "eu5")]
-                Game::Eu5 => Scopes::Country,
-                #[cfg(feature = "hoi4")]
-                Game::Hoi4 => Scopes::Country,
-            };
-            let mut sc = ScopeContext::new(scope, &self.key);
-            vd.field_localization("name", &mut sc);
-            vd.field_item("music", Item::Sound);
-            vd.field_item("group", Item::Music); // Take settings from this item
-            vd.field_integer("pause_factor");
+        let scope = Scopes::Character;
+        let mut sc = ScopeContext::new(scope, &self.key);
+        vd.field_localization("name", &mut sc);
+        vd.field_item("music", Item::Sound);
+        vd.field_item("group", Item::Music); // Take settings from this item
+        vd.field_integer("pause_factor");
 
-            vd.field_bool("mood");
-            vd.field_bool("is_prioritized_mood");
-            vd.field_bool("can_be_interrupted");
+        vd.field_bool("mood");
+        vd.field_bool("is_prioritized_mood");
+        vd.field_bool("can_be_interrupted");
 
-            validate_optional_duration_int(&mut vd);
-            vd.field_integer("calls");
+        validate_optional_duration_int(&mut vd);
+        vd.field_integer("calls");
 
-            vd.field_bool("trigger_prio_override");
-            vd.field_trigger("is_valid", Tooltipped::No, &mut sc);
+        vd.field_bool("trigger_prio_override");
+        vd.field_trigger("is_valid", Tooltipped::No, &mut sc);
 
-            vd.field_list_numeric_exactly("subsequent_playback_chance", 3);
-        }
+        vd.field_list_numeric_exactly("subsequent_playback_chance", 3);
     }
 }
 
@@ -156,7 +121,7 @@ impl Music {
 pub struct MusicPlayerCategory {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::all(), Item::MusicPlayerCategory, MusicPlayerCategory::add)
+    ItemLoader::Normal(Item::MusicPlayerCategory, MusicPlayerCategory::add)
 }
 
 impl MusicPlayerCategory {

@@ -1,11 +1,8 @@
 use crate::block::Block;
-#[cfg(feature = "ck3")]
 use crate::data::coa::validate_coa_layout;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
-use crate::game::GameFlags;
 use crate::item::{Item, ItemLoader};
-#[cfg(feature = "ck3")]
 use crate::report::{ErrorKey, warn};
 use crate::token::Token;
 use crate::validator::Validator;
@@ -14,7 +11,7 @@ use crate::validator::Validator;
 pub struct CoaDesignerColoredEmblem {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::jomini(), Item::CoaDesignerColoredEmblem, CoaDesignerColoredEmblem::add)
+    ItemLoader::Normal(Item::CoaDesignerColoredEmblem, CoaDesignerColoredEmblem::add)
 }
 
 impl CoaDesignerColoredEmblem {
@@ -40,15 +37,12 @@ impl DbKind for CoaDesignerColoredEmblem {
 }
 
 #[derive(Clone, Debug)]
-#[cfg(feature = "ck3")]
 pub struct CoaDesignerColorPalette {}
 
-#[cfg(feature = "ck3")]
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CoaDesignerColorPalette, CoaDesignerColorPalette::add)
+    ItemLoader::Normal(Item::CoaDesignerColorPalette, CoaDesignerColorPalette::add)
 }
 
-#[cfg(feature = "ck3")]
 impl CoaDesignerColorPalette {
     pub fn add(db: &mut Db, key: Token, mut block: Block) {
         if key.is("coa_designer_background_colors") {
@@ -61,7 +55,6 @@ impl CoaDesignerColorPalette {
     }
 }
 
-#[cfg(feature = "ck3")]
 impl DbKind for CoaDesignerColorPalette {
     fn validate(&self, key: &Token, block: &Block, data: &Everything) {
         let mut _vd = Validator::new(block, data);
@@ -71,22 +64,18 @@ impl DbKind for CoaDesignerColorPalette {
 }
 
 #[derive(Clone, Debug)]
-#[cfg(feature = "ck3")]
 pub struct CoaDesignerEmblemLayout {}
 
-#[cfg(feature = "ck3")]
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::Ck3, Item::CoaDesignerEmblemLayout, CoaDesignerEmblemLayout::add)
+    ItemLoader::Normal(Item::CoaDesignerEmblemLayout, CoaDesignerEmblemLayout::add)
 }
 
-#[cfg(feature = "ck3")]
 impl CoaDesignerEmblemLayout {
     pub fn add(db: &mut Db, key: Token, block: Block) {
         db.add(Item::CoaDesignerEmblemLayout, key, block, Box::new(Self {}));
     }
 }
 
-#[cfg(feature = "ck3")]
 impl DbKind for CoaDesignerEmblemLayout {
     fn validate(&self, _key: &Token, block: &Block, data: &Everything) {
         validate_coa_layout(block, data);
@@ -97,7 +86,7 @@ impl DbKind for CoaDesignerEmblemLayout {
 pub struct CoaDesignerPattern {}
 
 inventory::submit! {
-    ItemLoader::Normal(GameFlags::all(), Item::CoaDesignerPattern, CoaDesignerPattern::add)
+    ItemLoader::Normal(Item::CoaDesignerPattern, CoaDesignerPattern::add)
 }
 
 impl CoaDesignerPattern {
