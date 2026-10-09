@@ -621,6 +621,8 @@ pub enum Effect {
     /// * Examples: `assert_if`, `debug_log`, `remove_variable`
     Unchecked,
     /// This variant is for effects that we haven't gotten around to validating yet.
+    /// No effect uses it at the moment; `munch-script-docs` still writes it for new effects.
+    #[allow(dead_code)]
     UncheckedTodo,
     /// The effect takes a literal string that is one of the options given here.
     ///

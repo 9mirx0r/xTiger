@@ -10,7 +10,7 @@ members = [
 
 [package]
 name = "tiger-lib"
-version = "1.5.5-alpha"
+version = "1.5.6-alpha"
 edition = "2024"
 license = "GPL-3.0-or-later"
 description = "Library used by ck3-tiger, the xTiger validator for Crusader Kings III mods. This library holds the bulk of the code."
@@ -63,7 +63,7 @@ glob = "0.3.2"
 itertools = "0.14.0"
 scc = "3.6.8"
 
-tiger-tables = { path = "tiger-tables", version = "1.5.5-alpha" }
+tiger-tables = { path = "tiger-tables", version = "1.5.6-alpha" }
 
 [[bench]]
 name = "internals"

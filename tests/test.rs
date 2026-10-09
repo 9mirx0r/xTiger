@@ -385,3 +385,40 @@ fn test_mod5_engine_rejects_and_orphans() {
     let faith_reports = msgs.iter().filter(|m| m.contains("no faith, religion or rite")).count();
     assert_eq!(faith_reports, 1, "only no_faith_char should be reported: {msgs:?}");
 }
+
+#[test]
+fn test_mod6_faith_and_rite_effects() {
+    let reports = check_mod_helper("mod6");
+    let mut seen: Vec<(u32, String)> = Vec::new();
+    for (meta, occurrences) in &reports {
+        for p in occurrences {
+            if p[0].loc.pathname().ends_with("t6_events.txt") {
+                seen.push((p[0].loc.line, meta.msg.clone()));
+            }
+        }
+    }
+    seen.sort();
+    let at = |line: u32, needle: &str| seen.iter().any(|(l, m)| *l == line && m.contains(needle));
+
+    // t6.0001 uses every effect the way vanilla does, so nothing but the missing domicile type
+    // (which the fixture does not define) is reported before line 40.
+    let good: Vec<_> = seen.iter().filter(|(l, _)| *l < 40).collect();
+    assert_eq!(good.len(), 1, "good shapes should pass: {seen:?}");
+    assert!(at(16, "domicile type t6_domicile not defined"), "domicile_type is an item: {seen:?}");
+
+    // t6.0002 and t6.0003 break the rules one by one.
+    assert!(at(46, "required field `target` missing"), "add_holy_site target: {seen:?}");
+    assert!(at(47, "expected holy site"), "add_eminent_holy_site scope: {seen:?}");
+    assert!(at(48, "required field `type` missing"), "create_holy_site type: {seen:?}");
+    assert!(at(48, "unknown field `t6_unknown_field`"), "create_holy_site fields: {seen:?}");
+    assert!(at(51, "required field `domicile_type` missing"), "clerical region: {seen:?}");
+    assert!(at(53, "expected yes or no"), "create_dynamic_rite convert: {seen:?}");
+    assert!(at(53, "unknown field `t6_unknown_field`"), "create_dynamic_rite fields: {seen:?}");
+    assert!(at(54, "required field `target` missing"), "detach_rite target: {seen:?}");
+    assert!(at(56, "unknown token `unknown_doctrine`"), "detached faith is a faith: {seen:?}");
+    assert!(at(69, "required field `value` missing"), "change_rite_divergence value: {seen:?}");
+    assert!(at(71, "scope seems to be rite"), "create_dynamic_rite saves a rite: {seen:?}");
+    // A tenet scope is accepted; a rite where a doctrine is expected is not.
+    assert!(!seen.iter().any(|(l, _)| *l == 74), "tenet scope: {seen:?}");
+    assert!(at(75, "doctrine"), "doctrine_override_entry is a doctrine: {seen:?}");
+}

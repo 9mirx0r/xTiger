@@ -732,6 +732,153 @@ pub fn validate_create_nomad_title(
     }
 }
 
+pub fn validate_create_domicile_title(
+    _key: &Token,
+    _block: &Block,
+    _data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.req_field("name");
+    vd.req_field("government");
+    vd.field_validated_sc("name", sc, validate_desc);
+    vd.field_validated_sc("article", sc, validate_desc);
+    vd.field_validated_sc("pre", sc, validate_desc);
+    vd.field_validated_sc("adj", sc, validate_desc);
+    vd.field_target("holder", sc, Scopes::Character);
+    vd.field_item("government", Item::GovernmentType);
+    vd.field_choice("tier", &["county", "duchy", "kingdom", "empire", "hegemony"]);
+    if let Some(name) = vd.field_identifier("save_scope_as", "scope name") {
+        sc.define_name_token(name.as_str(), Scopes::LandedTitle, name, Temporary::No);
+    }
+}
+
+pub fn validate_add_holy_site(
+    _key: &Token,
+    bv: &BV,
+    data: &Everything,
+    sc: &mut ScopeContext,
+    _tooltipped: Tooltipped,
+) {
+    match bv {
+        BV::Value(token) => {
+            if !data.item_exists(Item::HolySite, token.as_str()) {
+                validate_target(token, data, sc, Scopes::HolySite);
+            }
+        }
+        BV::Block(block) => {
+            let mut vd = Validator::new(block, data);
+            vd.set_case_sensitive(false);
+            vd.req_field("target");
+            vd.field_item_or_target("target", sc, Item::HolySite, Scopes::HolySite);
+            vd.field_target("actor", sc, Scopes::Character);
+        }
+    }
+}
+
+pub fn validate_create_holy_site(
+    _key: &Token,
+    _block: &Block,
+    _data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.req_field("type");
+    // The docs say either a holy site type key or a holy site scope; no vanilla script uses it.
+    vd.field_value("type");
+    vd.field_bool("eminent");
+    vd.field_target("county", sc, Scopes::LandedTitle);
+    vd.field_target("barony", sc, Scopes::LandedTitle);
+    vd.field_target("actor", sc, Scopes::Character);
+}
+
+/// Both `create_clerical_region` and `split_clerical_region`.
+pub fn validate_clerical_region(
+    key: &Token,
+    _block: &Block,
+    _data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.req_field("name");
+    if key.is("create_clerical_region") {
+        // The docs do not mark it optional here, and every vanilla use sets it.
+        vd.req_field("domicile_type");
+    }
+    vd.field_item("domicile_type", Item::DomicileType);
+    vd.field_validated_sc("name", sc, validate_desc);
+    vd.field_validated_sc("article", sc, validate_desc);
+    vd.field_validated_sc("pre", sc, validate_desc);
+    vd.field_validated_sc("adj", sc, validate_desc);
+    if let Some(name) = vd.field_identifier("save_scope_as", "scope name") {
+        sc.define_name_token(name.as_str(), Scopes::LandedTitle, name, Temporary::No);
+    }
+}
+
+pub fn validate_create_dynamic_rite(
+    _key: &Token,
+    _block: &Block,
+    data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.field_bool("convert");
+    // The docs give scopes (`tenet:some_tenet`, `doctrine:some_doctrine`, `scope:saved_tenet`);
+    // a bare key is accepted too.
+    for (field, itype, outscopes) in [
+        ("core_tenet_override_entry", Item::Tenet, Scopes::Tenet),
+        ("doctrine_override_entry", Item::Doctrine, Scopes::Doctrine),
+    ] {
+        for token in vd.multi_field_value(field) {
+            if !data.item_exists(itype, token.as_str()) {
+                validate_target(token, data, sc, outscopes);
+            }
+        }
+    }
+    vd.field_script_value("target_divergence", sc);
+    vd.field_bool("include_unknown");
+    vd.field_bool("override_tenets_first");
+    if let Some(name) = vd.field_identifier("save_scope_as", "scope name") {
+        sc.define_name_token(name.as_str(), Scopes::Rite, name, Temporary::No);
+    }
+}
+
+pub fn validate_detach_rite_to_new_faith(
+    _key: &Token,
+    _block: &Block,
+    _data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.req_field("target");
+    vd.field_item_or_target("target", sc, Item::Rite, Scopes::Rite);
+    if let Some(name) = vd.field_identifier("save_scope_as", "scope name") {
+        sc.define_name_token(name.as_str(), Scopes::Faith, name, Temporary::No);
+    }
+}
+
+pub fn validate_change_rite_divergence(
+    _key: &Token,
+    _block: &Block,
+    _data: &Everything,
+    sc: &mut ScopeContext,
+    mut vd: Validator,
+    _tooltipped: Tooltipped,
+) {
+    vd.req_field("value");
+    vd.field_script_value("value", sc);
+    vd.field_script_value("min_value", sc);
+    vd.field_script_value("max_tenets", sc);
+    vd.field_bool("override_tenets_first");
+    vd.field_bool("include_unknown");
+    vd.field_target("character", sc, Scopes::Character);
+}
+
 pub fn validate_create_holy_order(
     _key: &Token,
     _block: &Block,

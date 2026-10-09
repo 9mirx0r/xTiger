@@ -9,7 +9,7 @@ public class CK3Input {
   [StructLayout(LayoutKind.Sequential)] public struct KI { public ushort vk, sc; public uint fl, t; public IntPtr ex; }
   [StructLayout(LayoutKind.Explicit, Size=40)] public struct IN { [FieldOffset(0)] public uint type; [FieldOffset(8)] public KI ki; }
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
-  [DllImport("user32.dll")] static extern uint SendInput(uint n, IN[] i, int sz);
+  [DllImport("user32.dll", SetLastError=true)] static extern uint SendInput(uint n, IN[] i, int sz);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
@@ -31,7 +31,17 @@ public class CK3Input {
     if (att) AttachThreadInput(me, fg, false);
     return ok;
   }
-  static void Send(ushort sc, uint fl) { var i = new IN[1]; i[0].type = 1; i[0].ki.sc = sc; i[0].ki.fl = fl; SendInput(1, i, Marshal.SizeOf(typeof(IN))); }
+  // SendInput returns how many events it injected; 0 means Windows refused them (input blocked by
+  // another thread, a locked session or the secure desktop; UIPI blocking can also fail it, though
+  // the error code does not say so). Say so instead of losing the key.
+  static void Send(ushort sc, uint fl) {
+    if (IntPtr.Size != 8) throw new InvalidOperationException("the input helper needs 64-bit PowerShell");
+    var i = new IN[1]; i[0].type = 1; i[0].ki.sc = sc; i[0].ki.fl = fl;
+    if (SendInput(1, i, Marshal.SizeOf(typeof(IN))) != 1) {
+      int e = Marshal.GetLastWin32Error();
+      throw new System.ComponentModel.Win32Exception(e, "SendInput did not deliver the key (Windows error " + e + ": " + new System.ComponentModel.Win32Exception(e).Message + ")");
+    }
+  }
   public static void Key(ushort sc, bool up) { Send(sc, 8u | (up ? 2u : 0u)); }
   public static void Char(char c, bool up) { Send((ushort)c, 4u | (up ? 2u : 0u)); }
   public static uint ForegroundPid() { uint pid; GetWindowThreadProcessId(GetForegroundWindow(), out pid); return pid; }

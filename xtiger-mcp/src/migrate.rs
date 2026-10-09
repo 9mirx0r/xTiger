@@ -29,14 +29,16 @@ struct Rule {
 const RULES: [Rule; 7] = [
     Rule {
         name: "every_character",
-        pattern: r"\b(any|every|random|ordered)_character\b",
-        replacement: "${1}_living_character",
+        // Only as a key (`every_character = {`): a saved scope name such as
+        // `save_scope_as = every_character` or `scope:every_character` is the mod's own word.
+        pattern: r"(^|[^\w:.$@])(any|every|random|ordered)_character(\s*=)",
+        replacement: "${1}${2}_living_character${3}",
         note: "the global character iterators are the *_living_character ones in 1.20",
     },
     Rule {
         name: "is_created",
-        pattern: r"\bis_created\b(\s*=)",
-        replacement: "is_title_created${1}",
+        pattern: r"(^|[^\w:.$@])is_created(\s*=)",
+        replacement: "${1}is_title_created${2}",
         note: "the trigger is is_title_created in 1.20",
     },
     Rule {
@@ -246,7 +248,9 @@ mod tests {
              \thas_doctrine = tenet_pacifism\n\thas_doctrine = doctrine_monogamy\n\
              \tdesc = \"is_created = no # not a comment\"\n\
              \tguardian_or_court_tutor_trait = { TRAIT = craven }\n\
-             \tNOT = { doctrine:tenet_pacifism = { is_in_list = x } }\n}\n",
+             \tNOT = { doctrine:tenet_pacifism = { is_in_list = x } }\n\
+             \tsave_scope_as = every_character\n\
+             \tscope:every_character = { add_gold = 1 }\n}\n",
         )
         .unwrap();
         fs::write(tmp.join("readme.txt"), "every_character = yes\n").unwrap();

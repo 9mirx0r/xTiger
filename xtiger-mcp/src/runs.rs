@@ -634,7 +634,14 @@ pub fn save_run(dir: &Path, run: NewRun, reports: &[Value]) -> Result<RunMeta, S
     let file = dir.join(format!("{}.json", meta.run_id));
     let json =
         serde_json::to_string(&SavedRunRef { meta: &meta, reports }).map_err(|e| e.to_string())?;
-    fs::write(&file, json).map_err(|e| format!("cannot write {}: {e}", file.display()))?;
+    // Written beside the target and renamed over it, so a crash or a full disk never leaves a
+    // half-written run (the listing would skip it, but the run would be lost).
+    let temp = dir.join(format!(".{}.{}.tmp", meta.run_id, std::process::id()));
+    fs::write(&temp, json).map_err(|e| format!("cannot write {}: {e}", temp.display()))?;
+    fs::rename(&temp, &file).map_err(|e| {
+        let _ = fs::remove_file(&temp);
+        format!("cannot write {}: {e}", file.display())
+    })?;
     for old in run_files(dir).into_iter().skip(KEEP_RUNS) {
         let _ = fs::remove_file(old);
     }
@@ -1364,6 +1371,14 @@ mod tests {
         assert!(same_mod(Path::new("D:/mods/silk.mod"), Path::new(r"D:\mods\silk.mod")));
         let newest = read_run(&run_files(&tmp)[0]).unwrap();
         assert_eq!(newest.meta.by.as_deref(), Some("Claude Code"));
+        // The write goes through a temporary file, which is gone afterwards.
+        let names: Vec<String> = fs::read_dir(&*tmp)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names.len(), 2);
+        assert!(names.iter().all(|name| Path::new(name).extension().is_some_and(|e| e == "json")));
     }
 
     #[test]

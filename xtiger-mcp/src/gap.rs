@@ -6,8 +6,8 @@
 //! the mod when such a path exists in the mod's folder.
 //!
 //! Limits: an entry that names a file but no line counts as covered by any Tiger report in that
-//! file, which makes the covered count optimistic. Paths with spaces, non-ASCII characters or an
-//! absolute path are not recognised, so such entries are left out. Rows are split by file and by
+//! file, which makes the covered count optimistic. Paths with spaces or an absolute path are not
+//! recognised, so such entries are left out (non-ASCII letters in a path are fine). Rows are split by file and by
 //! event id, since only quoted names and line numbers are replaced in the message.
 
 use std::collections::BTreeMap;
@@ -25,10 +25,7 @@ static STAMP: LazyLock<Regex> =
 /// `events/a.txt line: 84` for script errors and `file: "common/x.txt" near line: 17` for parse
 /// errors, so a closing quote and `near` may sit between the path and the line.
 static PATH: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r#"([A-Za-z0-9_\-]+(?:/[A-Za-z0-9_\-.]+)+\.[A-Za-z0-9]+)"?(?:\s+(?:near\s+)?line:\s*(\d+))?"#,
-    )
-    .unwrap()
+    Regex::new(r#"([\w\-]+(?:/[\w\-.]+)+\.\w+)"?(?:\s+(?:near\s+)?line:\s*(\d+))?"#).unwrap()
 });
 /// A quoted name; an apostrophe inside a word (`Can't`) does not open one.
 static QUOTED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(^|[^A-Za-z])'[^']*'").unwrap());
@@ -309,6 +306,16 @@ mod tests {
         let result = compare(&Request { log, mod_dir: &dir, reports: &same, limit: 10 });
         assert_eq!(result.gaps, 0);
         assert_eq!(result.reported_by_tiger, 1);
+    }
+
+    #[test]
+    fn a_path_with_non_ascii_letters_is_recognised() {
+        let dir = mod_with(&["events/événement.txt"]);
+        let log = "[04:00:00][E][jomini_script_system.cpp:304]: Script system error!\n  \
+                   Script location: file: events/événement.txt line: 9 (a.1:option)\n";
+        let result = compare(&Request { log, mod_dir: &dir, reports: &[], limit: 10 });
+        assert_eq!(result.about_the_mod, 1);
+        assert_eq!(result.rows[0].examples, vec!["events/événement.txt:9"]);
     }
 
     #[test]

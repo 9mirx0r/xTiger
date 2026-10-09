@@ -1,0 +1,78 @@
+﻿namespace = t6
+
+t6.0001 = {
+	type = character_event
+	hidden = yes
+
+	immediate = {
+		# Good shapes, as in vanilla.
+		root.faith = {
+			random_holy_site = { save_temporary_scope_as = t6_site }
+			add_holy_site = { target = scope:t6_site actor = root }
+			add_eminent_holy_site = scope:t6_site
+		}
+		root.capital_province = {
+			create_clerical_region = {
+				domicile_type = t6_domicile
+				name = T6_REGION_NAME
+				save_scope_as = t6_new_title
+			}
+		}
+		split_clerical_region = {
+			name = T6_REGION_NAME
+			save_scope_as = t6_split_title
+		}
+		create_dynamic_rite = {
+			save_scope_as = t6_new_rite
+			convert = yes
+			target_divergence = 20
+			include_unknown = yes
+			override_tenets_first = no
+		}
+		scope:t6_new_rite = {
+			change_rite_divergence = { value = 10 override_tenets_first = yes }
+		}
+		detach_rite_to_new_faith = { target = scope:t6_new_rite save_scope_as = t6_new_faith }
+	}
+}
+
+t6.0002 = {
+	type = character_event
+	hidden = yes
+
+	immediate = {
+		# Bad shapes.
+		root.faith = {
+			add_holy_site = { actor = root }
+			add_eminent_holy_site = { target = root.primary_title }
+			create_holy_site = { eminent = yes t6_unknown_field = yes }
+		}
+		root.capital_province = {
+			create_clerical_region = { name = T6_REGION_NAME }
+		}
+		create_dynamic_rite = { convert = maybe t6_unknown_field = yes }
+		detach_rite_to_new_faith = { save_scope_as = t6_other_faith }
+		scope:t6_other_faith = {
+			add_doctrine = unknown_doctrine
+		}
+	}
+}
+
+t6.0003 = {
+	type = character_event
+	hidden = yes
+
+	immediate = {
+		create_dynamic_rite = {}
+		# The scope saved by each effect has the right type.
+		create_dynamic_rite = { save_scope_as = t6_rite_scope }
+		scope:t6_rite_scope = { change_rite_divergence = { min_value = 1 } }
+		create_dynamic_rite = { save_scope_as = t6_rite_scope_two }
+		scope:t6_rite_scope_two = { add_gold = 5 }
+		# Tenet and doctrine overrides are scopes, as in the docs.
+		create_dynamic_rite = {
+			core_tenet_override_entry = tenet:t6_tenet
+			doctrine_override_entry = scope:t6_rite_scope
+		}
+	}
+}

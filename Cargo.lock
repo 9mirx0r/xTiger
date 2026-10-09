@@ -289,7 +289,7 @@ dependencies = [
 
 [[package]]
 name = "ck3-tiger"
-version = "1.5.5-alpha"
+version = "1.5.6-alpha"
 dependencies = [
  "anyhow",
  "clap",
@@ -2611,7 +2611,7 @@ dependencies = [
 
 [[package]]
 name = "tiger-bin-shared"
-version = "1.5.5-alpha"
+version = "1.5.6-alpha"
 dependencies = [
  "ansiterm",
  "anyhow",
@@ -2628,7 +2628,7 @@ dependencies = [
 
 [[package]]
 name = "tiger-lib"
-version = "1.5.5-alpha"
+version = "1.5.6-alpha"
 dependencies = [
  "ahash",
  "ansiterm",
@@ -2665,7 +2665,7 @@ dependencies = [
 
 [[package]]
 name = "tiger-tables"
-version = "1.5.5-alpha"
+version = "1.5.6-alpha"
 dependencies = [
  "anyhow",
  "phf",
@@ -2951,7 +2951,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "utils"
-version = "1.5.5-alpha"
+version = "1.5.6-alpha"
 dependencies = [
  "anyhow",
  "clap",
@@ -3478,7 +3478,7 @@ dependencies = [
 
 [[package]]
 name = "xtiger-mcp"
-version = "1.5.5-alpha"
+version = "1.5.6-alpha"
 dependencies = [
  "base64",
  "dirs",

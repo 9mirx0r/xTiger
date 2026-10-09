@@ -1,5 +1,65 @@
 # Changelog
 
+## xTiger 1.5.6 alpha
+
+A reliability pass on playing a mod in the real game (`ck3_run`), after an outside review of 1.5.5.
+Each point was reproduced before it was fixed.
+
+### The MCP server
+
+- `xtiger_migrate` no longer proposes a rename for a saved scope name: `save_scope_as =
+  every_character` and `scope:every_character` are the mod's own words and stay as they are. The
+  two iterator renames (`every_character`, `is_created`) now apply only where the word is a key
+  (`every_character = {`).
+- A run that is cancelled or times out stops the script and the game together, and puts the
+  player's `dlc_load.json` back. Before, only the script was stopped, so `ck3.exe` kept running and
+  the mod list stayed changed. The original is also kept in `dlc_load.json.xtiger-backup` while a
+  run has changed the file, and the next run restores it if the server itself was killed. A list the
+  launcher or the player has changed since is never overwritten, nothing is restored while a CK3
+  is running, and a run refuses to start (rather than overwrite the backup) if one is still there.
+  Only one game run goes at a time, also across servers (Claude Code and the xTiger app each
+  start their own): a lock file `xtiger-run.lock` in the game's user folder names the owner, and a
+  second `ck3_run` meanwhile is an error. A lock whose owner is gone is taken over.
+- The temporary `.mod` copies a run puts in the game's mod folder have a name of their own
+  (`xtiger-run-<time>-<n>.mod`) and a marker line. A file that already exists is never
+  overwritten, and only marked leftovers are ever deleted.
+- A run that did not test anything is now an error (`isError`) instead of a result: the script
+  failed or was stopped, the game never started, or a mod was not mounted by the game (exit code
+  2). The first line of the message says which, so the app's activity list shows it; the report,
+  and the path of the screenshot if there is one, follow.
+- The key helper checks what `SendInput` returns. If Windows refuses the input (input blocked, a
+  locked session) the command is retried and then fails with the Windows error code, instead of
+  being lost without a word. A failure on the final Enter is not retried, since the command may
+  already have run; it shows as `unconfirmed` if the game did not log it.
+- Repeating the same console command in one run is confirmed per send: the second `help` needs
+  its own line in `debug.log`, not the first one's.
+- A saved validation run is written to a temporary file and renamed, so a crash or a full disk
+  cannot leave half a run.
+- A starting error of `ck3_run` (such as CK3 already running) shows its real message. A script-wide
+  `trap` used to call a function that was not yet defined and hid it.
+- `xtiger_game_gap` recognises paths with non-ASCII letters (`events/événement.txt`). Paths with
+  spaces and absolute paths are still not recognised.
+
+### The validator
+
+- Nine effects that were accepted without looking at their arguments are now checked against the
+  game's own documentation and the way vanilla uses them: `add_holy_site`, `add_eminent_holy_site`,
+  `create_holy_site`, `create_clerical_region`, `split_clerical_region`, `create_dynamic_rite`,
+  `detach_rite_to_new_faith`, `change_rite_divergence` and `create_domicile_title`. Missing and
+  unknown fields, wrong scope types, domicile types that do not exist, and the scope each one saves
+  with `save_scope_as` (a title, a rite or a faith) are now reported.
+- `remove_barter_goods` is read as a script value. The docs give no syntax; the one vanilla use is
+  `remove_barter_goods = scope:barter`.
+
+### Known limits
+
+- `multiply_focus_progress` and `set_focus_progress` are accepted without checking their arguments:
+  the docs give no syntax and vanilla never uses them in script.
+- `create_holy_site` is checked only for its field names and the scopes of `county`, `barony` and
+  `actor`; `type` is not checked, and no vanilla script uses the effect.
+- A console command the game does not log in `debug.log` shows as `unconfirmed` in a run report
+  even if it ran; the run is still a result, not an error.
+
 ## xTiger 1.5.5 alpha
 
 Found by play-testing a real mod in the game and setting the game's `error.log` against what the
