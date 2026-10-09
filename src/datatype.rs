@@ -272,7 +272,11 @@ pub fn validate_datatypes(
                 }
                 LookupResult::WrongType => {
                     let msg = format!("{} cannot follow a {curtype} promote", code.name);
-                    warn(ErrorKey::Datafunctions).msg(msg).loc(&code.name).push();
+                    let hint = crate::ck3::tables::removed::moved_datafunction_hint(
+                        code.name.as_str(),
+                        &curtype.to_string(),
+                    );
+                    warn(ErrorKey::Datafunctions).msg(msg).opt_info(hint).loc(&code.name).push();
                     return Datatype::Unknown;
                 }
                 LookupResult::NotFound => (),
@@ -286,7 +290,11 @@ pub fn validate_datatypes(
                 }
                 LookupResult::WrongType => {
                     let msg = format!("{} cannot follow a {curtype} promote", code.name);
-                    warn(ErrorKey::Datafunctions).msg(msg).loc(&code.name).push();
+                    let hint = crate::ck3::tables::removed::moved_datafunction_hint(
+                        code.name.as_str(),
+                        &curtype.to_string(),
+                    );
+                    warn(ErrorKey::Datafunctions).msg(msg).opt_info(hint).loc(&code.name).push();
                     return Datatype::Unknown;
                 }
                 LookupResult::NotFound => (),
@@ -397,7 +405,9 @@ pub fn validate_datatypes(
                 let info = format!("did you mean {alternative}?");
                 warn(ErrorKey::Datafunctions).msg(msg).info(info).loc(&code.name).push();
             } else {
-                warn(ErrorKey::Datafunctions).msg(msg).loc(&code.name).push();
+                let hint =
+                    crate::ck3::tables::removed::removed_datafunction_hint(code.name.as_str());
+                warn(ErrorKey::Datafunctions).msg(msg).opt_info(hint).loc(&code.name).push();
             }
             return Datatype::Unknown;
         }

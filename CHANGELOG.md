@@ -1,5 +1,96 @@
 # Changelog
 
+## xTiger 1.5 alpha
+
+Found by checking xTiger against real mods (Regional Immersion and Cultural Enrichment, VIET
+Events, Sons of Judah, Community Flavor Pack with Ethnicities and Portraits Expanded) and by
+comparing its tables with the game's own documentation. The MCP server grows to 17 tools, the
+validator learns what 1.20 removed and says what replaced it, and the app and the MCP server now
+load a mod's dependencies the same way.
+
+### The MCP server
+
+- **Dependencies are loaded for you.** `xtiger_validate` reads the `dependencies` of the mod's
+  descriptor, finds each one among your mods by name (a local copy comes before an added
+  folder, which comes before a Workshop copy), and loads it with the mod. Mods already named in
+  the mod's own `ck3-tiger.conf` are not loaded twice. A mod that needs another mod no longer reports hundreds of things as missing.
+  The result lists `loaded_mods` and `unresolved_dependencies`, with the reason for each one
+  that could not be found.
+- `xtiger_validate` takes `with`, extra mods to load alongside, and `load_dependencies`
+  (default true) to turn the automatic loading off.
+- `xtiger_validate` takes a `playset`: every enabled mod of that launcher playset is loaded with
+  the mod that is checked, in the playset's order. A mod with no `.mod` file is read from the
+  `descriptor.mod` in its folder; with neither, it is left out and named in the answer.
+- `xtiger_compare` says when the two checks were made with different mods loaded, since that
+  alone changes the reports.
+- `xtiger_mods` shows each mod's dependencies, and says so when a `.mod` file points to a
+  folder that does not exist.
+- `xtiger_reports` with `group_by=file` or `folder` counts a report under every location it
+  has, `limit` 0 is documented, a damaged run file is skipped and reported instead of breaking
+  the tool, and two server processes no longer trip over the journal when it is rotated.
+- `ck3_docs` suggests names that contain the words you asked for in order (`is_created` finds
+  `is_title_created`), also when you give a plain identifier as `search`.
+- `xtiger_reports` can group by `template`: the whole message with each `quoted` name replaced,
+  so "unknown field `a`" and "unknown field `b`" are one group. `message` still cuts at 100
+  characters.
+- New tool `xtiger_overrides`: what a mod overrides in the base game, and how each copy differs
+  from the game installed now. A mod file with the path of a game file replaces the whole file
+  (the names the copy lacks are gone from the game); a definition with the name of a game
+  definition in another file replaces that one. Each shows the lines only the game has (`- `)
+  and only the mod has (`+ `), and near copies, the likeliest to be stale after a patch, come
+  first.
+- New tool `xtiger_migrate`: a dry run of the mechanical part of moving a mod to 1.20. It lists,
+  file by file and line by line, the renames that are the same everywhere (`every_character` to
+  `every_living_character`, `is_created` to `is_title_created`, `create_holy_order_effect` to
+  `create_holy_order_accompanying_effect`, a tenet tested with `has_doctrine` to `has_tenet`),
+  with the line as it would read. A line with several renames is one edit. Comments and quoted text are left alone and nothing is written.
+- `ck3_run` answers with an error, not a result, when the game was not started (for example CK3
+  was already running). The `play` parameter says it must be a title held at the bookmark date.
+
+### The validator
+
+- A `.mod` file whose `path` does not exist is reported as an error. Before, the validator
+  looked at the wrong folder and reported nothing.
+- A secondary mod (`load_mod` in `ck3-tiger.conf`) whose folder does not exist stops the check
+  with a message that names the folder.
+- Tables brought up to date with CK3 1.20.0.4 and checked against the game's documentation:
+  20 `on_action`s that were missing (holy sites, rites, personal tenets, traits, holy orders,
+  council, character creation and more), with the scopes the game sets for each, and the
+  return types of `GetDoctrine` and `GetElectorFromCharacter`.
+- Triggers, effects, iterators, data functions and modifiers were compared with the game's
+  documentation and found complete.
+- `munch-script-docs` no longer adds a second `// TODO: REMOVED` to a line that already has it.
+- `history_override_priority` is understood in history characters: a character that carries it
+  can redefine one defined elsewhere, without a duplicate-id report, an unknown-field report or
+  a missing `name`. A duplicate without it is still reported, with a hint about the key.
+- Keys that older versions accepted and 1.20 removed (`set_title_flag`, `trait_xp`,
+  `every_character`, `is_created`, `create_holy_order_effect`, the `scholar` trait,
+  `add_trait_track_xp`) are still reported as unknown, now with what to use instead. So are
+  `GetFaithDoctrine` (use `GetDoctrine('<key>')`), `GetOwner` after an activity (use `GetHost`),
+  and a tenet given to `has_doctrine` (use `has_tenet`).
+- A faith icon is accepted when `gfx/interface/icons/faith/<name>.dds` exists, which is where the
+  game takes faith icons from. On a mod written for an older version, 19 `has_icon` names that
+  point at such a file, with no data file defining them, are no longer reported.
+- New hints: `date = current_date` (a date takes year.month.day), an undefined `@constant`
+  (constants only exist in the file that defines them), a law written in the old wrapper format
+  (no `law_group_type`), and an on_action with an `effect` block in more than one file.
+- A faith key that no longer exists but is now a rite (religions were reorganised in 1.20)
+  is reported with that hint.
+- A character template no longer checks its own `rite` when the `create_character` that calls
+  it already gives one, as it already did for `culture` and `faith`.
+
+### The xTiger app
+
+- The xTiger app loads the mods a mod depends on, the same way the MCP server does, and saves
+  which ones it loaded with the run. A check in the app and a check by an assistant now give the
+  same reports, and comparing them no longer says the setup changed.
+
+### Known limits
+
+- Mods written for older game versions are reported for what 1.20 removed. This is correct, not
+  a false report. The renames xTiger knows about come with a hint; any other removed name is
+  reported without one.
+
 ## xTiger 1.0 alpha "Frankokratia"
 
 The first release of xTiger, a fork of [Tiger](https://github.com/amtep/tiger) made for

@@ -7,12 +7,15 @@ pub mod docs;
 pub mod game;
 pub mod journal;
 pub mod locate;
+pub mod migrate;
 pub mod mods;
+pub mod overrides;
 pub mod playsets;
 pub mod requests;
 pub mod runs;
 pub mod server;
 pub mod sessions;
+pub mod setup;
 pub mod tools;
 pub mod vanilla;
 

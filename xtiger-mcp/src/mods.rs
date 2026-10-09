@@ -20,6 +20,85 @@ pub struct ModInfo {
     pub source: &'static str,
     /// The mod's picture, if it has one.
     pub picture: Option<PathBuf>,
+    /// The names of the mods this one builds on.
+    pub dependencies: Vec<String>,
+    /// The `.mod` file points to a folder that does not exist, so the validator would have
+    /// nothing to check.
+    pub path_missing: bool,
+}
+
+/// The folder the validator checks for `mod_file`, by the same rule as the validator itself: a
+/// `descriptor.mod` is in the mod's own folder; a `.mod` file in a folder called `mod` is
+/// relative to the folder above it; any other `.mod` file is relative to its own folder.
+pub fn mod_dir(mod_file: &Path, path_field: Option<&str>) -> PathBuf {
+    let mut dir = match mod_file.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    if mod_file.file_name().is_some_and(|name| name == "descriptor.mod") {
+        return dir.to_path_buf();
+    }
+    if dir.ends_with("mod")
+        && let Some(above) = dir.parent()
+    {
+        dir = above;
+    }
+    match path_field {
+        Some(path) => dir.join(path),
+        None => dir.to_path_buf(),
+    }
+}
+
+/// Read the `dependencies = { "A" "B" }` block of a `.mod` file. Comments are ignored.
+pub fn parse_dependencies(text: &str) -> Vec<String> {
+    let mut code = String::with_capacity(text.len());
+    for line in text.lines() {
+        let mut in_quote = false;
+        for c in line.chars() {
+            match c {
+                '"' => in_quote = !in_quote,
+                '#' if !in_quote => break,
+                _ => {}
+            }
+            code.push(c);
+        }
+        code.push('\n');
+    }
+    let key = "dependencies";
+    let mut in_quote = false;
+    for (i, c) in code.char_indices() {
+        if c == '"' {
+            in_quote = !in_quote;
+            continue;
+        }
+        if in_quote || !code[i..].starts_with(key) {
+            continue;
+        }
+        if code[..i].chars().next_back().is_some_and(|p| p.is_alphanumeric() || p == '_') {
+            continue;
+        }
+        let Some(rest) = code[i + key.len()..].trim_start().strip_prefix('=') else { continue };
+        let Some(rest) = rest.trim_start().strip_prefix('{') else { continue };
+        let mut in_quote = false;
+        let end = rest
+            .char_indices()
+            .find(|&(_, c)| {
+                if c == '"' {
+                    in_quote = !in_quote;
+                }
+                c == '}' && !in_quote
+            })
+            .map_or(rest.len(), |(end, _)| end);
+        return rest[..end]
+            .split('"')
+            .skip(1)
+            .step_by(2)
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+            .collect();
+    }
+    Vec::new()
 }
 
 /// Read the `key="value"` lines of a `.mod` file. Blocks such as `tags` are skipped.
@@ -35,17 +114,12 @@ fn parse_mod_file(text: &str) -> HashMap<String, String> {
     fields
 }
 
-fn read_mod(mod_file: &Path, base: &Path, source: &'static str) -> Option<ModInfo> {
+fn read_mod(mod_file: &Path, source: &'static str) -> Option<ModInfo> {
     let bytes = fs::read(mod_file).ok()?;
     let text = String::from_utf8_lossy(&bytes);
-    let fields = parse_mod_file(text.trim_start_matches('\u{feff}'));
-    let dir = match fields.get("path") {
-        Some(path) => {
-            let path = PathBuf::from(path);
-            if path.is_absolute() { path } else { base.join(path) }
-        }
-        None => mod_file.parent()?.to_path_buf(),
-    };
+    let text = text.trim_start_matches('\u{feff}');
+    let fields = parse_mod_file(text);
+    let dir = mod_dir(mod_file, fields.get("path").map(String::as_str));
     let picture = fields
         .get("picture")
         .map(|picture| dir.join(picture))
@@ -56,21 +130,29 @@ fn read_mod(mod_file: &Path, base: &Path, source: &'static str) -> Option<ModInf
     });
     Some(ModInfo {
         mod_file: mod_file.to_path_buf(),
+        path_missing: !dir.is_dir(),
         dir,
         name,
         version: fields.get("version").cloned(),
         supported_version: fields.get("supported_version").cloned(),
         source,
         picture,
+        dependencies: parse_dependencies(text),
     })
+}
+
+/// What a `.mod` file says about its mod, wherever the file is.
+pub fn describe(mod_file: &Path) -> Option<ModInfo> {
+    read_mod(mod_file, "local")
 }
 
 /// A mod folder added by hand must hold a `descriptor.mod`.
 pub fn read_mod_folder(dir: &Path) -> Option<ModInfo> {
     let descriptor = dir.join("descriptor.mod");
-    let mut info = read_mod(&descriptor, dir, "added")?;
+    let mut info = read_mod(&descriptor, "added")?;
     // The descriptor's own `path`, if any, may point elsewhere; the folder itself wins.
     info.dir = dir.to_path_buf();
+    info.path_missing = !info.dir.is_dir();
     Some(info)
 }
 
@@ -89,7 +171,7 @@ pub fn list(paradox: Option<&Path>, extra: &[PathBuf]) -> Vec<ModInfo> {
                 continue;
             }
             let source = if file_name.starts_with("ugc_") { "workshop" } else { "local" };
-            if let Some(info) = read_mod(&path, paradox, source) {
+            if let Some(info) = read_mod(&path, source) {
                 mods.push(info);
             }
         }

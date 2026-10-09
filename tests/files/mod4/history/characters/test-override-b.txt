@@ -1,0 +1,8 @@
+﻿# ov_char overrides the first definition (no name needed); dup_char has no priority and must still be reported
+ov_char = {
+	history_override_priority = 1
+	martial = 5
+}
+dup_char = {
+	name = "Dup2"
+}

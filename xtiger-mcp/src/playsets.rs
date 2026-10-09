@@ -134,6 +134,25 @@ pub fn load_order(playset: &Playset) -> (Vec<PathBuf>, Vec<String>) {
     (files, missing)
 }
 
+/// Like `load_order`, for a check: a mod with no `.mod` file in the launcher's folder is still
+/// used when its own folder holds a `descriptor.mod`, which is all a check needs.
+pub fn check_order(playset: &Playset) -> (Vec<PathBuf>, Vec<String>) {
+    let mut files = Vec::new();
+    let mut missing = Vec::new();
+    for item in playset.mods.iter().filter(|item| item.enabled) {
+        let descriptor = item
+            .folder
+            .as_ref()
+            .map(|dir| dir.join("descriptor.mod"))
+            .filter(|path| path.is_file());
+        match item.mod_file.clone().or(descriptor) {
+            Some(file) => files.push(file),
+            None => missing.push(item.name.clone()),
+        }
+    }
+    (files, missing)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,5 +196,29 @@ mod tests {
         assert_eq!(load_order(&find(&tmp, "test").unwrap()).0.len(), 0);
         assert!(find(&tmp, "nope").unwrap_err().contains("Big Game, Empty, Testing"));
         assert!(find(&tmp, "e").unwrap_err().contains("More than one"));
+    }
+
+    #[test]
+    fn a_check_falls_back_to_the_descriptor_in_the_mod_folder() {
+        let tmp = TempDir::new();
+        fs::create_dir_all(tmp.join("m/loose")).unwrap();
+        fs::write(tmp.join("m/loose/descriptor.mod"), "").unwrap();
+        let item = |name: &str, folder: Option<PathBuf>| PlaysetMod {
+            name: name.to_owned(),
+            enabled: true,
+            position: 0,
+            mod_file: None,
+            folder,
+        };
+        let playset = Playset {
+            name: "p".to_owned(),
+            active: false,
+            enabled: 2,
+            mods: vec![item("Loose", Some(tmp.join("m/loose"))), item("Gone", None)],
+        };
+        assert_eq!(load_order(&playset).0.len(), 0);
+        let (files, missing) = check_order(&playset);
+        assert_eq!(files, [tmp.join("m/loose/descriptor.mod")]);
+        assert_eq!(missing, ["Gone"]);
     }
 }

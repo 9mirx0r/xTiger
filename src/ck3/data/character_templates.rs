@@ -100,7 +100,11 @@ impl DbKind for CharacterTemplate {
             vd.field_target("faith", sc, Scopes::Faith);
             vd.multi_field_validated_block_sc("random_faith", sc, validate_random_faith);
         }
-        vd.field_item_or_target("rite", sc, Item::Rite, Scopes::Rite);
+        if from_block.has_key("rite") {
+            vd.field_value("rite");
+        } else {
+            vd.field_item_or_target("rite", sc, Item::Rite, Scopes::Rite);
+        }
         if from_block.has_key("dynasty_house") {
             vd.field_value("dynasty_house");
         } else {

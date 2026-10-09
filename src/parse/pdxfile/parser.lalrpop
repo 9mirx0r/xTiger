@@ -180,7 +180,8 @@ Value: (Token, HasMacroParams) = {
             (Token::from_static_str(t.as_str(), token.loc), false)
         } else {
             let msg = format!("reader variable {name} not defined");
-            err(ErrorKey::ReaderDirectives).msg(msg).loc(&token).push();
+            let info = "an `@name = value` constant is only visible in the file that defines it; define it at the top of this file";
+            err(ErrorKey::ReaderDirectives).msg(msg).info(info).loc(&token).push();
             (token, false)
         }
     },

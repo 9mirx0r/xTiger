@@ -1,0 +1,12 @@
+test_renamed_effect = {
+	every_character = { add_gold = 1 }
+	add_trait_track_xp = { trait = brave value = 1 }
+	create_holy_order_effect = yes
+	add_trait = scholar
+	if = {
+		limit = {
+			is_created = yes
+			faith = { has_doctrine = test_only_tenet }
+		}
+	}
+}

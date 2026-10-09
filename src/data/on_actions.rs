@@ -95,6 +95,19 @@ impl OnAction {
     }
 
     pub fn validate(&self, data: &Everything) {
+        // The game does not merge the `effect` blocks of one on_action defined in several files.
+        let effects: Vec<&Token> =
+            self.actions.iter().filter_map(|(_, block)| block.get_key("effect")).collect();
+        if let [.., earlier, last] = effects.as_slice() {
+            let msg = "this on_action already has an `effect` block in another file";
+            let info = "the game does not merge them and only logs \"more than one effect\"; put the effects of both into one block";
+            warn(ErrorKey::Validation)
+                .msg(msg)
+                .info(info)
+                .loc(*last)
+                .loc_msg(*earlier, "also defined here")
+                .push();
+        }
         let mut seen_trigger = false;
         let mut seen_effect = false;
         for (key, block) in self.actions.iter().rev() {

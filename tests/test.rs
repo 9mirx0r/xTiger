@@ -272,3 +272,89 @@ fn test_mod3() {
     dbg!(&reports);
     assert!(reports.is_empty());
 }
+
+#[test]
+fn test_mod4_history_override_priority() {
+    let mut reports = check_mod_helper("mod4");
+
+    // dup_char is defined twice with no override priority: still a duplicate.
+    let file_a = "history/characters/test-override-a.txt";
+    let report = take_report_pointer(&mut reports, file_a, "duplicate character id", 5, 1);
+    report.expect("duplicate without override priority");
+
+    // ov_char carries history_override_priority: no duplicate, no unknown field, no missing name.
+    for report in reports.keys() {
+        assert!(!report.msg.contains("duplicate character id"), "{report:?}");
+        assert!(!report.msg.contains("history_override_priority"), "{report:?}");
+        assert!(!report.msg.contains("required field `name` missing"), "{report:?}");
+    }
+}
+
+#[test]
+fn test_mod4_older_version_hints() {
+    let reports = check_mod_helper("mod4");
+    let info_of = |msg: &str| -> String {
+        reports
+            .keys()
+            .find(|r| r.msg == msg)
+            .unwrap_or_else(|| panic!("no report `{msg}`"))
+            .info
+            .clone()
+            .unwrap_or_default()
+    };
+
+    assert!(info_of("law group wrapper from an older game version").contains("law_group_type"));
+    assert!(info_of("expected date value").contains("year.month.day"));
+    assert!(info_of("reader variable undefined_constant not defined").contains("this file"));
+    assert!(
+        info_of("this on_action already has an `effect` block in another file")
+            .contains("more than one effect")
+    );
+    assert!(
+        info_of("faith test_only_rite not defined in common/religion/faith_types/")
+            .contains("defined as a rite")
+    );
+}
+
+#[test]
+fn test_mod4_removed_key_hint() {
+    let reports = check_mod_helper("mod4");
+
+    let hint = reports
+        .keys()
+        .find(|r| r.msg == "unknown field `trait_xp`")
+        .expect("trait_xp should be reported as an unknown field");
+    let info = hint.info.as_deref().unwrap_or_default();
+    assert!(info.contains("add_trait_xp"), "missing hint, got {info:?}");
+}
+
+#[test]
+fn test_mod4_renamed_names_hints() {
+    let reports = check_mod_helper("mod4");
+    let info_of = |msg: &str| -> String {
+        reports
+            .keys()
+            .find(|r| r.msg == msg)
+            .unwrap_or_else(|| {
+                let all: Vec<_> = reports.keys().map(|r| r.msg.as_str()).collect();
+                panic!("no report `{msg}` among {all:?}")
+            })
+            .info
+            .clone()
+            .unwrap_or_default()
+    };
+
+    assert!(info_of("unknown token `every_character`").contains("every_living_character"));
+    assert!(info_of("unknown token `is_created`").contains("is_title_created"));
+    assert!(
+        info_of("lifestyle trait_track not defined in common/lifestyles/").contains("add_trait_xp")
+    );
+    assert!(
+        info_of("unknown token `create_holy_order_effect`")
+            .contains("create_holy_order_accompanying_effect")
+    );
+    assert!(info_of("unknown token `scholar`").contains("lifestyle_scholar"));
+    assert!(info_of("unknown token `test_only_tenet`").contains("has_tenet"));
+    assert!(info_of("GetOwner cannot follow a Activity promote").contains("GetHost"));
+    assert!(info_of("unknown datafunction GetFaithDoctrine").contains("GetDoctrine"));
+}

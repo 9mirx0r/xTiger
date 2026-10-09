@@ -474,7 +474,8 @@ pub fn validate_trigger_key_bv(
                 } else {
                     // TODO: warn if trying to use iterator here
                     let msg = format!("unknown token `{part}`");
-                    err(ErrorKey::UnknownField).msg(msg).loc(part).push();
+                    let hint = crate::ck3::tables::removed::removed_key_hint(part.as_str());
+                    err(ErrorKey::UnknownField).msg(msg).opt_info(hint).loc(part).push();
                     sc.close();
                     return side_effects;
                 }
@@ -1211,6 +1212,21 @@ pub fn validate_target_ok_this(
 
                     // TODO: warn if trying to use iterator here
                     let msg = format!("unknown token `{part}`");
+                    let opt_info = opt_info
+                        .or_else(|| {
+                            crate::ck3::tables::removed::removed_key_hint(part.as_str())
+                                .map(String::from)
+                        })
+                        .or_else(|| {
+                            // `has_doctrine = tenet_x` worked before tenets became their own item
+                            (outscopes.contains(Scopes::Doctrine)
+                                && data.item_exists(Item::Tenet, part.as_str()))
+                            .then(|| {
+                                format!(
+                                    "`{part}` is a tenet, not a doctrine; use `has_tenet` or `add_tenet`"
+                                )
+                            })
+                        });
                     err(ErrorKey::UnknownField).msg(msg).opt_info(opt_info).loc(part).push();
                     sc.close();
                     return Scopes::all();

@@ -60,10 +60,12 @@ an error, never quietly ignored.
 |---|---|
 | `xtiger_status` | Shows what was found: the validator, the game and its version, and the user folder |
 | `xtiger_mods` | Lists the mods: local, Workshop and folders added in the app |
-| `xtiger_validate` | Validates a mod by name, folder or `.mod` file. Sums up the reports and says what is new or fixed since the last run |
+| `xtiger_validate` | Validates a mod by name, folder or `.mod` file, loading the mods it depends on (or the mods of a `playset`, or the ones in `with`). Sums up the reports and says what is new or fixed since the last run |
 | `xtiger_runs` | Lists the saved runs, newest first |
 | `xtiger_reports` | Filters or groups the reports of a saved run by regex, file, severity or key |
 | `xtiger_compare` | Compares two saved runs: the totals of each, and which reports are new or fixed, by key and one by one |
+| `xtiger_overrides` | Shows what a mod overrides in the base game and how each copy differs from the game installed now, near copies first |
+| `xtiger_migrate` | Dry run of the mechanical renames needed to move a mod to 1.20: file, line, and the line as it would read. Writes nothing |
 | `xtiger_session` | Names the job at hand, or wraps it up, and sums up the session so far |
 | `xtiger_pending_requests` | Lists what the user asked for in the app and is not done yet: reports to fix, or a mod to update |
 | `xtiger_finish_request` | Closes a request as done or skipped, with a note the user sees in the app |

@@ -567,6 +567,12 @@ impl Everything {
             Item::TextureFile => self.assets.texture_exists(key),
             Item::WidgetName => self.gui.name_exists(key),
             Item::Directory | Item::Shortcut => true, // TODO
+            // The game takes a faith icon from gfx/interface/icons/faith/<name>.dds, so a name
+            // with such a texture is an icon even when no data file lists it.
+            Item::FaithIcon => {
+                self.item_exists_ck3(itype, key)
+                    || self.fileset.exists(&format!("gfx/interface/icons/faith/{key}.dds"))
+            }
             _ => self.item_exists_ck3(itype, key),
         }
     }
@@ -648,11 +654,33 @@ impl Everything {
                     report(ErrorKey::MissingItem, itype.severity().at_most(max_sev))
                         .conf(itype.confidence())
                         .msg(msg)
+                        .opt_info(self.older_version_hint(itype, key))
                         .loc(token)
                         .push();
                 }
             }
         }
+    }
+
+    /// A hint for a missing item that an older game version had. Mods written before 1.20 name as
+    /// faiths what are now rites of one faith, ask for a tenet with `has_doctrine`, or use a
+    /// trait that was renamed.
+    fn older_version_hint(&self, itype: Item, key: &str) -> Option<String> {
+        let (found, expected) = match itype {
+            Item::Faith => (Item::Rite, "faith"),
+            Item::Rite => (Item::Faith, "rite"),
+            Item::Doctrine => {
+                return self.item_exists(Item::Tenet, key).then(|| {
+                    format!("`{key}` is a tenet, not a doctrine; use `has_tenet` or `add_tenet`")
+                });
+            }
+            _ => {
+                let hint = crate::ck3::tables::removed::removed_item_hint(itype, key);
+                return hint.map(String::from);
+            }
+        };
+        self.item_exists(found, key)
+            .then(|| format!("`{key}` is defined as a {found}, but a {expected} is wanted here"))
     }
 
     #[allow(dead_code)]

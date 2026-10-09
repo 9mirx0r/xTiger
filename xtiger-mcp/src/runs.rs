@@ -3,11 +3,13 @@
 //! The xTiger app saves its checks here too, so the app and the assistants share one history:
 //! what is new or fixed is always measured against the last check of the mod, whoever ran it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -18,13 +20,15 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::locate::Locations;
+use crate::mods;
+use crate::setup::{self, Loaded, Unresolved};
 
 /// How many saved runs are kept.
 pub const KEEP_RUNS: usize = 20;
 /// The longest a validation may take.
 pub const TIMEOUT: Duration = Duration::from_secs(30 * 60);
 pub const SEVERITIES: [&str; 5] = ["tips", "untidy", "warning", "error", "fatal"];
-pub const GROUPS: [&str; 5] = ["file", "folder", "key", "message", "severity"];
+pub const GROUPS: [&str; 6] = ["file", "folder", "key", "message", "severity", "template"];
 
 /// Counts in the order they were made, written as a JSON object.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -90,10 +94,6 @@ fn loc_path(loc: &Value) -> String {
     norm(text(loc, "path").unwrap_or(""))
 }
 
-fn first_path(report: &Value) -> String {
-    loc_path(locations(report)[0])
-}
-
 fn place(loc: &Value) -> String {
     let line =
         loc.get("linenr").and_then(Value::as_u64).map_or_else(|| "?".to_owned(), |n| n.to_string());
@@ -112,14 +112,43 @@ fn message_group(report: &Value) -> String {
     first_chars(text(report, "message").unwrap_or(""), 100)
 }
 
-fn group_of(group_by: &str, report: &Value) -> String {
-    match group_by {
-        "message" => message_group(report),
-        "key" => key(report),
-        "file" => first_path(report),
-        "folder" => first_path(report).split('/').take(2).collect::<Vec<_>>().join("/"),
-        _ => severity(report),
+/// The message with every `quoted` name replaced by `…`, so that "unknown field `a`" and
+/// "unknown field `b`" are one group, however long the message is.
+fn message_template(report: &Value) -> String {
+    let message = text(report, "message").unwrap_or("");
+    if message.matches('`').count() % 2 == 1 {
+        // An odd number of backticks: do not guess where the names are.
+        return message.to_owned();
     }
+    let mut template = String::with_capacity(message.len());
+    for (i, part) in message.split('`').enumerate() {
+        if i % 2 == 0 {
+            template.push_str(part);
+        } else {
+            template.push_str("`…`");
+        }
+    }
+    template
+}
+
+fn folder_of(path: &str) -> String {
+    path.split('/').take(2).collect::<Vec<_>>().join("/")
+}
+
+/// The groups a report counts in. By file or folder that is every place the report points to, once
+/// each, so a report that involves two files shows up under both.
+fn groups_of(group_by: &str, report: &Value) -> Vec<String> {
+    let mut places: Vec<String> = match group_by {
+        "message" => return vec![message_group(report)],
+        "template" => return vec![message_template(report)],
+        "key" => return vec![key(report)],
+        "file" => locations(report).into_iter().map(loc_path).collect(),
+        "folder" => locations(report).into_iter().map(|loc| folder_of(&loc_path(loc))).collect(),
+        _ => return vec![severity(report)],
+    };
+    let mut seen = HashSet::new();
+    places.retain(|place| seen.insert(place.clone()));
+    places
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -268,7 +297,7 @@ pub fn query(
     let compiled = filter.compile()?;
     let hits: Vec<&Value> = reports.iter().filter(|report| compiled.matches(report)).collect();
     if !group_by.is_empty() {
-        let groups = most_common(hits.iter().map(|report| group_of(group_by, report)));
+        let groups = most_common(hits.iter().flat_map(|report| groups_of(group_by, report)));
         let total_groups = groups.len();
         let groups = groups.into_iter().skip(offset).take(limit).collect();
         return Ok(QueryResult::Groups { matched: hits.len(), total_groups, groups });
@@ -329,6 +358,10 @@ pub struct RunMeta {
     /// When the run ended, in milliseconds since the Unix epoch.
     #[serde(default)]
     pub finished_at: u64,
+    /// The names of the mods that were loaded besides the one checked. A check that loaded
+    /// other mods cannot be compared fairly with one that did not.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub loaded_mods: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -378,69 +411,98 @@ pub struct RunListing {
     pub seconds: f64,
 }
 
-pub fn list_runs(loc: &Locations) -> Vec<RunListing> {
-    run_files(&runs_dir(loc))
-        .iter()
-        .filter_map(|path| read_run(path).ok())
-        .map(|run| RunListing {
-            total: run.reports.len(),
-            run_id: run.meta.run_id,
-            mod_file: run.meta.mod_file,
-            mod_name: run.meta.mod_name,
-            by: run.meta.by,
-            tiger: run.meta.tiger,
-            exit_code: run.meta.exit_code,
-            seconds: run.meta.seconds,
-        })
-        .collect()
+/// The saved runs, newest first, and the run files that could not be read.
+pub fn list_runs(loc: &Locations) -> (Vec<RunListing>, Vec<PathBuf>) {
+    let mut listing = Vec::new();
+    let mut damaged = Vec::new();
+    for path in run_files(&runs_dir(loc)) {
+        match read_run(&path) {
+            Ok(run) => listing.push(RunListing {
+                total: run.reports.len(),
+                run_id: run.meta.run_id,
+                mod_file: run.meta.mod_file,
+                mod_name: run.meta.mod_name,
+                by: run.meta.by,
+                tiger: run.meta.tiger,
+                exit_code: run.meta.exit_code,
+                seconds: run.meta.seconds,
+            }),
+            Err(_) => damaged.push(path),
+        }
+    }
+    (listing, damaged)
 }
 
-/// A saved run by id, or the newest one.
-pub fn load_run(loc: &Locations, run_id: &str) -> Result<(RunMeta, Vec<Value>), String> {
+/// A saved run, with the damaged run files that were passed over to get to it.
+#[derive(Debug)]
+pub struct LoadedRun {
+    pub meta: RunMeta,
+    pub reports: Vec<Value>,
+    pub skipped: Vec<PathBuf>,
+}
+
+/// The first run among `files` that can be read and that `wanted` accepts. Damaged files before it
+/// are collected in `skipped`.
+fn first_readable(files: &[PathBuf], wanted: impl Fn(&SavedRun) -> bool) -> Option<LoadedRun> {
+    let mut skipped = Vec::new();
+    for path in files {
+        match read_run(path) {
+            Ok(run) if wanted(&run) => {
+                return Some(LoadedRun { meta: run.meta, reports: run.reports, skipped });
+            }
+            Ok(_) => {}
+            Err(_) => skipped.push(path.clone()),
+        }
+    }
+    None
+}
+
+fn all_damaged(files: &[PathBuf]) -> String {
+    let names: Vec<String> = files.iter().map(|path| path.display().to_string()).collect();
+    format!("Every saved run is damaged: {}.", names.join(", "))
+}
+
+/// A saved run by id, or the newest one that can be read.
+pub fn load_run(loc: &Locations, run_id: &str) -> Result<LoadedRun, String> {
     let files = run_files(&runs_dir(loc));
-    let file = if run_id.is_empty() {
-        files.first().ok_or("No results yet. Run xtiger_validate first.")?
-    } else {
-        files
-            .iter()
-            .find(|path| path.file_stem().is_some_and(|stem| stem == run_id))
-            .ok_or_else(|| format!("No saved run {run_id}. Use xtiger_runs to list them."))?
-    };
+    if run_id.is_empty() {
+        if files.is_empty() {
+            return Err("No results yet. Run xtiger_validate first.".to_owned());
+        }
+        return first_readable(&files, |_| true).ok_or_else(|| all_damaged(&files));
+    }
+    let file = files
+        .iter()
+        .find(|path| path.file_stem().is_some_and(|stem| stem == run_id))
+        .ok_or_else(|| format!("No saved run {run_id}. Use xtiger_runs to list them."))?;
     let run = read_run(file)?;
-    Ok((run.meta, run.reports))
+    Ok(LoadedRun { meta: run.meta, reports: run.reports, skipped: Vec::new() })
 }
 
-/// The newest saved run of a mod.
-pub fn newest_run_of(loc: &Locations, mod_file: &Path) -> Result<(RunMeta, Vec<Value>), String> {
-    run_files(&runs_dir(loc))
-        .iter()
-        .filter_map(|path| read_run(path).ok())
-        .find(|run| same_mod(&run.meta.mod_file, mod_file))
-        .map(|run| (run.meta, run.reports))
-        .ok_or_else(|| {
-            format!("No saved run of {}. Run xtiger_validate first.", mod_file.display())
-        })
+/// The newest saved run of a mod that can be read.
+pub fn newest_run_of(loc: &Locations, mod_file: &Path) -> Result<LoadedRun, String> {
+    let files = run_files(&runs_dir(loc));
+    first_readable(&files, |run| same_mod(&run.meta.mod_file, mod_file)).ok_or_else(|| {
+        format!("No saved run of {}. Run xtiger_validate first.", mod_file.display())
+    })
 }
 
 /// The saved run of the same mod just before `meta`.
-pub fn run_before(loc: &Locations, meta: &RunMeta) -> Result<(RunMeta, Vec<Value>), String> {
+pub fn run_before(loc: &Locations, meta: &RunMeta) -> Result<LoadedRun, String> {
     let files = run_files(&runs_dir(loc));
     let at = files
         .iter()
         .position(|path| path.file_stem().is_some_and(|stem| *stem == *meta.run_id))
         .unwrap_or(files.len());
-    files
-        .iter()
-        .skip(at + 1)
-        .filter_map(|path| read_run(path).ok())
-        .find(|run| same_mod(&run.meta.mod_file, &meta.mod_file))
-        .map(|run| (run.meta, run.reports))
-        .ok_or_else(|| {
-            format!(
-                "Run {} is the oldest saved run of its mod: there is nothing to compare it with.",
-                meta.run_id
-            )
-        })
+    first_readable(&files[(at + 1).min(files.len())..], |run| {
+        same_mod(&run.meta.mod_file, &meta.mod_file)
+    })
+    .ok_or_else(|| {
+        format!(
+            "Run {} is the oldest saved run of its mod: there is nothing to compare it with.",
+            meta.run_id
+        )
+    })
 }
 
 /// A saved run opened for reading in the app.
@@ -528,6 +590,7 @@ pub struct NewRun {
     pub command: Vec<String>,
     pub exit_code: Option<i32>,
     pub seconds: f64,
+    pub loaded_mods: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -566,6 +629,7 @@ pub fn save_run(dir: &Path, run: NewRun, reports: &[Value]) -> Result<RunMeta, S
         finished_at: finished
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(0)),
+        loaded_mods: run.loaded_mods,
     };
     let file = dir.join(format!("{}.json", meta.run_id));
     let json =
@@ -599,6 +663,7 @@ pub(crate) fn save_test_run(dir: &Path, run_id: &str, mod_file: &Path, reports: 
         exit_code: Some(0),
         seconds: 1.0,
         finished_at: 0,
+        loaded_mods: vec![],
     };
     let run = SavedRun { meta, reports: reports.to_vec() };
     fs::create_dir_all(dir).unwrap();
@@ -644,6 +709,13 @@ pub struct Validation {
     #[serde(rename = "mod")]
     pub mod_file: PathBuf,
     pub mod_name: Option<String>,
+    /// The mods the validator loaded besides this one.
+    pub loaded_mods: Vec<Loaded>,
+    /// Dependencies that could not be loaded. What they define is reported as missing.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unresolved_dependencies: Vec<Unresolved>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
     #[serde(flatten)]
     pub summary: Summary,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -661,6 +733,10 @@ pub struct Validation {
 pub struct Comparison {
     pub previous_run_id: String,
     pub previous_total: usize,
+    /// Set when the two checks did not load the same mods, so the counts below say little
+    /// about what was fixed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup_changed: Option<String>,
     pub new: usize,
     pub fixed: usize,
     /// The first new reports.
@@ -674,12 +750,73 @@ pub struct Options<'a> {
     pub timeout: Duration,
     /// Who runs it, kept with the run.
     pub by: Option<&'a str>,
+    /// Load the mods this one depends on, as the game does.
+    pub load_dependencies: bool,
+    /// More mods to load: `.mod` files.
+    pub with: &'a [PathBuf],
 }
 
 impl Default for Options<'_> {
     fn default() -> Self {
-        Self { show_vanilla: false, config: None, timeout: TIMEOUT, by: None }
+        Self {
+            show_vanilla: false,
+            config: None,
+            timeout: TIMEOUT,
+            by: None,
+            load_dependencies: true,
+            with: &[],
+        }
     }
+}
+
+/// A config file made for one check, removed when it ends, however it ends.
+struct TempConf(PathBuf);
+
+impl TempConf {
+    fn write(loc: &Locations, text: &str) -> Result<Self, String> {
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
+        let dir = loc.state_dir.join("tmp");
+        fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+        let n = COUNT.fetch_add(1, Ordering::SeqCst);
+        let file = dir.join(format!("validate-{}-{n}.conf", std::process::id()));
+        fs::write(&file, text).map_err(|e| format!("cannot write {}: {e}", file.display()))?;
+        Ok(Self(file))
+    }
+}
+
+impl Drop for TempConf {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+/// Why a `.mod` file whose folder is missing cannot be checked, and where its mod may be.
+fn missing_folder_message(mod_file: &Path, dir: &Path) -> String {
+    let mut message = format!(
+        "{} says the mod is in {}, which does not exist, so there is nothing to check.",
+        mod_file.display(),
+        dir.display()
+    );
+    let beside = mod_file.parent().unwrap_or(Path::new("."));
+    let mut inside: Vec<PathBuf> = fs::read_dir(beside)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().join("descriptor.mod"))
+        .filter(|descriptor| descriptor.is_file())
+        .collect();
+    let stem = mod_file.file_stem();
+    if inside.len() > 1 {
+        inside.retain(|descriptor| descriptor.parent().and_then(Path::file_name) == stem);
+    }
+    if let [descriptor] = inside.as_slice() {
+        let _ = write!(
+            message,
+            " The mod itself may be the one in {}: check that instead.",
+            descriptor.display()
+        );
+    }
+    message
 }
 
 pub fn no_window(command: &mut Command) -> &mut Command {
@@ -697,6 +834,22 @@ fn last_chars(text: &str, n: usize) -> String {
     text.chars().skip(count.saturating_sub(n)).collect()
 }
 
+/// Say so when two checks of one mod did not load the same mods: the difference in reports is
+/// then mostly what those mods define, not what was fixed.
+pub fn setup_changed(before: &[String], now: &[String]) -> Option<String> {
+    if before == now {
+        return None;
+    }
+    let list = |names: &[String]| {
+        if names.is_empty() { "no other mods".to_owned() } else { names.join(", ") }
+    };
+    Some(format!(
+        "The earlier check loaded {}; this one loads {}. The reports that differ are mostly what those mods define, not fixes.",
+        list(before),
+        list(now)
+    ))
+}
+
 /// Run the validator on `mod_file` and save the run. `progress` gets each line the validator
 /// prints while it works; when `cancelled` turns true the validator is stopped.
 pub fn validate(
@@ -711,6 +864,34 @@ pub fn validate(
     if !mod_file.is_file() {
         return Err(format!("No .mod file at {}", mod_file.display()));
     }
+    // A .mod file that points to a folder that is not there would make the validator check the
+    // wrong tree and report nothing wrong.
+    if let Some(info) = mods::describe(mod_file)
+        && info.path_missing
+    {
+        return Err(missing_folder_message(mod_file, &info.dir));
+    }
+    if let Some(config) = options.config
+        && !config.is_file()
+    {
+        return Err(format!("No config file at {}", config.display()));
+    }
+    let all = mods::list(Some(&loc.user_dir), &loc.extra_mods);
+    let setup = setup::plan(
+        &setup::Request {
+            mod_file,
+            config: options.config,
+            with: options.with,
+            load_dependencies: options.load_dependencies,
+            paradox: &loc.user_dir,
+        },
+        &all,
+    )?;
+    let generated = match &setup.conf {
+        Some(text) => Some(TempConf::write(loc, text)?),
+        None => None,
+    };
+
     let mut args: Vec<String> =
         vec!["--json".into(), "--paradox".into(), loc.user_dir.display().to_string()];
     if loc.game.is_some() {
@@ -720,14 +901,23 @@ pub fn validate(
     if options.show_vanilla {
         args.push("--show-vanilla".into());
     }
-    if let Some(config) = options.config {
-        if !config.is_file() {
-            return Err(format!("No config file at {}", config.display()));
-        }
+    // What is kept with the run: the generated config is gone when the check ends.
+    let mut saved_args = args.clone();
+    if let Some(conf) = &generated {
         args.push("--config".into());
-        args.push(config.display().to_string());
+        args.push(conf.0.display().to_string());
+        saved_args.push("--config".into());
+        saved_args.push(format!("(generated, loads {} mods)", setup.loaded.len()));
+    } else if let Some(config) = options.config {
+        for list in [&mut args, &mut saved_args] {
+            list.push("--config".into());
+            list.push(config.display().to_string());
+        }
     }
     args.push(mod_file.display().to_string());
+    saved_args.push(mod_file.display().to_string());
+    // Every mod that is loaded adds to the time a check takes.
+    let timeout = options.timeout + Duration::from_secs(120 * setup.loaded.len() as u64);
 
     let started = Instant::now();
     let mut child = no_window(Command::new(&tiger).args(&args))
@@ -764,7 +954,7 @@ pub fn validate(
             }
             Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => {}
         }
-        if cancelled() || started.elapsed() > options.timeout {
+        if cancelled() || started.elapsed() > timeout {
             let _ = child.kill();
             let _ = child.wait();
             let _ = err_thread.join();
@@ -773,8 +963,13 @@ pub fn validate(
                 "Cancelled.".to_owned()
             } else {
                 format!(
-                    "The validator took longer than {} minutes and was stopped.",
-                    options.timeout.as_secs().div_euclid(60)
+                    "The validator took longer than {} minutes and was stopped.{}",
+                    timeout.as_secs().div_euclid(60),
+                    if setup.loaded.is_empty() {
+                        ""
+                    } else {
+                        " Loading other mods makes a check slower."
+                    }
                 )
             });
         }
@@ -804,9 +999,11 @@ pub fn validate(
 
     let dir = runs_dir(loc);
     // The last check of the same mod, by the app or an assistant, to say what changed.
+    let loaded_names: Vec<String> = setup.loaded.iter().map(|l| l.name.clone()).collect();
     let since_last_run = newest_in(&dir, mod_file).map(|(meta, previous)| {
         let (new, fixed) = compare(&previous, &reports);
         Comparison {
+            setup_changed: setup_changed(&meta.loaded_mods, &loaded_names),
             previous_run_id: meta.run_id,
             previous_total: previous.len(),
             new: new.len(),
@@ -823,9 +1020,10 @@ pub fn validate(
             by: options.by.map(str::to_owned),
             tiger: tiger.clone(),
             tiger_source: loc.validator_from.to_owned(),
-            command: std::iter::once(tiger.display().to_string()).chain(args).collect(),
+            command: std::iter::once(tiger.display().to_string()).chain(saved_args).collect(),
             exit_code: status.code(),
             seconds,
+            loaded_mods: loaded_names,
         },
         &reports,
     )?;
@@ -835,6 +1033,9 @@ pub fn validate(
         run_id: meta.run_id,
         mod_file: mod_file.to_path_buf(),
         mod_name,
+        loaded_mods: setup.loaded,
+        unresolved_dependencies: setup.unresolved,
+        warnings: setup.warnings,
         summary,
         since_last_run,
         seconds,
@@ -907,6 +1108,29 @@ mod tests {
             json!({"message": format!("{prefix}second")}),
         ];
         assert_eq!(summarize(&reports, 15).top_messages, vec![(prefix, 2)]);
+    }
+
+    #[test]
+    fn template_groups_merge_quoted_names() {
+        let reports = [
+            json!({"message": "unknown field `a`"}),
+            json!({"message": "unknown field `b`"}),
+            json!({"message": "`x` is redefined by `y`"}),
+            json!({"message": "odd ` backtick"}),
+        ];
+        let QueryResult::Groups { groups, .. } =
+            query(&reports, &Filter::default(), "template", 50, 0).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(
+            groups,
+            pairs(&[
+                ("unknown field `…`", 2),
+                ("`…` is redefined by `…`", 1),
+                ("odd ` backtick", 1)
+            ])
+        );
     }
 
     fn messages(result: &QueryResult) -> Vec<Option<String>> {
@@ -1025,9 +1249,10 @@ mod tests {
             ),
             (
                 "file",
+                // The first report points to intro.txt and to faiths.txt: it counts in both.
                 vec![
+                    ("common/religion/faiths.txt", 2),
                     ("events/story/intro.txt", 1),
-                    ("common/religion/faiths.txt", 1),
                     ("events/story/other.txt", 1),
                     ("localization/english/story.yml", 1),
                     ("", 1),
@@ -1037,7 +1262,7 @@ mod tests {
                 "folder",
                 vec![
                     ("events/story", 2),
-                    ("common/religion", 1),
+                    ("common/religion", 2),
                     ("localization/english", 1),
                     ("", 1),
                 ],
@@ -1115,6 +1340,7 @@ mod tests {
             command: vec![],
             exit_code: Some(0),
             seconds: 1.0,
+            loaded_mods: vec![],
         };
         let old = fake_reports();
         let first = save_run(&tmp, new_run("xTiger app"), &old).unwrap();
@@ -1155,6 +1381,7 @@ mod tests {
                 exit_code: Some(0),
                 seconds: 1.0,
                 finished_at: 0,
+                loaded_mods: vec![],
             };
             let run = SavedRun { meta, reports: reports.to_vec() };
             fs::write(tmp.join(format!("{run_id}.json")), serde_json::to_string(&run).unwrap())
@@ -1174,6 +1401,69 @@ mod tests {
         save("20260104-000000-silk", "silk.mod", &old);
         assert_eq!(open_run(&tmp, "20260104-000000-silk").unwrap().new, 1);
         assert!(open_run(&tmp, "gone").unwrap_err().contains("no longer saved"));
+    }
+
+    #[test]
+    fn a_damaged_run_is_skipped_and_reported() {
+        let tmp = crate::testing::TempDir::new();
+        let dir = tmp.join("runs");
+        fs::create_dir_all(&dir).unwrap();
+        let loc = Locations {
+            validator: None,
+            validator_from: "test",
+            game: None,
+            game_from: "test",
+            user_dir: tmp.to_path_buf(),
+            user_from: "test",
+            state_dir: tmp.to_path_buf(),
+            state_from: "test",
+            extra_mods: vec![],
+        };
+        let save = |run_id: &str| {
+            let meta = RunMeta {
+                run_id: run_id.to_owned(),
+                mod_file: PathBuf::from("silk.mod"),
+                mod_name: None,
+                by: None,
+                tiger: PathBuf::from("ck3-tiger"),
+                tiger_source: "test".to_owned(),
+                command: vec![],
+                exit_code: Some(0),
+                seconds: 1.0,
+                finished_at: 0,
+                loaded_mods: vec![],
+            };
+            let run = SavedRun { meta, reports: fake_reports() };
+            fs::write(dir.join(format!("{run_id}.json")), serde_json::to_string(&run).unwrap())
+                .unwrap();
+        };
+        save("20260101-000000-silk");
+        save("20260102-000000-silk");
+        let broken = dir.join("20260103-000000-silk.json");
+        fs::write(&broken, "{not json").unwrap();
+
+        let newest = load_run(&loc, "").unwrap();
+        assert_eq!(newest.meta.run_id, "20260102-000000-silk");
+        assert_eq!(newest.skipped, std::slice::from_ref(&broken));
+        let of_mod = newest_run_of(&loc, Path::new("silk.mod")).unwrap();
+        assert_eq!(
+            (of_mod.meta.run_id.as_str(), of_mod.skipped.len()),
+            ("20260102-000000-silk", 1)
+        );
+        let before = run_before(&loc, &newest.meta).unwrap();
+        assert_eq!(
+            (before.meta.run_id.as_str(), before.skipped.len()),
+            ("20260101-000000-silk", 0)
+        );
+        let (listing, damaged) = list_runs(&loc);
+        assert_eq!((listing.len(), damaged), (2, vec![broken.clone()]));
+        // Asking for the damaged run itself is an error that names the file.
+        let err = load_run(&loc, "20260103-000000-silk").unwrap_err();
+        assert!(err.contains("damaged") && err.contains("20260103"), "{err}");
+
+        fs::write(dir.join("20260101-000000-silk.json"), "{").unwrap();
+        fs::write(dir.join("20260102-000000-silk.json"), "{").unwrap();
+        assert!(load_run(&loc, "").unwrap_err().contains("Every saved run is damaged"));
     }
 
     #[test]

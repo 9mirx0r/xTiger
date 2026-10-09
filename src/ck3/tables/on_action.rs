@@ -1,4 +1,4 @@
-// LAST UPDATED CK3 VERSION 1.15.0
+// LAST UPDATED CK3 VERSION 1.20.0.4
 pub const ON_ACTION_SCOPES: &str = "
 	on_accolade_rank_change = {
 		root = accolade
@@ -736,5 +736,111 @@ pub const ON_ACTION_SCOPES: &str = "
 		root = character
 		councillor = character
 		councillor_liege = character
+	}
+
+	# Added in 1.20, from the comments above each on_action in the game's common/on_action files.
+	on_faith_holy_site_removed = {
+		root = faith
+		title = landed_title
+		holy_site = holy_site
+		is_eminent_site = bool
+		actor = character
+	}
+	on_faith_holy_site_added = {
+		root = faith
+		title = landed_title
+		holy_site = holy_site
+		is_eminent_site = bool
+		is_new_holy_site = bool
+		actor = character
+	}
+	on_faith_holy_site_eminence_changed = {
+		root = faith
+		title = landed_title
+		holy_site = holy_site
+		is_eminent_site = bool
+		actor = character
+	}
+	on_character_holy_site_created = {
+		root = character
+		title = landed_title
+		holy_site_type = holy_site_type
+		faith = faith
+		list = { artifacts = artifact }
+	}
+	on_rite_change = {
+		root = character
+		old_faith = faith
+		old_rite = rite
+	}
+	on_rite_created = on_rite_change
+	on_rite_edited = {
+		root = rite
+	}
+	on_rite_updated = {
+		root = rite
+		changed_tenets_or_doctrines = bool
+		consume_rite_edit_token = bool
+		list = { added_tenets = tenet }
+		list = { removed_tenets = tenet }
+		list = { added_doctrines = doctrine }
+		list = { removed_doctrines = doctrine }
+	}
+	on_county_rite_change = {
+		root = landed_title
+		old_rite = rite
+	}
+	on_personal_tenet_gain = {
+		root = character
+		tenet = tenet
+	}
+	on_personal_tenet_loss = on_personal_tenet_gain
+	on_trait_gained = {
+		root = character
+		trait = trait
+	}
+	on_trait_lost = on_trait_gained
+	on_fired_from_council = {
+		root = character
+		council_task = council_task
+		councillor = character
+		new_councillor = character
+	}
+	on_holy_site_artifact_enshrined = {
+		root = artifact
+		holy_site = holy_site
+		actor = character
+		replacing = artifact
+	}
+	on_holy_site_artifact_removed = on_holy_site_artifact_enshrined
+	on_artifact_changed_holy_site_owner = {
+		root = artifact
+		holy_site = holy_site
+		old_holy_site = holy_site
+		old_owner = character
+	}
+	yearly_holy_order_pulse = {
+		root = holy_order
+		founder = character
+		leader = character
+		province = province
+		title = landed_title
+		rite = rite
+	}
+	on_player_character_change = {
+		root = character
+		previous_player_character = character
+	}
+	on_character_created = {
+		root = character
+		creation_reason = flag
+	}
+	on_liberation_siege_completion = {
+		root = character
+		barony = landed_title
+		county = landed_title
+		previous_controller = character
+		war = war
+		list = { liberated_baronies = landed_title }
 	}
 ";

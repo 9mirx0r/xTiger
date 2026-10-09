@@ -209,10 +209,16 @@ pub fn run_game(
     let timeout = Duration::from_secs(run.load_timeout + 60 + 10 * commands);
     let outcome = powershell(loc, "ck3-run.ps1", &args, timeout, cancelled)?;
     let mut text = status(&outcome);
-    if let Ok(bytes) = fs::read(&report) {
-        text.push_str("\n\n");
-        text.push_str(String::from_utf8_lossy(&bytes).trim_start_matches('\u{feff}'));
-    }
+    let Ok(bytes) = fs::read(&report) else {
+        // The script stopped before the game was started, for example because CK3 was already
+        // running: nothing was tested, so say it is an error instead of a result.
+        if matches!(outcome.code, Some(code) if code != 0) {
+            return Err(format!("The game was not started. {text}"));
+        }
+        return Ok((text, shot.filter(|path| path.is_file())));
+    };
+    text.push_str("\n\n");
+    text.push_str(String::from_utf8_lossy(&bytes).trim_start_matches('\u{feff}'));
     Ok((text, shot.filter(|path| path.is_file())))
 }
 

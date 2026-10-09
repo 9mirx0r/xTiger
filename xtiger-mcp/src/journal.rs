@@ -17,6 +17,10 @@ use serde_json::{Map, Value};
 
 pub const JOURNAL: &str = "activity.jsonl";
 pub const OLD_JOURNAL: &str = "activity.1.jsonl";
+/// Exists while one process moves the full journal aside.
+const ROTATING: &str = "activity.rotating";
+/// A rotation lock this old belongs to a process that died halfway.
+const ROTATING_STALE: Duration = Duration::from_secs(10);
 pub const RUNNING_DIR: &str = "activity-running";
 /// The size at which the journal starts a new file.
 pub const MAX_BYTES: u64 = 512 * 1024;
@@ -249,13 +253,39 @@ pub fn append(state_dir: &Path, entry: &Entry) {
     let _guard = WRITING.lock();
     let _ = fs::create_dir_all(state_dir);
     let journal = state_dir.join(JOURNAL);
-    if fs::metadata(&journal).is_ok_and(|meta| meta.len() > MAX_BYTES) {
-        let _ = fs::rename(&journal, state_dir.join(OLD_JOURNAL));
-    }
+    rotate_if_full(state_dir, &journal);
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&journal) {
         // One write per line, so lines from other servers do not get mixed in.
         let _ = file.write_all(line.as_bytes());
     }
+}
+
+fn is_full(journal: &Path) -> bool {
+    fs::metadata(journal).is_ok_and(|meta| meta.len() > MAX_BYTES)
+}
+
+/// Move a full journal aside. Servers in other processes can see it full at the same moment, and
+/// the second rename would throw away the lines the first one just started. So only the process
+/// that creates the lock file rotates, and it looks at the size again once it holds the lock. A
+/// process that does not get the lock appends to the full file: the next call rotates it.
+fn rotate_if_full(state_dir: &Path, journal: &Path) {
+    if !is_full(journal) {
+        return;
+    }
+    let lock = state_dir.join(ROTATING);
+    let gone_stale = fs::metadata(&lock)
+        .and_then(|meta| meta.modified())
+        .is_ok_and(|at| at.elapsed().is_ok_and(|age| age > ROTATING_STALE));
+    if gone_stale {
+        let _ = fs::remove_file(&lock);
+    }
+    if OpenOptions::new().write(true).create_new(true).open(&lock).is_err() {
+        return;
+    }
+    if is_full(journal) {
+        let _ = fs::rename(journal, state_dir.join(OLD_JOURNAL));
+    }
+    let _ = fs::remove_file(&lock);
 }
 
 /// The finished calls in the journal, newest first, at most `limit`.
@@ -398,6 +428,61 @@ mod tests {
         assert!(fs::read_to_string(tmp.join(OLD_JOURNAL)).unwrap().starts_with("xxx"));
         let ids: Vec<String> = read_entries(&tmp, 10).into_iter().map(|e| e.id).collect();
         assert_eq!(ids, ["new"]);
+    }
+
+    #[test]
+    fn a_journal_being_rotated_by_another_process_is_left_alone() {
+        let tmp = TempDir::new();
+        let filler = "x".repeat(usize::try_from(MAX_BYTES).unwrap() + 1);
+        fs::write(
+            tmp.join(JOURNAL),
+            format!(
+                "{filler}
+"
+            ),
+        )
+        .unwrap();
+        fs::write(
+            tmp.join(OLD_JOURNAL),
+            "older
+",
+        )
+        .unwrap();
+        fs::write(tmp.join(ROTATING), "").unwrap();
+        append(&tmp, &entry("new"));
+        // The other process holds the lock: nothing moves, and the new line is not lost.
+        assert_eq!(
+            fs::read_to_string(tmp.join(OLD_JOURNAL)).unwrap(),
+            "older
+"
+        );
+        assert!(fs::read_to_string(tmp.join(JOURNAL)).unwrap().contains("\"id\":\"new\""));
+        assert!(tmp.join(ROTATING).exists());
+    }
+
+    #[test]
+    fn a_rotation_lock_left_by_a_dead_process_is_cleared() {
+        let tmp = TempDir::new();
+        let filler = "x".repeat(usize::try_from(MAX_BYTES).unwrap() + 1);
+        fs::write(
+            tmp.join(JOURNAL),
+            format!(
+                "{filler}
+"
+            ),
+        )
+        .unwrap();
+        fs::write(tmp.join(ROTATING), "").unwrap();
+        let past = SystemTime::now() - ROTATING_STALE * 2;
+        fs::File::options()
+            .write(true)
+            .open(tmp.join(ROTATING))
+            .unwrap()
+            .set_modified(past)
+            .unwrap();
+        append(&tmp, &entry("new"));
+        assert!(fs::read_to_string(tmp.join(OLD_JOURNAL)).unwrap().starts_with("xxx"));
+        assert!(!tmp.join(ROTATING).exists());
     }
 
     #[test]

@@ -1,0 +1,3 @@
+﻿l_english:
+ test_activity_owner:0 "[Activity.GetOwner.GetName]"
+ test_faith_doctrine:0 "[GetFaithDoctrine('doctrine_monogamy').GetBaseName]"

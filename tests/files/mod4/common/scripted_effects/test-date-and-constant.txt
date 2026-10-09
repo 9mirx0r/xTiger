@@ -1,0 +1,15 @@
+test_date_effect = {
+	create_artifact = {
+		name = test_artifact_name
+		description = test_artifact_description
+		type = sword
+		history = {
+			type = created
+			date = current_date
+		}
+	}
+}
+
+test_constant_effect = {
+	add_gold = @undefined_constant
+}

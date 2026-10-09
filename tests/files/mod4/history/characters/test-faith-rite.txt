@@ -1,0 +1,6 @@
+faith_rite_char = {
+	name = "Fr"
+	800.1.1 = {
+		religion = test_only_rite
+	}
+}

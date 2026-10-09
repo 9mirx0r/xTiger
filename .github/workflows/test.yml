@@ -27,7 +27,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Test CK3
-        run: cargo test -p tiger-lib --lib
+        run: cargo test -p tiger-lib
 
   fmt:
     name: rustfmt
@@ -102,3 +102,26 @@ jobs:
 
       - name: Test MCP server
         run: cargo test -p xtiger-mcp
+
+  app:
+    name: Desktop app check
+    runs-on: windows-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      # The app bundles the validator and the MCP server as sidecar programs, which are build
+      # outputs and not in the repository. Checking the code only needs files with those names.
+      - name: Sidecar placeholders
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force xtiger-app/src-tauri/binaries | Out-Null
+          foreach ($name in 'ck3-tiger', 'xtiger-mcp') {
+            New-Item -ItemType File -Force "xtiger-app/src-tauri/binaries/$name-x86_64-pc-windows-msvc.exe" | Out-Null
+          }
+
+      - name: Check the app
+        run: cargo check --manifest-path xtiger-app/src-tauri/Cargo.toml --locked

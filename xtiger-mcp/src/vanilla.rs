@@ -89,7 +89,7 @@ fn files(game: &Path, filter: &str) -> Vec<PathBuf> {
 }
 
 /// How far a line moves into or out of `{ }`, outside quotes and comments.
-fn depth_change(line: &str) -> i32 {
+pub(crate) fn depth_change(line: &str) -> i32 {
     let mut change = 0;
     let mut quoted = false;
     for c in line.chars() {

@@ -320,6 +320,12 @@ impl Fileset {
 
             if let Some(path) = get_modfile(&label, config_path, block, paradox_dir) {
                 let modfile = ModFile::read(&path)?;
+                if !modfile.modpath().is_dir() {
+                    bail!(
+                        "secondary mod {label} not found: its folder {} does not exist",
+                        modfile.modpath().display()
+                    );
+                }
                 eprintln!(
                     "Loading secondary mod {label} from: {}{}",
                     modfile.modpath().display(),

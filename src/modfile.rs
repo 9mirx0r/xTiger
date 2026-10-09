@@ -116,12 +116,13 @@ impl ModFile {
             dirpath.to_path_buf()
         };
 
-        if modpath.exists() {
-            modpath
-        } else {
+        // A path that does not exist is returned as it is, so that callers stop with a clear
+        // message. Falling back to the folder of the .mod file would check the wrong tree and
+        // report a mod with nothing wrong in it.
+        if !modpath.exists() {
             eprintln!("Deduced mod path not found: {}", modpath.display());
-            dirpath.to_path_buf()
         }
+        modpath
     }
 
     /// Return the paths that this mod fully replaces, according to its `.mod` file.

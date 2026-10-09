@@ -205,6 +205,7 @@ async fn validate(app: AppHandle, mod_file: PathBuf) -> Result<RunResult, String
             mod_name,
             game: &game,
             paradox: paradox.as_deref(),
+            extra_mods: &extra,
             runs_dir: runs_dir.as_deref(),
         };
         let result = state.runner.run(&app, &args)?;

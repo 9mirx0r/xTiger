@@ -151,7 +151,9 @@ fn remove_entry(lines: &mut [String], name: &str) {
         }
     }
     if let Some(comment_line) = comment_line {
-        lines[comment_line] = format!("{} // TODO: REMOVED", lines[comment_line]);
+        if !lines[comment_line].contains("// TODO: REMOVED") {
+            lines[comment_line] = format!("{} // TODO: REMOVED", lines[comment_line]);
+        }
     } else {
         eprintln!("could not remove obsolete entry {name}");
     }

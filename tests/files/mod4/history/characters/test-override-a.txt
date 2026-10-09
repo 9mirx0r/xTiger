@@ -1,0 +1,7 @@
+﻿# base definitions
+ov_char = {
+	name = "Ov"
+}
+dup_char = {
+	name = "Dup"
+}

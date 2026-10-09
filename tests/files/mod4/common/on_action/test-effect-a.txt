@@ -1,0 +1,5 @@
+test_two_effects_action = {
+	effect = {
+		add_gold = 1
+	}
+}

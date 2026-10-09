@@ -17,7 +17,7 @@ static SCOPE_TO_SCOPE_MAP: LazyLock<TigerHashMap<&'static str, (Scopes, Scopes)>
         hash
     });
 
-/// LAST UPDATED CK3 VERSION 1.16.0
+/// LAST UPDATED CK3 VERSION 1.20.0.4
 /// See `event_targets.log` from the game data dumps
 /// These are scope transitions that can be chained like `root.joined_faction.faction_leader`
 const SCOPE_TO_SCOPE: &[(Scopes, &str, Scopes)] = &[
@@ -325,7 +325,7 @@ static SCOPE_PREFIX_MAP: LazyLock<TigerHashMap<&'static str, (Scopes, Scopes, Ar
         hash
     });
 
-/// LAST UPDATED CK3 VERSION 1.18.0
+/// LAST UPDATED CK3 VERSION 1.20.0.4
 /// See `event_targets.log` from the game data dumps
 /// These are absolute scopes (like character:100000) and scope transitions that require
 /// a key (like `root.cp:councillor_steward`)

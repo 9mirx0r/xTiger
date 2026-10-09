@@ -98,3 +98,18 @@ fn build_on_action_hashmap(
 
     hash
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The table is parsed on first use, and a misspelled scope type in it would panic then.
+    #[test]
+    fn the_builtin_table_parses() {
+        assert!(ON_ACTION_SCOPES_MAP.len() > 100);
+        let rite = ON_ACTION_SCOPES_MAP.get("on_rite_updated").expect("1.20 on_action is missing");
+        assert_eq!(rite.root, Scopes::Rite);
+        assert!(rite.names.iter().any(|(name, _)| name == "changed_tenets_or_doctrines"));
+        assert!(ON_ACTION_SCOPES_MAP.contains_key("on_personal_tenet_loss"));
+    }
+}

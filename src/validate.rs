@@ -791,7 +791,8 @@ pub fn validate_scope_chain(
                     sc.replace(outscope, part.clone());
                 } else {
                     let msg = format!("unknown token `{part}`");
-                    err(ErrorKey::UnknownField).msg(msg).loc(part).push();
+                    let hint = crate::ck3::tables::removed::removed_key_hint(part.as_str());
+                    err(ErrorKey::UnknownField).msg(msg).opt_info(hint).loc(part).push();
                     return false;
                 }
             }

@@ -76,7 +76,17 @@ impl DbKind for Law {
         let loca = format!("{key}_subname");
         data.mark_used(Item::Localization, &loca);
 
-        vd.req_field("law_group_type");
+        if !block.has_key("law_group_type")
+            && block.iter_definitions().any(|(_, law)| {
+                ["can_have", "can_pass", "succession"].iter().any(|field| law.has_key(field))
+            })
+        {
+            let msg = "law group wrapper from an older game version";
+            let info = "since 1.20 each law is a top-level definition with `law_group_type = <group>` and a unique `index`, not a block inside a `<group> = { ... }` wrapper";
+            err(ErrorKey::FieldMissing).msg(msg).info(info).loc(key).push();
+        } else {
+            vd.req_field("law_group_type");
+        }
         vd.field_item("law_group_type", Item::LawGroup);
         vd.field_integer("index");
         vd.field_item("pass_phrase", Item::Localization);

@@ -1,6 +1,6 @@
 [package]
 name = "xtiger-mcp"
-version = "1.0.0-alpha"
+version = "1.5.0-alpha"
 edition = "2024"
 license = "GPL-3.0-or-later"
 description = "MCP server that lets AI assistants validate and play-test Crusader Kings III mods with xTiger."

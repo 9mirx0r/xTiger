@@ -23,7 +23,7 @@ static ITERATOR_MAP: LazyLock<TigerHashMap<&'static str, (Scopes, Scopes)>> = La
     hash
 });
 
-/// LAST UPDATED CK3 VERSION 1.16.0
+/// LAST UPDATED CK3 VERSION 1.20.0.4
 /// See `effects.log` from the game data dumps
 /// These are the list iterators. Every entry represents
 /// a every_, ordered_, random_, and any_ version.

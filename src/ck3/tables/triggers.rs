@@ -14,7 +14,7 @@ use crate::trigger::Trigger;
 
 use Trigger::*;
 
-/// LAST UPDATED CK3 VERSION 1.18.1
+/// LAST UPDATED CK3 VERSION 1.20.0.4
 pub fn scope_trigger(name: &Token, data: &Everything) -> Option<(Scopes, Trigger)> {
     let name_lc = name.as_str().to_ascii_lowercase();
 
@@ -77,7 +77,7 @@ static TRIGGER_MAP: LazyLock<TigerHashMap<&'static str, (Scopes, Trigger)>> = La
     hash
 });
 
-/// LAST UPDATED CK3 VERSION 1.18.1
+/// LAST UPDATED CK3 VERSION 1.20.0.4
 /// See `triggers.log` from the game data dumps
 /// special:
 ///    `<legacy>_track_perks`

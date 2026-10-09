@@ -92,6 +92,17 @@ fn names_match(entry: &str, name: &str) -> bool {
         .is_ok_and(|re| re.is_match(name))
 }
 
+/// Whether the doc name `entry` is close to the asked name `asked` (both lowercase): one contains
+/// the other, or the entry has every `_` separated word of the question in the same order, so
+/// that `is_created` finds `is_title_created`.
+fn is_close(entry: &str, asked: &str) -> bool {
+    if entry.contains(asked) || (asked.contains(entry) && entry.len() > 3) {
+        return true;
+    }
+    let mut words = entry.split('_');
+    asked.split('_').filter(|word| !word.is_empty()).all(|word| words.any(|w| w == word))
+}
+
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Found {
     pub matched: usize,
@@ -181,19 +192,26 @@ pub fn lookup(user_dir: &Path, lookup: &Lookup) -> Result<Found, String> {
     if let Some(re) = &search {
         hits.sort_by_key(|entry| !re.is_match(&entry.name));
     }
-    let did_you_mean = if hits.is_empty() && !name.is_empty() {
-        let lower = name.to_lowercase();
-        let mut close: Vec<String> = entries
+    // A search that is a plain identifier is as good a guess as a name.
+    let search_text = lookup.search.trim();
+    let guess = if !name.is_empty() {
+        name
+    } else if search_text.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        search_text
+    } else {
+        ""
+    };
+    let did_you_mean = if hits.is_empty() && !guess.is_empty() {
+        let lower = guess.to_lowercase();
+        let mut close: Vec<(usize, String)> = entries
             .iter()
-            .filter(|entry| {
-                let entry = entry.name.to_lowercase();
-                entry.contains(&lower) || (lower.contains(&entry) && entry.len() > 3)
-            })
-            .map(|entry| format!("{} ({})", entry.name, entry.kind))
+            .filter(|entry| is_close(&entry.name.to_lowercase(), &lower))
+            .map(|entry| (entry.name.len(), format!("{} ({})", entry.name, entry.kind)))
             .collect();
+        // Shorter names are closer to what was asked for.
+        close.sort();
         close.dedup();
-        close.truncate(15);
-        close
+        close.into_iter().map(|(_, name)| name).take(15).collect()
     } else {
         Vec::new()
     };
@@ -233,6 +251,36 @@ mod tests {
         );
         assert!(names_match("$FAITH$_opinion", "catholic_opinion"));
         assert!(!names_match("$FAITH$_opinion", "catholic_opinion_mult"));
+    }
+
+    #[test]
+    fn close_names_share_words_in_order() {
+        assert!(is_close("is_title_created", "is_created"));
+        assert!(is_close("has_trait", "trait"));
+        assert!(!is_close("created_title_is", "is_created"));
+        assert!(!is_close("has_trait", "is_created"));
+    }
+
+    #[test]
+    fn suggestions_come_from_a_name_or_a_plain_search() {
+        let tmp = TempDir::new();
+        fs::create_dir_all(tmp.join("logs")).unwrap();
+        let triggers = "Trigger Documentation:\n\n--------------------\n\n\
+            is_title_created - true if the title exists\nSupported Scopes: landed_title\n\n\
+            --------------------\n\nis_alive - alive?\nSupported Scopes: character\n\n\
+            --------------------\n";
+        fs::write(tmp.join("logs/triggers.log"), triggers).unwrap();
+        for lookup_args in [
+            Lookup { kind: "", name: "is_created", search: "", limit: 5 },
+            Lookup { kind: "", name: "", search: "is_created", limit: 5 },
+        ] {
+            let found = lookup(&tmp, &lookup_args).unwrap();
+            assert_eq!(found.did_you_mean, ["is_title_created (trigger)"]);
+        }
+        // A real regex is not a guess at a name.
+        let found =
+            lookup(&tmp, &Lookup { kind: "", name: "", search: "is_cr.*zzz", limit: 5 }).unwrap();
+        assert!(found.did_you_mean.is_empty());
     }
 
     #[test]

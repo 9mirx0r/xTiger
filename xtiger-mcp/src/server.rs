@@ -31,7 +31,9 @@ call it again with wrap_up: what you did and what is left. The user can also lea
 app, such as fixing a report or updating a mod: xtiger_status says how many are waiting, \
 xtiger_pending_requests lists them, and xtiger_finish_request closes each one. To see how the game does \
 something, ck3_vanilla finds its definitions in the game's files and ck3_docs looks up triggers, effects and \
-modifiers in the game's own documentation. xtiger_compare tells what changed between two checks.";
+modifiers in the game's own documentation. xtiger_compare tells what changed between two checks. When a mod is moved to a newer game version, \
+xtiger_overrides shows which game files and definitions the mod replaces and how each copy differs from the \
+game now, and xtiger_migrate lists the mechanical renames it still needs (a dry run, nothing is written).";
 
 const INVALID_PARAMS: i64 = -32602;
 const METHOD_NOT_FOUND: i64 = -32601;
@@ -579,7 +581,7 @@ mod tests {
         let instructions = answers["1"]["result"]["instructions"].as_str().unwrap();
         assert!(instructions.contains("reason") && instructions.contains(sessions::TOOL));
         let tools = answers["2"]["result"]["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 15);
+        assert_eq!(tools.len(), 17);
         assert!(tools.iter().all(|tool| tool["inputSchema"]["properties"]["reason"].is_object()));
         let prompt = answers["\"p\""]["result"]["messages"][0]["content"]["text"].as_str().unwrap();
         assert!(prompt.contains("\"Silk\""));

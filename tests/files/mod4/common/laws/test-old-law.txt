@@ -1,0 +1,5 @@
+title_succession_laws = {
+	old_style_law = {
+		can_have = { always = yes }
+	}
+}

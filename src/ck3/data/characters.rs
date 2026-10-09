@@ -28,6 +28,9 @@ use crate::tooltipped::Tooltipped;
 use crate::validate::validate_color;
 use crate::validator::Validator;
 
+/// Marks a history character as an override of a character with the same id defined elsewhere.
+const OVERRIDE_PRIORITY: &str = "history_override_priority";
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Gender {
     Male,
@@ -77,13 +80,21 @@ impl Characters {
                     .and_then(|date| block.get_field_at_date("birth", date))
                     .is_some()
             {
-                err(ErrorKey::DuplicateCharacter)
-                    .strong()
-                    .msg("duplicate character id")
-                    .info("this will create two characters with the same id")
-                    .loc(&other.key)
-                    .loc_msg(&key, "duplicate")
-                    .push();
+                // Since 1.20 a second definition of the same id is legal when one of the two
+                // carries `history_override_priority`: the higher priority sets the base
+                // attributes and the dated entries of both are combined. The first definition
+                // stays in the map; the other is still validated through `duplicates`.
+                let is_override =
+                    block.has_key(OVERRIDE_PRIORITY) || other.block.has_key(OVERRIDE_PRIORITY);
+                if !is_override {
+                    err(ErrorKey::DuplicateCharacter)
+                        .strong()
+                        .msg("duplicate character id")
+                        .info("this will create two characters with the same id; to override a character defined elsewhere, give the overriding definition `history_override_priority = 1`")
+                        .loc(&other.key)
+                        .loc_msg(&key, "duplicate")
+                        .push();
+                }
                 self.duplicates.push(Character::new(key, block));
             }
         } else {
@@ -561,7 +572,11 @@ impl Character {
             warn(ErrorKey::CharacterId).msg(msg).info(info).loc(&self.key).push();
         }
 
-        vd.req_field("name");
+        // An override stub only changes some attributes; the name comes from the character it overrides.
+        if !self.block.has_key(OVERRIDE_PRIORITY) {
+            vd.req_field("name");
+        }
+        vd.field_integer(OVERRIDE_PRIORITY);
         if let Some(name) = vd.field_value("name") {
             data.localization.verify_name_exists(name, Severity::Warning);
         }

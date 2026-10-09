@@ -10,7 +10,9 @@ use crate::docs::{self, Lookup};
 use crate::game::{self, LOGS, ReadLog, RunGame};
 use crate::journal::{self, ModRef, Tally};
 use crate::locate::Locations;
+use crate::migrate;
 use crate::mods::{self, ModInfo};
+use crate::overrides;
 use crate::requests::{self, Status};
 use crate::runs::{self, Counts, Filter, GROUPS, Options, QueryResult, Row, SEVERITIES, Summary};
 use crate::vanilla::{self, Search};
@@ -160,8 +162,10 @@ fn tools() -> Vec<Tool> {
                           under a run_id that xtiger_reports can query. Returns the totals by severity, the most \
                           common report keys and messages, what changed since the last run of the same mod (new \
                           and fixed reports, with the first new ones), which ck3-tiger ran, and its own \
-                          messages (game version check, loading problems). Takes from a few seconds to a few \
-                          minutes.",
+                          messages (game version check, loading problems). The mods this one depends on are \
+                          loaded too, as the game does, and listed in loaded_mods; a dependency that is not \
+                          installed is in unresolved_dependencies, and what it defines is reported as missing. \
+                          Takes from a few seconds to a few minutes.",
             params: vec![
                 (
                     "mod_path",
@@ -175,6 +179,31 @@ fn tools() -> Vec<Tool> {
                     boolean("Also report problems in the base game's own files.", false),
                 ),
                 ("config", string("A ck3-tiger.conf file to use instead of the mod's own.")),
+                (
+                    "with",
+                    strings(
+                        "More mods to load with this one, such as a patch's base mod or the rest of a \
+                         playset: names, folders or .mod files, as for mod_path. They load before the mod \
+                         that is checked and cannot override it.",
+                    ),
+                ),
+                (
+                    "playset",
+                    string(
+                        "A launcher playset (xtiger_playsets lists them): every enabled mod in it is \
+                         loaded with this one, in the playset's order, as `with` does. A mod of the \
+                         playset with no .mod file is read from the descriptor.mod in its folder; if \
+                         it has neither, it is left out and named in the answer.",
+                    ),
+                ),
+                (
+                    "load_dependencies",
+                    boolean(
+                        "Load the mods this one depends on (default true). Turn it off to check the mod \
+                         alone, which reports everything those mods define as missing.",
+                        true,
+                    ),
+                ),
             ],
             required: &["mod_path"],
             kind: LOCAL,
@@ -209,13 +238,20 @@ fn tools() -> Vec<Tool> {
                 ("key", string("Only this report key, such as missing-item.")),
                 (
                     "group_by",
-                    choice("Count the matching reports by this instead of listing them.", &GROUPS),
+                    choice(
+                        "Count the matching reports by this instead of listing them. By file or \
+                         folder, a report that points to several places counts in each of them, \
+                         so the counts can add up to more than the number of reports. \
+                         message cuts the text at 100 characters; template keeps all of it but \
+                         replaces each `quoted` name with `…`, so the same cause is one group.",
+                        &GROUPS,
+                    ),
                 ),
                 (
                     "limit",
                     integer(
                         "How many reports or groups to return. With group_by, total_groups says \
-                         how many there are.",
+                         how many there are. 0 returns no rows, only the counts.",
                         50,
                         0,
                     ),
@@ -253,7 +289,8 @@ fn tools() -> Vec<Tool> {
                 ),
                 (
                     "play",
-                    json!({"type": "string", "description": "The title key of the ruler to play.", "default": "k_france"}),
+                    json!({"type": "string", "description": "The title key of the ruler to play, such as k_france or c_jaffa. It must be a title that \
+                                           is held at the bookmark's date; if it is not, the game stays on the lobby.", "default": "k_france"}),
                 ),
                 ("keep_open", boolean("Leave the game running, to continue with ck3_keys.", false)),
                 (
@@ -429,6 +466,47 @@ fn tools() -> Vec<Tool> {
                 ("limit", integer("How many hits to return.", 10, 0)),
             ],
             required: &[],
+            kind: READ_ONLY,
+        },
+        Tool {
+            name: "xtiger_overrides",
+            title: "Compare a mod with the base game",
+            description: "Find what a mod overrides in the base game and how it differs from the game installed now. A mod file with the path of a game file replaces the whole game file, so the names in missing_from_mod are gone from the game; a mod definition with the name of a game definition in another file replaces that one. For each, the lines the game has now and the mod lacks (`- `) and the lines only the mod has (`+ `). Near copies with a few differences are the likeliest to be stale after a game update. Looks at common/, events/ and history/.",
+            params: vec![
+                (
+                    "mod_path",
+                    string(
+                        "The mod: its name, workshop id, folder or .mod file. xtiger_mods lists them.",
+                    ),
+                ),
+                (
+                    "path",
+                    string("Only mod files whose path contains this, such as common/decisions."),
+                ),
+                ("diff_lines", integer("The most diff lines shown for one definition.", 20, 0)),
+                ("limit", integer("How many files, definitions and names to list.", 15, 1)),
+            ],
+            required: &["mod_path"],
+            kind: READ_ONLY,
+        },
+        Tool {
+            name: "xtiger_migrate",
+            title: "Plan the renames for a newer game version",
+            description: "A dry run: list the mechanical edits that bring a mod written for an older CK3 version in line with 1.20, such as every_character to every_living_character, is_created to is_title_created, create_holy_order_effect to create_holy_order_accompanying_effect and has_doctrine = tenet_x to has_tenet. Each edit has the file, the line, the line as it is and as it would read. Nothing is written: make the edits yourself, then xtiger_validate again. Renames that depend on the surrounding script are not here; the validator explains those.",
+            params: vec![
+                (
+                    "mod_path",
+                    string(
+                        "The mod: its name, workshop id, folder or .mod file. xtiger_mods lists them.",
+                    ),
+                ),
+                (
+                    "path",
+                    string("Only mod files whose path contains this, such as common/decisions."),
+                ),
+                ("limit", integer("How many edits to list.", 50, 1)),
+            ],
+            required: &["mod_path"],
             kind: READ_ONLY,
         },
         Tool {
@@ -634,23 +712,34 @@ fn by_key(reports: &[&Value]) -> Counts {
 fn compare_runs(args: &Args, loc: &Locations) -> Result<Done, CallError> {
     let run_id = args.string("run_id", "")?;
     let mod_path = args.string("mod_path", "")?;
-    let (newer, newer_reports) = if run_id.is_empty() && !mod_path.trim().is_empty() {
+    let newer = if run_id.is_empty() && !mod_path.trim().is_empty() {
         runs::newest_run_of(loc, &mods::resolve(&mod_path, &all_mods(loc))?)?
     } else {
         runs::load_run(loc, &run_id)?
     };
     let against = args.string("against", "")?;
-    let (older, older_reports) = if against.is_empty() {
-        runs::run_before(loc, &newer)?
+    let older = if against.is_empty() {
+        runs::run_before(loc, &newer.meta)?
     } else {
         runs::load_run(loc, &against)?
     };
+    let mut skipped = newer.skipped;
+    skipped.extend(older.skipped);
+    let (newer, newer_reports) = (newer.meta, newer.reports);
+    let (older, older_reports) = (older.meta, older.reports);
+    let setup_note = runs::setup_changed(&older.loaded_mods, &newer.loaded_mods);
     let limit = usize_of(args.integer("limit", 30)?);
     let (new, fixed) = runs::diff(&older_reports, &newer_reports);
     let summary = match (new.len(), fixed.len()) {
         (0, 0) => "Nothing changed".to_owned(),
         (n, f) => format!("{n} new, {f} fixed"),
     };
+    let mut summary = summary;
+    let mut content = Vec::new();
+    if let Some((warning, short)) = damaged_warning(&skipped) {
+        summary = format!("{summary}, {short}");
+        content.push(Content::Text(warning));
+    }
     let note = Note {
         summary,
         mod_ref: Some(ModRef { name: newer.mod_name.clone(), file: newer.mod_file.clone() }),
@@ -667,7 +756,24 @@ fn compare_runs(args: &Args, loc: &Locations) -> Result<Done, CallError> {
         older: RunSide::new(older, &older_reports),
         newer: RunSide::new(newer, &newer_reports),
     };
-    Ok(Done { content: vec![json_text(&result)], note })
+    content.insert(0, json_text(&result));
+    if let Some(text) = setup_note {
+        content.push(Content::Text(text));
+    }
+    Ok(Done { content, note })
+}
+
+/// A warning for the assistant and a short phrase for the app, when saved runs could not be read.
+fn damaged_warning(damaged: &[PathBuf]) -> Option<(String, String)> {
+    if damaged.is_empty() {
+        return None;
+    }
+    let names: Vec<String> = damaged.iter().map(|path| path.display().to_string()).collect();
+    let warning = format!(
+        "Skipped {}: damaged, so it cannot be read. Delete it, or run xtiger_validate again.",
+        names.join(", ")
+    );
+    Some((warning, plural(damaged.len(), "damaged run skipped", "damaged runs skipped")))
 }
 
 #[derive(Serialize)]
@@ -775,10 +881,37 @@ pub fn call(
             (ctx.working_on)(&working);
             let config = args.string("config", "")?;
             let config = (!config.trim().is_empty()).then(|| PathBuf::from(config.trim()));
+            let mut with = Vec::new();
+            let mut playset_note = String::new();
+            let playset = args.string("playset", "")?;
+            if !playset.trim().is_empty() {
+                let found = playsets::find(&loc.user_dir, &playset)?;
+                let (files, missing) = playsets::check_order(&found);
+                // The mod that is checked is part of its own playset; it is not loaded twice.
+                with = files.into_iter().filter(|file| mods::clean(file) != mod_file).collect();
+                playset_note = format!(
+                    "Playset {}: {} loaded with this one",
+                    found.name,
+                    plural(with.len(), "mod", "mods")
+                );
+                if !missing.is_empty() {
+                    let _ =
+                        write!(playset_note, "; left out, no .mod file: {}", missing.join(", "));
+                }
+                playset_note.push('.');
+            }
+            for wanted in args.strings("with")? {
+                let file = mods::resolve(&wanted, &mods)?;
+                if !with.contains(&file) {
+                    with.push(file);
+                }
+            }
             let options = Options {
                 show_vanilla: args.boolean("show_vanilla", false)?,
                 config: config.as_deref(),
                 by: Some(ctx.client.unwrap_or("An AI assistant")),
+                load_dependencies: args.boolean("load_dependencies", true)?,
+                with: &with,
                 ..Options::default()
             };
             let result = runs::validate(
@@ -797,21 +930,31 @@ pub fn call(
                     result.summary.by_severity.0.iter().map(|(name, n)| (name.as_str(), *n)),
                 )),
             };
-            Ok(Done { content: vec![json_text(&result)], note })
+            let mut content = vec![json_text(&result)];
+            if !playset_note.is_empty() {
+                content.push(Content::Text(playset_note));
+            }
+            Ok(Done { content, note })
         }
         "xtiger_runs" => {
-            let listing = runs::list_runs(loc);
-            let phrase = plural(listing.len(), "saved run", "saved runs");
-            Ok(Done::new(vec![json_text(&listing)], phrase))
+            let (listing, damaged) = runs::list_runs(loc);
+            let mut phrase = plural(listing.len(), "saved run", "saved runs");
+            let mut content = vec![json_text(&listing)];
+            if let Some((warning, short)) = damaged_warning(&damaged) {
+                phrase = format!("{phrase}, {short}");
+                content.push(Content::Text(warning));
+            }
+            Ok(Done::new(content, phrase))
         }
         "xtiger_reports" => {
             let run_id = args.string("run_id", "")?;
             let mod_path = args.string("mod_path", "")?;
-            let (meta, reports) = if run_id.is_empty() && !mod_path.trim().is_empty() {
+            let loaded = if run_id.is_empty() && !mod_path.trim().is_empty() {
                 runs::newest_run_of(loc, &mods::resolve(&mod_path, &all_mods(loc))?)?
             } else {
                 runs::load_run(loc, &run_id)?
             };
+            let (meta, reports, skipped) = (loaded.meta, loaded.reports, loaded.skipped);
             let filter = Filter {
                 pattern: args.string("pattern", "")?,
                 path: args.string("path", "")?,
@@ -839,17 +982,24 @@ pub fn call(
                     plural(*total_groups, "group", "groups")
                 ),
             };
+            let mut summary = summary;
+            let mut extra = Vec::new();
+            if let Some((warning, short)) = damaged_warning(&skipped) {
+                summary = format!("{summary}, {short}");
+                extra.push(Content::Text(warning));
+            }
             let note = Note {
                 summary,
                 mod_ref: Some(ModRef { name: meta.mod_name, file: meta.mod_file.clone() }),
                 run_id: Some(meta.run_id.clone()),
                 found: None,
             };
-            let content = vec![json_text(&ReportsResult {
+            let mut content = vec![json_text(&ReportsResult {
                 run_id: meta.run_id,
                 mod_file: meta.mod_file,
                 result,
             })];
+            content.append(&mut extra);
             Ok(Done { content, note })
         }
         "ck3_run" => {
@@ -1041,6 +1191,42 @@ pub fn call(
             );
             Ok(Done::new(vec![json_text(&found)], summary))
         }
+        "xtiger_overrides" => {
+            let mods = all_mods(loc);
+            let mod_file = mods::resolve(&args.string("mod_path", "")?, &mods)?;
+            let info = mods::describe(&mod_file)
+                .ok_or_else(|| format!("Cannot read {}.", mod_file.display()))?;
+            let report = overrides::compare_with_game(&overrides::Request {
+                install: loc.require_game()?,
+                mod_dir: &info.dir,
+                path: &args.string("path", "")?,
+                diff_lines: usize_of(args.integer("diff_lines", 20)?),
+                limit: usize_of(args.integer("limit", 15)?).max(1),
+            })?;
+            let summary = format!(
+                "{} replace a game file, {} replace a game definition",
+                plural(report.same_path_files, "file", "files"),
+                plural(report.same_key_definitions, "definition", "definitions")
+            );
+            Ok(Done::new(vec![json_text(&report)], summary))
+        }
+        "xtiger_migrate" => {
+            let mods = all_mods(loc);
+            let mod_file = mods::resolve(&args.string("mod_path", "")?, &mods)?;
+            let info = mods::describe(&mod_file)
+                .ok_or_else(|| format!("Cannot read {}.", mod_file.display()))?;
+            let report = migrate::plan(&migrate::Request {
+                mod_dir: &info.dir,
+                path: &args.string("path", "")?,
+                limit: usize_of(args.integer("limit", 50)?).max(1),
+            })?;
+            let summary = format!(
+                "{} to make in {}",
+                plural(report.total_edits, "edit", "edits"),
+                plural(report.files_scanned, "file", "files")
+            );
+            Ok(Done::new(vec![json_text(&report)], summary))
+        }
         "ck3_docs" => {
             let found = docs::lookup(
                 &loc.user_dir,
@@ -1125,7 +1311,7 @@ mod tests {
     fn every_tool_is_listed_with_a_schema() {
         let list = list();
         let tools = list["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 15);
+        assert_eq!(tools.len(), 17);
         for tool in tools {
             assert_eq!(tool["inputSchema"]["type"], "object");
             assert!(tool["description"].as_str().unwrap().len() > 40);
@@ -1165,6 +1351,9 @@ mod tests {
         assert!(matches!(err, CallError::Failed(m) if m.contains("No results yet")));
         let err = run("xtiger_validate", &json!({"mod_path": "Nope"}), &loc).unwrap_err();
         assert!(matches!(err, CallError::Failed(m) if m.contains("No mod is called")));
+        let err = run("xtiger_validate", &json!({"mod_path": "Silk", "playset": "Any"}), &loc)
+            .unwrap_err();
+        assert!(matches!(err, CallError::Failed(m) if m.contains("No launcher database")));
     }
 
     #[test]

@@ -755,7 +755,10 @@ impl<'a> Validator<'a> {
                 && Date::from_str(token.as_str()).is_err()
             {
                 let msg = "expected date value";
-                report(ErrorKey::Validation, sev).msg(msg).loc(token).push();
+                let info = token.is("current_date").then_some(
+                    "`current_date` is a script value, not a date literal; a date field takes year.month.day",
+                );
+                report(ErrorKey::Validation, sev).msg(msg).opt_info(info).loc(token).push();
             }
         })
     }
@@ -1899,7 +1902,13 @@ impl<'a> Validator<'a> {
                         {
                             let msg = format!("unknown field `{key}`");
                             let sev = Severity::Error.at_most(self.max_severity);
-                            report(ErrorKey::UnknownField, sev).weak().msg(msg).loc(key).push();
+                            let hint = crate::ck3::tables::removed::removed_key_hint(key.as_str());
+                            report(ErrorKey::UnknownField, sev)
+                                .weak()
+                                .msg(msg)
+                                .opt_info(hint)
+                                .loc(key)
+                                .push();
                             warned = true;
                         }
                     }
@@ -1908,7 +1917,13 @@ impl<'a> Validator<'a> {
                         {
                             let msg = format!("unknown field `{key}`");
                             let sev = Severity::Error.at_most(self.max_severity);
-                            report(ErrorKey::UnknownField, sev).weak().msg(msg).loc(key).push();
+                            let hint = crate::ck3::tables::removed::removed_key_hint(key.as_str());
+                            report(ErrorKey::UnknownField, sev)
+                                .weak()
+                                .msg(msg)
+                                .opt_info(hint)
+                                .loc(key)
+                                .push();
                             warned = true;
                         }
                     }

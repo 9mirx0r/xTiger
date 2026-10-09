@@ -9,7 +9,7 @@ use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
@@ -17,6 +17,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 use xtiger_mcp::runs::{self, NewRun};
+use xtiger_mcp::{mods, setup};
 
 /// The name the app's own checks are saved under.
 pub const BY: &str = "xTiger app";
@@ -46,11 +47,32 @@ fn validator_path() -> Result<PathBuf, String> {
     if path.is_file() { Ok(path) } else { Err(format!("cannot find {name} next to the app")) }
 }
 
+/// A config file made for one check, removed when it ends, however it ends.
+struct TempConf(PathBuf);
+
+impl TempConf {
+    fn write(text: &str) -> Result<Self, String> {
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
+        let n = COUNT.fetch_add(1, Ordering::SeqCst);
+        let file = std::env::temp_dir().join(format!("xtiger-app-{}-{n}.conf", std::process::id()));
+        fs::write(&file, text).map_err(|e| format!("cannot write {}: {e}", file.display()))?;
+        Ok(Self(file))
+    }
+}
+
+impl Drop for TempConf {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
 pub struct RunArgs<'a> {
     pub mod_file: &'a Path,
     pub mod_name: Option<String>,
     pub game: &'a Path,
     pub paradox: Option<&'a Path>,
+    /// Mod folders the user added by hand, which a dependency may live in.
+    pub extra_mods: &'a [PathBuf],
     /// The shared runs folder, if the app's data folder is known.
     pub runs_dir: Option<&'a Path>,
 }
@@ -63,9 +85,48 @@ impl Runner {
         if let Some(paradox) = args.paradox {
             command.arg("--paradox").arg(paradox);
         }
+        // The mods this one depends on are loaded the same way the MCP server loads them, so a
+        // check here and a check by an assistant give the same reports.
+        let mut loaded_mods = Vec::new();
+        let mut generated = None;
+        if let Some(paradox) = args.paradox {
+            let all = mods::list(Some(paradox), args.extra_mods);
+            let setup = setup::plan(
+                &setup::Request {
+                    mod_file: args.mod_file,
+                    config: None,
+                    with: &[],
+                    load_dependencies: true,
+                    paradox,
+                },
+                &all,
+            )?;
+            for warning in &setup.warnings {
+                let _ = app.emit("validate-log", warning);
+            }
+            for missing in &setup.unresolved {
+                let _ = app.emit(
+                    "validate-log",
+                    format!("Dependency {} is not loaded: {}", missing.name, missing.reason),
+                );
+            }
+            loaded_mods = setup.loaded.iter().map(|loaded| loaded.name.clone()).collect();
+            if let Some(text) = &setup.conf {
+                let conf = TempConf::write(text)?;
+                command.arg("--config").arg(&conf.0);
+                generated = Some(conf);
+            }
+        }
         command.arg(args.mod_file).stdout(Stdio::piped()).stderr(Stdio::piped());
         let command_line: Vec<String> = std::iter::once(validator.display().to_string())
             .chain(command.get_args().map(|arg| arg.to_string_lossy().into_owned()))
+            .map(|arg| match &generated {
+                // What is kept with the run: the generated config is gone when the check ends.
+                Some(conf) if Path::new(&arg) == conf.0 => {
+                    format!("(generated, loads {} mods)", loaded_mods.len())
+                }
+                _ => arg,
+            })
             .collect();
         #[cfg(windows)]
         {
@@ -142,6 +203,7 @@ impl Runner {
             command: command_line,
             exit_code: status.code(),
             seconds: (started.elapsed().as_secs_f64() * 10.0).round() / 10.0,
+            loaded_mods,
         };
         let (previous_count, new_count) = record(app, args, run, &mut reports);
         Ok(RunResult { reports, duration_ms, previous_count, new_count })

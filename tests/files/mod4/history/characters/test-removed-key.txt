@@ -1,0 +1,4 @@
+﻿trait_xp_char = {
+	name = "Xp"
+	trait_xp = { trait = cantor track = cantor_track value = 1 }
+}
