@@ -107,5 +107,23 @@ pub fn validate_trigger_localization(
             let msg = format!("missing positive perspective for {caller}");
             warn(ErrorKey::MissingPerspective).msg(msg).loc(caller).push();
         }
+    } else {
+        // Not shown as a perspective here, but the text must exist in some form.
+        let found = data.item_exists(Item::Localization, caller.as_str())
+            || [
+                "global",
+                "first",
+                "third",
+                "none",
+                "global_not",
+                "first_not",
+                "third_not",
+                "none_not",
+            ]
+            .iter()
+            .any(|sfx| data.item_exists(Item::Localization, &format!("{caller}_{sfx}")));
+        if !found {
+            data.verify_exists(Item::Localization, caller);
+        }
     }
 }

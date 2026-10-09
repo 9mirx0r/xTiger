@@ -162,6 +162,13 @@ impl MenAtArmsType {
         let loca = format!("{}_flavor", self.key);
         data.verify_exists_implied(Item::Localization, &loca, &self.key);
 
+        // The game logs "Found both 'illustration' and 'icon' properties" and ignores `icon`.
+        if let (Some(icon), true) = (self.block.get_key("icon"), self.block.has_key("illustration"))
+        {
+            let msg = "`icon` is ignored when the type also has `illustration`";
+            warn(ErrorKey::Conflict).msg(msg).loc(icon).push();
+        }
+
         vd.multi_field_validated_block("illustration", |block, data| {
             let mut vd = Validator::new(block, data);
             vd.field_trigger_rooted("trigger", Tooltipped::No, Scopes::Culture);
@@ -233,7 +240,11 @@ impl MenAtArmsType {
         vd.field_script_value_rooted("ai_quality", Scopes::Character);
         vd.field_bool("allowed_in_hired_troops");
         vd.field_bool("fallback_in_hired_troops_if_unlocked");
-        vd.field_bool("mercenary_fallback");
+        // 1.20 rejects it: "Unexpected token: mercenary_fallback".
+        vd.replaced_field(
+            "mercenary_fallback",
+            "`allowed_in_hired_troops` and `fallback_in_hired_troops_if_unlocked`",
+        );
         vd.field_bool("holy_order_fallback");
 
         // undocumented

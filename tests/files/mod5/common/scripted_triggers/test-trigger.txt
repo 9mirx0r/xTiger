@@ -1,0 +1,5 @@
+test_trigger_missing_text = {
+	custom_description = {
+		text = test_missing_trigger_text
+	}
+}

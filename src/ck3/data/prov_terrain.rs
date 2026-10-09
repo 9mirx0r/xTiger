@@ -172,7 +172,10 @@ impl ProvinceProperty {
         let mut vd = Validator::new(&self.block, data);
         if data.provinces_ck3.is_sea_or_river(provid) {
             vd.field_validated_value("winter_severity_bias", |_, mut vd| {
-                vd.maybe_is("0.0");
+                // The game reads `0`, `0.0` and `0.00` alike.
+                if vd.value().get_number() == Some(0.0) {
+                    vd.numeric();
+                }
             });
             vd.ban_field("mild_winter_factor_override", || "sea and river province");
             vd.ban_field("normal_winter_factor_override", || "sea and river province");

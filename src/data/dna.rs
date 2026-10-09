@@ -26,11 +26,21 @@ impl DbKind for Dna {
 
         vd.field_validated_block("portrait_info", validate_portrait_info);
         vd.field_bool("enabled");
+        reject_pre_1_20_fields(&mut vd);
+    }
+}
+
+/// `override` and `entity` were valid in older versions. In 1.20 the parser fails on them
+/// ("Unexpected token: override").
+fn reject_pre_1_20_fields(vd: &mut Validator) {
+    for name in ["override", "entity"] {
+        vd.fatal_in_game_field(name, "CK3 1.20 logs a parse error on it");
     }
 }
 
 fn validate_portrait_info(block: &Block, data: &Everything) {
     let mut vd = Validator::new(block, data);
+    reject_pre_1_20_fields(&mut vd);
     vd.field_validated_block("genes", validate_genes);
     vd.field_choice("type", &["male", "female", "boy", "girl"]);
     vd.field_value("id");

@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 
 use crate::docs::{self, Lookup};
 use crate::game::{self, LOGS, ReadLog, RunGame};
+use crate::gap;
 use crate::journal::{self, ModRef, Tally};
 use crate::locate::Locations;
 use crate::migrate;
@@ -505,6 +506,30 @@ fn tools() -> Vec<Tool> {
                     string("Only mod files whose path contains this, such as common/decisions."),
                 ),
                 ("limit", integer("How many edits to list.", 50, 1)),
+            ],
+            required: &["mod_path"],
+            kind: READ_ONLY,
+        },
+        Tool {
+            name: "xtiger_game_gap",
+            title: "What the game said and Tiger did not",
+            description: "Set the game's error.log against a saved validation of a mod: the log entries that point to a file of the mod, grouped by cause, and whether Tiger reported anything on that file. tiger `nothing` usually means the validator is blind to that file, the likeliest source of a missing rule; `other lines` means it reported there but not on that line. Play-test with ck3_run first so the log is fresh, and validate the mod so the run is current.",
+            params: vec![
+                (
+                    "mod_path",
+                    string(
+                        "The mod: its name, workshop id, folder or .mod file. xtiger_mods lists them.",
+                    ),
+                ),
+                (
+                    "run_id",
+                    string("Which saved run to compare with. The newest of the mod by default."),
+                ),
+                (
+                    "name",
+                    json!({"type": "string", "enum": LOGS, "default": "error", "description": "Which log."}),
+                ),
+                ("limit", integer("How many groups to list.", 30, 0)),
             ],
             required: &["mod_path"],
             kind: READ_ONLY,
@@ -1227,6 +1252,48 @@ pub fn call(
             );
             Ok(Done::new(vec![json_text(&report)], summary))
         }
+        "xtiger_game_gap" => {
+            let mods = all_mods(loc);
+            let mod_file = mods::resolve(&args.string("mod_path", "")?, &mods)?;
+            let info = mods::describe(&mod_file)
+                .ok_or_else(|| format!("Cannot read {}.", mod_file.display()))?;
+            let run_id = args.string("run_id", "")?;
+            let run = if run_id.is_empty() {
+                runs::newest_run_of(loc, &mod_file)?
+            } else {
+                runs::load_run(loc, &run_id)?
+            };
+            let name = args.string("name", "error")?;
+            if !LOGS.contains(&name.as_str()) {
+                return Err(format!("name must be one of {}", LOGS.join(", ")).into());
+            }
+            let log_path = loc.user_dir.join("logs").join(format!("{name}.log"));
+            let bytes = std::fs::read(&log_path).map_err(|_| {
+                format!("{} does not exist yet. Play-test with ck3_run first.", log_path.display())
+            })?;
+            let log = String::from_utf8_lossy(&bytes);
+            let report = gap::compare(&gap::Request {
+                log: &log,
+                mod_dir: &info.dir,
+                reports: &run.reports,
+                limit: usize_of(args.integer("limit", 30)?),
+            });
+            let summary = format!(
+                "{} about the mod, {} reported by Tiger, {} not ({} in files Tiger said nothing about)",
+                report.about_the_mod,
+                report.reported_by_tiger,
+                report.gaps,
+                report.files_without_any_report
+            );
+            let text = format!(
+                "Compared with run {} of {}.
+{}",
+                run.meta.run_id,
+                run.meta.mod_name.as_deref().unwrap_or("the mod"),
+                serde_json::to_string_pretty(&report).unwrap_or_default()
+            );
+            Ok(Done::new(vec![Content::Text(text)], summary))
+        }
         "ck3_docs" => {
             let found = docs::lookup(
                 &loc.user_dir,
@@ -1311,7 +1378,7 @@ mod tests {
     fn every_tool_is_listed_with_a_schema() {
         let list = list();
         let tools = list["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 17);
+        assert_eq!(tools.len(), 18);
         for tool in tools {
             assert_eq!(tool["inputSchema"]["type"], "object");
             assert!(tool["description"].as_str().unwrap().len() > 40);

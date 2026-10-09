@@ -5,6 +5,7 @@
 
 pub mod docs;
 pub mod game;
+pub mod gap;
 pub mod journal;
 pub mod locate;
 pub mod migrate;

@@ -1,0 +1,6 @@
+﻿test_faith_modifier_trait = {
+	category = fame
+	faith_modifier = {
+		monthly_piety_gain_mult = 0.1
+	}
+}

@@ -1,5 +1,58 @@
 # Changelog
 
+## xTiger 1.5.5 alpha
+
+Found by play-testing a real mod in the game and setting the game's `error.log` against what the
+validator had said. The MCP server grows to 18 tools, the validator learns six things the game
+rejects or ignores, and a false report on vanilla is gone.
+
+### The validator
+
+- `entity` and `override` in a `dna_data` block are errors: the game's log shows a parse error
+  for them.
+- A history character with no faith, religion or rite is reported.
+- A `custom_description` whose text key has no localization is reported.
+- `faith_modifier` in a trait is reported as replaced by `rite_modifier`. The game drops the
+  whole trait ("Unknown modifier type"), which shows as raw `trait_x` keys and a magenta icon.
+- `mercenary_fallback` in a men-at-arms type is reported: 1.20 rejects the token (use
+  `allowed_in_hired_troops` or `fallback_in_hired_troops_if_unlocked`).
+- A men-at-arms type with both `icon` and `illustration` is reported: the game ignores `icon`.
+- `selected_doctrines` is now known in tenets and may hold tenets, so it no longer gives a
+  false report on a faith that picks them. On unmodded vanilla this removes 79 reports (71 `unknown list` in
+  `tenet_types` and 8 `expects list to be doctrine` in `doctrine_types`) and adds none.
+- `winter_severity_bias` accepts `0`, `0.0` and `0.00`.
+- The `_past` perspectives of the localization functions are checked correctly (`global_past`,
+  `first_past`), not as `global_part` and `first_part`.
+
+### The MCP server
+
+- New tool `xtiger_game_gap`: sets the game's `error.log` against a saved validation of the mod.
+  It lists the log entries that point to a file of the mod, grouped by cause, and says whether
+  Tiger reported anything in that file (`nothing` usually means a hole in the validator;
+  `other lines` means it reported there, but not on the line the game named). Entries that
+  name no file of the mod are left out. Some entries about a mod file are not validator holes
+  and still show as `nothing` (see Known limits): read the groups, do not expect zero.
+  Play-test first so the log is fresh, and validate so the run is current.
+- `xtiger_migrate` has three more rules: `doctrine:tenet_...` to `tenet:tenet_...`, and the two
+  `guardian_or_court_tutor` renames (`..._trigger_event` to `..._effect`, `..._trait` to
+  `..._trait_trigger`). It now knows 7 renames.
+- `ck3_run`: when another window takes focus for a moment, the game's window gets the focus back
+  (even from a background process) and a command that was not typed completely is typed again,
+  up to three times; one that was typed completely is never repeated. Each command is checked
+  against the game's `debug.log` and marked `(confirmed)` or `(not logged yet)`; the game logs
+  only some console commands, so the second is not a failure. The time allowed per
+  command is longer.
+
+### Known limits
+
+- `xtiger_game_gap` cannot tell a validator hole from a log entry the validator has no way to
+  know. A key that the mod defines again from the game's own localization is logged by
+  the game as a duplicate, and the validator does not report it, since replacing a key is
+  normal. Runtime script errors (for example a special building the game already gave to a
+  province) are visible only in the game.
+- Mods written for older game versions are reported for what 1.20 removed. This is correct, not
+  a false report.
+
 ## xTiger 1.5 alpha
 
 Found by checking xTiger against real mods (Regional Immersion and Cultural Enrichment, VIET

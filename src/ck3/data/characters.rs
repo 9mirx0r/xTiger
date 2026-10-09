@@ -609,6 +609,13 @@ impl Character {
 
         vd.field_item("culture", Item::Culture);
 
+        if !self.sets_faith() {
+            let msg = "character has no faith, religion or rite";
+            let info = "the game logs `Character does not have a faith scripted` and gives them the first scripted faith. \
+                        This includes `history_override_priority` stubs.";
+            warn(ErrorKey::FieldMissing).msg(msg).info(info).loc(&self.key).push();
+        }
+
         vd.field_item("dynasty", Item::Dynasty);
         vd.field_item("dynasty_house", Item::House);
 
@@ -652,6 +659,21 @@ impl Character {
             let msg = "nosferatu with predefined dna lacks had_POD_character_nosferatu_looks";
             err(ErrorKey::PrincesOfDarkness).msg(msg).loc(&self.key).push();
         }
+    }
+
+    /// Whether the character gets a faith from the file: a top-level or dated `faith`, `religion`
+    /// or `rite`, or any dated `effect` block (which may set it with `set_character_faith`).
+    fn sets_faith(&self) -> bool {
+        const KEYS: [&str; 3] = ["faith", "religion", "rite"];
+        if KEYS.iter().any(|k| self.block.has_key(k)) {
+            return true;
+        }
+        for (key, block) in self.block.iter_definitions() {
+            if key.is_date() && (block.has_key("effect") || KEYS.iter().any(|k| block.has_key(k))) {
+                return true;
+            }
+        }
+        false
     }
 
     fn has_flag(&self, flag: &str) -> bool {

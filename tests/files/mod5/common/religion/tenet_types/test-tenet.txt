@@ -1,0 +1,10 @@
+test_offered_tenet = {
+}
+test_orphan_tenet = {
+	can_pick = {
+		custom_description = {
+			text = test_pick_text
+			is_in_list = selected_doctrines
+		}
+	}
+}

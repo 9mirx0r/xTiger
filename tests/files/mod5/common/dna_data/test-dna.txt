@@ -1,0 +1,9 @@
+test_dna_old = {
+	portrait_info = {
+		genes = { }
+	}
+	override = {
+		portrait_modifier_overrides = { }
+	}
+	enabled = yes
+}

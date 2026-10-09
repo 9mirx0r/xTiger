@@ -112,13 +112,33 @@ try {
     # console takes text are lost (a run once lost the first three letters of a command).
     if ($Cmd) { Send-Tap $p 0x29; Start-Sleep -Milliseconds 2000 }
     foreach ($c in $Cmd) {
-        # The console key can leave its own character in the input line (for example '|' on Spanish
-        # layouts), which turns the command into an unknown one. Clear the line before typing.
-        for ($i = 0; $i -lt 3; $i++) { Send-Tap $p 0x0E }
-        Send-Text $p $c $Typing; Send-Tap $p 0x1C           # enter
-        Start-Sleep 3
+        # Typing stops with an error when another window takes focus. The command was not sent then
+        # (Enter is the last key), so it is safe to clear the line and type it again. A command that was
+        # typed completely is never repeated, because that would run its effect twice.
+        $typed = $false
+        for ($attempt = 1; $attempt -le 3 -and -not $typed; $attempt++) {
+            try {
+                # The console key can leave its own character in the input line (for example '|' on Spanish
+                # layouts), which turns the command into an unknown one. Clear the line before typing.
+                for ($i = 0; $i -lt ($c.Length + 3); $i++) { Send-Tap $p 0x0E }
+                Send-Text $p $c $Typing; Send-Tap $p 0x1C           # enter
+                $typed = $true
+            } catch {
+                $out += "typing '$c' attempt ${attempt}: $($_.Exception.Message)"
+                Write-Host "retry $attempt for: $c ($($_.Exception.Message))"
+                Start-Sleep 2
+            }
+        }
+        if (-not $typed) { throw "could not type '$c' after 3 attempts, the game keeps losing focus" }
+        # Wait for the game to log the command, so a slow or dropped one is visible at once.
+        $seen = $false; $until = (Get-Date).AddSeconds(8)
+        do {
+            Start-Sleep -Milliseconds 1000
+            $dl = Join-Path $logs "debug.log"
+            if (Test-Path $dl) { $seen = [bool](Select-String -Path $dl -Pattern ('Running console command: ' + [regex]::Escape($c) + '\s*$') -Quiet -ErrorAction SilentlyContinue) }
+        } while (-not $seen -and (Get-Date) -lt $until)
         if ($ShotDir) { Save-WindowShot $p (Join-Path $ShotDir (($c -replace '[^a-zA-Z0-9]','_') + ".png")) }
-        $sent += $c; Write-Host "sent: $c"
+        $sent += $c; Write-Host ("sent: $c" + $(if ($seen) { " (confirmed)" } else { " (not logged yet)" }))
     }
     if ($Cmd) { Send-Tap $p 0x29; Start-Sleep -Milliseconds 400 }   # close the console
     if ($Shot) { Save-WindowShot $p $Shot; Write-Host "screenshot $Shot" }

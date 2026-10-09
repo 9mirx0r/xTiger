@@ -231,6 +231,16 @@ impl<'a> Validator<'a> {
         });
     }
 
+    /// Require field `name` to not be in the block, because the game's parser rejects it hard.
+    /// Unlike `replaced_field`, the report is strong: loading such a file can crash the game.
+    pub fn fatal_in_game_field(&mut self, name: &str, why: &str) {
+        let sev = Severity::Error.at_most(self.max_severity);
+        self.multi_field_check(name, |key, _| {
+            let msg = format!("`{name}` is rejected by the game's parser: {why}");
+            report(ErrorKey::Validation, sev).strong().msg(msg).loc(key).push();
+        });
+    }
+
     fn check_key(&mut self, name: &str) -> bool {
         for Field(key, _, _) in self.block.iter_fields() {
             if self.key_matches(key, name) {

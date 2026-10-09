@@ -4599,7 +4599,7 @@ dependencies = [
 
 [[package]]
 name = "xtiger-setup"
-version = "1.5.0-alpha"
+version = "1.5.5-alpha"
 dependencies = [
  "dirs",
  "mslnk",

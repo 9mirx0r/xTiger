@@ -1,0 +1,12 @@
+test_maa_with_removed_field = {
+	type = skirmishers
+	damage = 10
+	mercenary_fallback = no
+}
+
+test_maa_with_both_art = {
+	type = skirmishers
+	damage = 10
+	icon = test_icon
+	illustration = { reference = "gfx/test.dds" }
+}

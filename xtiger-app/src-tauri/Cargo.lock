@@ -4853,7 +4853,7 @@ dependencies = [
 
 [[package]]
 name = "xtiger-app"
-version = "1.5.0-alpha"
+version = "1.5.5-alpha"
 dependencies = [
  "base64 0.22.1",
  "semver",
@@ -4869,7 +4869,7 @@ dependencies = [
 
 [[package]]
 name = "xtiger-mcp"
-version = "1.5.0-alpha"
+version = "1.5.5-alpha"
 dependencies = [
  "base64 0.22.1",
  "dirs",

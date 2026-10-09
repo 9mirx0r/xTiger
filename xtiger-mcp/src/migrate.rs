@@ -26,7 +26,7 @@ struct Rule {
 }
 
 /// Renames from before 1.20, each checked against the game's own files.
-const RULES: [Rule; 4] = [
+const RULES: [Rule; 7] = [
     Rule {
         name: "every_character",
         pattern: r"\b(any|every|random|ordered)_character\b",
@@ -50,6 +50,24 @@ const RULES: [Rule; 4] = [
         pattern: r"\bhas_doctrine(\s*=\s*)(tenet_\w+)",
         replacement: "has_tenet${1}${2}",
         note: "tenets are tested with has_tenet in 1.20",
+    },
+    Rule {
+        name: "doctrine:tenet_",
+        pattern: r"\bdoctrine:(tenet_\w+)",
+        replacement: "tenet:${1}",
+        note: "tenets are their own scope type, `tenet:tenet_x`, in 1.20",
+    },
+    Rule {
+        name: "guardian_or_court_tutor_trigger_event",
+        pattern: r"\bguardian_or_court_tutor_trigger_event\b",
+        replacement: "guardian_or_court_tutor_trigger_event_effect",
+        note: "the scripted effect has the _effect suffix in 1.20",
+    },
+    Rule {
+        name: "guardian_or_court_tutor_trait",
+        pattern: r"\bguardian_or_court_tutor_trait\b",
+        replacement: "guardian_or_court_tutor_trait_trigger",
+        note: "the scripted trigger has the _trigger suffix in 1.20",
     },
 ];
 
@@ -226,24 +244,28 @@ mod tests {
             dir.join("a.txt"),
             "x = {\n\tevery_character = { limit = { is_created = yes } } # every_character\n\
              \thas_doctrine = tenet_pacifism\n\thas_doctrine = doctrine_monogamy\n\
-             \tdesc = \"is_created = no # not a comment\"\n}\n",
+             \tdesc = \"is_created = no # not a comment\"\n\
+             \tguardian_or_court_tutor_trait = { TRAIT = craven }\n\
+             \tNOT = { doctrine:tenet_pacifism = { is_in_list = x } }\n}\n",
         )
         .unwrap();
         fs::write(tmp.join("readme.txt"), "every_character = yes\n").unwrap();
         let report = plan(&Request { mod_dir: &tmp, path: "", limit: 10 }).unwrap();
         assert_eq!(report.files_scanned, 1);
-        assert_eq!(report.total_edits, 2);
+        assert_eq!(report.total_edits, 4);
         let afters: Vec<&str> = report.edits.iter().map(|e| e.after.as_str()).collect();
         assert_eq!(
             afters,
             [
                 "every_living_character = { limit = { is_title_created = yes } } # every_character",
                 "has_tenet = tenet_pacifism",
+                "guardian_or_court_tutor_trait_trigger = { TRAIT = craven }",
+                "NOT = { tenet:tenet_pacifism = { is_in_list = x } }",
             ]
         );
         assert_eq!(report.edits[0].rules.len(), 2);
         assert_eq!(report.edits[1].line, 3);
-        assert_eq!(report.rules.iter().map(|r| r.edits).collect::<Vec<_>>(), [1, 1, 0, 1]);
+        assert_eq!(report.rules.iter().map(|r| r.edits).collect::<Vec<_>>(), [1, 1, 0, 1, 1, 0, 1]);
         let limited = plan(&Request { mod_dir: &tmp, path: "nothing", limit: 10 }).unwrap();
         assert_eq!(limited.total_edits, 0);
         assert!(plan(&Request { mod_dir: &tmp.join("nope"), path: "", limit: 1 }).is_err());

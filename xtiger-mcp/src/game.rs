@@ -206,7 +206,7 @@ pub fn run_game(
         args.push("-Keep".to_owned());
     }
     let commands = u64::try_from(run.commands.len()).unwrap_or(u64::MAX);
-    let timeout = Duration::from_secs(run.load_timeout + 60 + 10 * commands);
+    let timeout = Duration::from_secs(run.load_timeout + 60 + 30 * commands);
     let outcome = powershell(loc, "ck3-run.ps1", &args, timeout, cancelled)?;
     let mut text = status(&outcome);
     let Ok(bytes) = fs::read(&report) else {

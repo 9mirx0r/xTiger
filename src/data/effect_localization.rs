@@ -86,7 +86,16 @@ pub fn validate_effect_localization(caller: &Token, data: &Everything, tooltippe
     // As of CK3 1.18, effect localizations don't have to be defined and can just be present as
     // localizations.
     match tooltipped {
-        Tooltipped::No => (),
+        Tooltipped::No => {
+            // Not shown as a perspective here, but the text must exist in some form.
+            let found = data.item_exists(Item::Localization, caller.as_str())
+                || ["global", "first", "third", "global_past", "first_past", "third_past"]
+                    .iter()
+                    .any(|sfx| data.item_exists(Item::Localization, &format!("{caller}_{sfx}")));
+            if !found {
+                data.verify_exists(Item::Localization, caller);
+            }
+        }
         Tooltipped::Yes | Tooltipped::FailuresOnly => {
             if data.item_exists(Item::Localization, caller.as_str()) {
                 return;
@@ -101,7 +110,7 @@ pub fn validate_effect_localization(caller: &Token, data: &Everything, tooltippe
             warn(ErrorKey::MissingPerspective).msg(msg).loc(caller).push();
         }
         Tooltipped::Past => {
-            for sfx in &["global_part", "first_part", "third_past"] {
+            for sfx in &["global_past", "first_past", "third_past"] {
                 let loca = format!("{caller}_{sfx}");
                 if data.item_exists(Item::Localization, &loca) {
                     return;

@@ -15,6 +15,22 @@ public class CK3Input {
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] static extern bool AttachThreadInput(uint a, uint b, bool attach);
+  [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
+  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+  [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+  // Windows refuses SetForegroundWindow from a background process. Sharing the input queue of the
+  // current foreground thread lifts that restriction, which is how focus is taken back after another
+  // window (a notification, the Claude app) has grabbed it.
+  public static bool Focus(IntPtr h) {
+    if (IsIconic(h)) ShowWindow(h, 9);
+    uint dummy; uint fg = GetWindowThreadProcessId(GetForegroundWindow(), out dummy);
+    uint me = GetCurrentThreadId(); bool att = fg != 0 && fg != me && AttachThreadInput(me, fg, true);
+    BringWindowToTop(h); bool ok = SetForegroundWindow(h);
+    if (att) AttachThreadInput(me, fg, false);
+    return ok;
+  }
   static void Send(ushort sc, uint fl) { var i = new IN[1]; i[0].type = 1; i[0].ki.sc = sc; i[0].ki.fl = fl; SendInput(1, i, Marshal.SizeOf(typeof(IN))); }
   public static void Key(ushort sc, bool up) { Send(sc, 8u | (up ? 2u : 0u)); }
   public static void Char(char c, bool up) { Send((ushort)c, 4u | (up ? 2u : 0u)); }
@@ -43,11 +59,13 @@ function Test-Typeable([string]$text, [string]$mode) {
 function Assert-Focus([System.Diagnostics.Process]$proc) {
     # Input goes to whatever window has focus, so never type into anything but the game.
     if ([CK3Input]::ForegroundPid() -eq $proc.Id) { return }
-    [CK3Input]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
-    Start-Sleep -Milliseconds 700
-    if ([CK3Input]::ForegroundPid() -ne $proc.Id) {
-        throw "CK3 (pid $($proc.Id)) is not the foreground window; stopped sending input. Another window took focus."
+    # Another window may have grabbed focus for a moment. Take it back a few times before giving up.
+    for ($try = 0; $try -lt 4; $try++) {
+        [CK3Input]::Focus($proc.MainWindowHandle) | Out-Null
+        Start-Sleep -Milliseconds 500
+        if ([CK3Input]::ForegroundPid() -eq $proc.Id) { return }
     }
+    throw "CK3 (pid $($proc.Id)) is not the foreground window; stopped sending input. Another window took focus."
 }
 
 function Send-Tap([System.Diagnostics.Process]$proc, [int]$code, [bool]$shift = $false) {

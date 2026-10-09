@@ -358,3 +358,30 @@ fn test_mod4_renamed_names_hints() {
     assert!(info_of("GetOwner cannot follow a Activity promote").contains("GetHost"));
     assert!(info_of("unknown datafunction GetFaithDoctrine").contains("GetDoctrine"));
 }
+
+#[test]
+fn test_mod5_engine_rejects_and_orphans() {
+    let reports = check_mod_helper("mod5");
+    let msgs: Vec<String> = reports.keys().map(|r| r.msg.clone()).collect();
+    let has = |needle: &str| msgs.iter().any(|m| m.contains(needle));
+
+    assert!(has("`override` is rejected by the game's parser"), "dna override: {msgs:?}");
+    assert!(has("character has no faith, religion or rite"), "no faith: {msgs:?}");
+    assert!(!has("unknown list"), "selected_doctrines should be a known list: {msgs:?}");
+    assert!(has("test_missing_trigger_text"), "trigger custom_description text: {msgs:?}");
+    assert!(has("test_missing_effect_text"), "effect custom_description text: {msgs:?}");
+    assert!(
+        has("`faith_modifier` has been replaced by `rite_modifier`"),
+        "trait faith_modifier: {msgs:?}"
+    );
+    assert!(
+        has("`mercenary_fallback` has been replaced by `allowed_in_hired_troops`"),
+        "maa mercenary_fallback: {msgs:?}"
+    );
+    assert!(
+        has("`icon` is ignored when the type also has `illustration`"),
+        "maa icon and illustration: {msgs:?}"
+    );
+    let faith_reports = msgs.iter().filter(|m| m.contains("no faith, religion or rite")).count();
+    assert_eq!(faith_reports, 1, "only no_faith_char should be reported: {msgs:?}");
+}

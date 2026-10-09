@@ -1,0 +1,5 @@
+test_effect_missing_text = {
+	custom_description = {
+		text = test_missing_effect_text
+	}
+}

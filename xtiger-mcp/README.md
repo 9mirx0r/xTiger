@@ -66,6 +66,7 @@ an error, never quietly ignored.
 | `xtiger_compare` | Compares two saved runs: the totals of each, and which reports are new or fixed, by key and one by one |
 | `xtiger_overrides` | Shows what a mod overrides in the base game and how each copy differs from the game installed now, near copies first |
 | `xtiger_migrate` | Dry run of the mechanical renames needed to move a mod to 1.20: file, line, and the line as it would read. Writes nothing |
+| `xtiger_game_gap` | Sets the game's `error.log` against a saved run: log entries about the mod's files that Tiger did not report, grouped by cause. The holes in the validator |
 | `xtiger_session` | Names the job at hand, or wraps it up, and sums up the session so far |
 | `xtiger_pending_requests` | Lists what the user asked for in the app and is not done yet: reports to fix, or a mod to update |
 | `xtiger_finish_request` | Closes a request as done or skipped, with a note the user sees in the app |

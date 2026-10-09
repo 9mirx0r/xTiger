@@ -1,0 +1,10 @@
+no_faith_char = {
+	name = "Nf"
+	culture = test_culture
+}
+faith_by_date_char = {
+	name = "Fd"
+	800.1.1 = {
+		rite = test_rite
+	}
+}

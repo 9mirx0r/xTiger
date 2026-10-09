@@ -1,0 +1,3 @@
+test_rite = {
+	tenets = { test_offered_tenet }
+}

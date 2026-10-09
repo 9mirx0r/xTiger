@@ -110,7 +110,7 @@ impl DbKind for Doctrine {
     fn validate(&self, key: &Token, block: &Block, data: &Everything) {
         let mut vd = Validator::new(block, data);
         let mut sc = ScopeContext::new(Scopes::Faith.union(Scopes::Rite), key);
-        sc.define_list("selected_doctrines", Scopes::Doctrine, key);
+        sc.define_list("selected_doctrines", Scopes::Doctrine.union(Scopes::Tenet), key);
 
         vd.req_field("doctrine_group_type");
         vd.field_item("doctrine_group_type", Item::DoctrineGroup);
@@ -206,6 +206,7 @@ impl DbKind for Tenet {
         let mut vd = Validator::new(block, data);
         let mut sc = ScopeContext::new(Scopes::Faith.union(Scopes::Rite), key);
         sc.define_list("selected_tenets", Scopes::Tenet, key);
+        sc.define_list("selected_doctrines", Scopes::Doctrine.union(Scopes::Tenet), key);
 
         if let Some(icon) = vd.field_value("icon") {
             data.verify_icon("NGameIcons|TENET_TYPE_ICON_PATH", icon, ".dds");
