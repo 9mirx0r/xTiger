@@ -280,7 +280,7 @@ mod tests {
         // A real regex is not a guess at a name.
         let found =
             lookup(&tmp, &Lookup { kind: "", name: "", search: "is_cr.*zzz", limit: 5 }).unwrap();
-        assert!(found.did_you_mean.is_empty());
+        assert_eq!(found.did_you_mean, Vec::<String>::new());
     }
 
     #[test]
