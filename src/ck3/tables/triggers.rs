@@ -89,7 +89,7 @@ static TRIGGER_MAP: LazyLock<TigerHashMap<&'static str, (Scopes, Trigger)>> = La
 ///    `has_secret_relation_<relation>`
 ///    `num_of_relation_<relation>`
 /// A key ends with '(' if it is the version that takes a parenthesized argument in script.
-const TRIGGER: &[(Scopes, &str, Trigger)] = &[
+pub(crate) const TRIGGER: &[(Scopes, &str, Trigger)] = &[
     (
         Scopes::Accolade,
         "accolade_attribute_level",
