@@ -1,6 +1,6 @@
 //! A dry run of the mechanical part of moving a mod to a newer game version: renames that are
-//! the same everywhere, found line by line. Nothing is written; each proposed edit has the file,
-//! the line and the line as it would read, so the assistant (or the author) can apply it. A line
+//! the same everywhere, found line by line. Nothing is written here (`migrate_apply` writes them);
+//! each proposed edit has the file, the line and the line as it would read. A line
 //! that matches several rules is one edit with all of them applied; comments and quoted text are
 //! never changed.
 //!
@@ -155,6 +155,63 @@ fn files(dir: &Path, base: &Path, found: &mut Vec<(String, std::path::PathBuf)>)
     }
 }
 
+/// The script files of a mod, as (path relative to the mod, full path), sorted, keeping those whose
+/// relative path contains `filter` (all of them when it is empty).
+pub(crate) fn script_files(mod_dir: &Path, filter: &str) -> Vec<(String, std::path::PathBuf)> {
+    let filter = filter.trim().replace('\\', "/");
+    let mut found = Vec::new();
+    for folder in FOLDERS {
+        files(&mod_dir.join(folder), mod_dir, &mut found);
+    }
+    found.retain(|(rel, _)| filter.is_empty() || rel.contains(&filter));
+    found.sort();
+    found
+}
+
+/// One script line (without its line ending) with every rule applied, and the indexes in `RULES`
+/// of the rules that changed it; `None` when no rule matches.
+pub(crate) fn rewrite(line: &str) -> Option<(String, Vec<usize>)> {
+    let (code, comment) = line.split_at(comment_start(line));
+    let masked = without_quoted(code);
+    // (start, end, replacement) of every match of every rule, outside quotes.
+    let mut changes: Vec<(usize, usize, String)> = Vec::new();
+    let mut hit = Vec::new();
+    for (n, (rule, regex)) in RULES.iter().zip(COMPILED.iter()).enumerate() {
+        let before = changes.len();
+        for caps in regex.captures_iter(&masked) {
+            let Some(whole) = caps.get(0) else { continue };
+            let mut replacement = String::new();
+            caps.expand(rule.replacement, &mut replacement);
+            changes.push((whole.start(), whole.end(), replacement));
+        }
+        if changes.len() > before {
+            hit.push(n);
+        }
+    }
+    if changes.is_empty() {
+        return None;
+    }
+    changes.sort_by_key(|change| change.0);
+    let mut after = String::with_capacity(line.len());
+    let mut at = 0;
+    for (start, end, replacement) in &changes {
+        if *start < at {
+            continue;
+        }
+        after.push_str(&code[at..*start]);
+        after.push_str(replacement);
+        at = *end;
+    }
+    after.push_str(&code[at..]);
+    after.push_str(comment);
+    Some((after, hit))
+}
+
+/// The names in `RULES` of the rules at these indexes.
+pub(crate) fn rule_names(indexes: &[usize]) -> Vec<&'static str> {
+    indexes.iter().map(|&n| RULES[n].name).collect()
+}
+
 /// The edits a mod needs to follow the renames in `RULES`.
 ///
 /// # Errors
@@ -163,13 +220,7 @@ pub fn plan(req: &Request) -> Result<Report, String> {
     if !req.mod_dir.is_dir() {
         return Err(format!("The mod folder {} does not exist.", req.mod_dir.display()));
     }
-    let filter = req.path.trim().replace('\\', "/");
-    let mut found = Vec::new();
-    for folder in FOLDERS {
-        files(&req.mod_dir.join(folder), req.mod_dir, &mut found);
-    }
-    found.retain(|(rel, _)| filter.is_empty() || rel.contains(&filter));
-    found.sort();
+    let found = script_files(req.mod_dir, req.path);
 
     let mut counts = vec![0_usize; RULES.len()];
     let mut edits = Vec::new();
@@ -178,46 +229,16 @@ pub fn plan(req: &Request) -> Result<Report, String> {
         let Ok(bytes) = fs::read(path) else { continue };
         let text = String::from_utf8_lossy(&bytes);
         for (i, line) in text.trim_start_matches('\u{feff}').lines().enumerate() {
-            let (code, comment) = line.split_at(comment_start(line));
-            let masked = without_quoted(code);
-            // (start, end, replacement) of every match of every rule, outside quotes.
-            let mut changes: Vec<(usize, usize, String)> = Vec::new();
-            let mut hit = Vec::new();
-            for (n, (rule, regex)) in RULES.iter().zip(COMPILED.iter()).enumerate() {
-                let before = changes.len();
-                for caps in regex.captures_iter(&masked) {
-                    let Some(whole) = caps.get(0) else { continue };
-                    let mut replacement = String::new();
-                    caps.expand(rule.replacement, &mut replacement);
-                    changes.push((whole.start(), whole.end(), replacement));
-                }
-                if changes.len() > before {
-                    counts[n] += 1;
-                    hit.push(rule.name);
-                }
-            }
-            if changes.is_empty() {
-                continue;
+            let Some((after, hit)) = rewrite(line) else { continue };
+            for &n in &hit {
+                counts[n] += 1;
             }
             total += 1;
             if edits.len() < req.limit {
-                changes.sort_by_key(|change| change.0);
-                let mut after = String::with_capacity(code.len());
-                let mut at = 0;
-                for (start, end, replacement) in &changes {
-                    if *start < at {
-                        continue;
-                    }
-                    after.push_str(&code[at..*start]);
-                    after.push_str(replacement);
-                    at = *end;
-                }
-                after.push_str(&code[at..]);
-                after.push_str(comment);
                 edits.push(Edit {
                     file: rel.clone(),
                     line: i + 1,
-                    rules: hit,
+                    rules: rule_names(&hit),
                     before: line.trim().to_owned(),
                     after: after.trim().to_owned(),
                 });
