@@ -1,6 +1,6 @@
 [package]
 name = "xtiger-app"
-version = "1.5.6-alpha"
+version = "1.5.7-alpha"
 edition = "2024"
 license = "GPL-3.0-or-later"
 description = "Desktop app for xTiger, the validator for Crusader Kings III mods."

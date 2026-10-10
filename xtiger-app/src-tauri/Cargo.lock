@@ -3991,7 +3991,7 @@ dependencies = [
 
 [[package]]
 name = "tiger-lib"
-version = "1.5.6-alpha"
+version = "1.5.7-alpha"
 dependencies = [
  "ahash",
  "ansiterm",
@@ -4026,7 +4026,7 @@ dependencies = [
 
 [[package]]
 name = "tiger-tables"
-version = "1.5.6-alpha"
+version = "1.5.7-alpha"
 dependencies = [
  "anyhow",
  "phf",
@@ -5297,7 +5297,7 @@ dependencies = [
 
 [[package]]
 name = "xtiger-app"
-version = "1.5.6-alpha"
+version = "1.5.7-alpha"
 dependencies = [
  "base64 0.22.1",
  "semver",
@@ -5313,7 +5313,7 @@ dependencies = [
 
 [[package]]
 name = "xtiger-mcp"
-version = "1.5.6-alpha"
+version = "1.5.7-alpha"
 dependencies = [
  "base64 0.22.1",
  "dirs",

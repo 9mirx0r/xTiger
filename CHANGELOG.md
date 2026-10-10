@@ -1,5 +1,32 @@
 # Changelog
 
+## xTiger 1.5.7 alpha
+
+Moving a mod to a newer game version gets more mechanical help, and the assistant can now write
+the renames instead of only listing them.
+
+### The MCP server
+
+- `xtiger_migrate` reads the validator's own tables. Every effect or trigger that the tables mark
+  as removed with one current key as its replacement is proposed as a rename, on top of the
+  hand-written ones, which come first and do not change, for example `start_diarchy` to
+  `try_start_diarchy`, `scheme_freeze_days` to `scheme_freeze` and `has_holy_site_flag` to
+  `has_holy_site_parameter`. An entry counts only when its explanation is exactly "renamed to X",
+  "replaced by X" or "replaced with X", X is a current entry of the same table and no other removed
+  key names X (so `num_active_accolades` and `num_inactive_accolades`, which both point to
+  `num_accolades`, are skipped). A derived rename rewrites only the key (`key =`), never a
+  `scope:` or a saved scope name, and its note says to check the arguments.
+- New tool `xtiger_migrate_apply` writes every edit `xtiger_migrate` lists into the mod. Each file
+  that changes is first copied, as it was, to a new backup folder in the server's state folder
+  (outside the mod, so a Workshop upload does not carry it), and a backup that exists is never
+  overwritten. Only the lines a rule changes are rewritten: byte order mark, line endings,
+  comments and quoted text stay. A file that is not UTF-8 is left alone and listed.
+
+### The validator
+
+- `tiger_lib::table_renames()` exposes those one-to-one renames. Nothing the validator reports
+  changes.
+
 ## xTiger 1.5.6 alpha
 
 A reliability pass on playing a mod in the real game (`ck3_run`), after an outside review of 1.5.5.

@@ -1,6 +1,6 @@
 [package]
 name = "tiger-tables"
-version = "1.5.6-alpha"
+version = "1.5.7-alpha"
 edition = "2024"
 license = "GPL-3.0-or-later"
 description = "Library used by xTiger, the CK3 mod validator. It holds tables that may be useful for other projects, so that they can be imported without pulling in all of Tiger."

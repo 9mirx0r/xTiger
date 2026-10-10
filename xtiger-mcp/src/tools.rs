@@ -12,6 +12,7 @@ use crate::gap;
 use crate::journal::{self, ModRef, Tally};
 use crate::locate::Locations;
 use crate::migrate;
+use crate::migrate_apply;
 use crate::mods::{self, ModInfo};
 use crate::overrides;
 use crate::requests::{self, Status};
@@ -91,6 +92,8 @@ impl From<&str> for CallError {
 
 const READ_ONLY: &str = "readOnly";
 const LOCAL: &str = "local";
+/// Rewrites files the user owns: the client should ask first.
+const WRITE: &str = "write";
 const GAME: &str = "game";
 
 struct Tool {
@@ -495,7 +498,7 @@ fn tools() -> Vec<Tool> {
         Tool {
             name: "xtiger_migrate",
             title: "Plan the renames for a newer game version",
-            description: "A dry run: list the mechanical edits that bring a mod written for an older CK3 version in line with 1.20, such as every_character to every_living_character, is_created to is_title_created, create_holy_order_effect to create_holy_order_accompanying_effect, has_doctrine = tenet_x to has_tenet, and each removed effect or trigger that the validator names a single replacement for, such as start_diarchy to try_start_diarchy. Each edit has the file, the line, the line as it is and as it would read. Nothing is written: make the edits yourself, then xtiger_validate again. Renames that depend on the surrounding script are not here; the validator explains those.",
+            description: "A dry run: list the mechanical edits that bring a mod written for an older CK3 version in line with 1.20, such as every_character to every_living_character, is_created to is_title_created, create_holy_order_effect to create_holy_order_accompanying_effect, has_doctrine = tenet_x to has_tenet, and each removed effect or trigger that the validator names a single replacement for, such as start_diarchy to try_start_diarchy. Each edit has the file, the line, the line as it is and as it would read. Nothing is written: xtiger_migrate_apply writes them, or make the edits yourself, then xtiger_validate again. Renames that depend on the surrounding script are not here; the validator explains those.",
             params: vec![
                 (
                     "mod_path",
@@ -511,6 +514,25 @@ fn tools() -> Vec<Tool> {
             ],
             required: &["mod_path"],
             kind: READ_ONLY,
+        },
+        Tool {
+            name: "xtiger_migrate_apply",
+            title: "Write the renames for a newer game version",
+            description: "Write into the mod files every edit xtiger_migrate lists (all of them, not only the ones it showed). Each file that changes is first copied, as it was, to a new backup folder outside the mod; the result names it. Only the changed lines are rewritten: line endings, comments and quoted text stay. Files that are not UTF-8 are left alone and listed. Run xtiger_migrate first and check its edits; a rename read from the validator's tables may need its arguments checked. Run xtiger_validate after.",
+            params: vec![
+                (
+                    "mod_path",
+                    string(
+                        "The mod: its name, workshop id, folder or .mod file. xtiger_mods lists them.",
+                    ),
+                ),
+                (
+                    "path",
+                    string("Only mod files whose path contains this, such as common/decisions."),
+                ),
+            ],
+            required: &["mod_path"],
+            kind: WRITE,
         },
         Tool {
             name: "xtiger_game_gap",
@@ -587,6 +609,8 @@ pub fn list() -> Value {
             let annotations = match tool.kind {
                 READ_ONLY => json!({"title": tool.title, "readOnlyHint": true, "openWorldHint": false}),
                 LOCAL => json!({"title": tool.title, "readOnlyHint": false, "destructiveHint": false,
+                                "idempotentHint": true, "openWorldHint": false}),
+                WRITE => json!({"title": tool.title, "readOnlyHint": false, "destructiveHint": true,
                                 "idempotentHint": true, "openWorldHint": false}),
                 _ => json!({"title": tool.title, "readOnlyHint": false, "destructiveHint": false,
                             "idempotentHint": false, "openWorldHint": true}),
@@ -1254,6 +1278,36 @@ pub fn call(
             );
             Ok(Done::new(vec![json_text(&report)], summary))
         }
+        "xtiger_migrate_apply" => {
+            let mods = all_mods(loc);
+            let mod_file = mods::resolve(&args.string("mod_path", "")?, &mods)?;
+            let working = mod_ref(&mods, &mod_file);
+            (ctx.working_on)(&working);
+            let info = mods::describe(&mod_file)
+                .ok_or_else(|| format!("Cannot read {}.", mod_file.display()))?;
+            let report = migrate_apply::apply(&migrate_apply::Request {
+                mod_dir: &info.dir,
+                path: &args.string("path", "")?,
+                backup_root: &loc.state_dir.join("migrate-backups"),
+            })?;
+            let mut summary = if report.changed.is_empty() {
+                "Nothing written".to_owned()
+            } else {
+                format!(
+                    "{} written to {}",
+                    plural(report.total_edits, "edit", "edits"),
+                    plural(report.changed.len(), "file", "files")
+                )
+            };
+            if !report.skipped.is_empty() {
+                let _ = write!(
+                    summary,
+                    ", {} left alone",
+                    plural(report.skipped.len(), "file", "files")
+                );
+            }
+            Ok(Done::new(vec![json_text(&report)], summary))
+        }
         "xtiger_game_gap" => {
             let mods = all_mods(loc);
             let mod_file = mods::resolve(&args.string("mod_path", "")?, &mods)?;
@@ -1380,7 +1434,7 @@ mod tests {
     fn every_tool_is_listed_with_a_schema() {
         let list = list();
         let tools = list["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 18);
+        assert_eq!(tools.len(), 19);
         for tool in tools {
             assert_eq!(tool["inputSchema"]["type"], "object");
             assert!(tool["description"].as_str().unwrap().len() > 40);
@@ -1484,6 +1538,32 @@ mod tests {
         assert!(matches!(err, CallError::Failed(m) if m.contains("oldest")));
         let other = json!({"run_id": "20260101-000002-silk", "against": "20260101-000001-other"});
         assert_eq!(run("xtiger_compare", &other, &loc).unwrap().note.summary, "2 new, 0 fixed");
+    }
+
+    #[test]
+    fn migrate_apply_writes_and_backs_up() {
+        let tmp = TempDir::new();
+        let loc = locations(&tmp);
+        fs::create_dir_all(tmp.join("user/mod/silk/events")).unwrap();
+        fs::write(tmp.join("user/mod/silk.mod"), "name=\"Silk Road\"\npath=\"mod/silk\"\n")
+            .unwrap();
+        fs::write(tmp.join("user/mod/silk/events/a.txt"), "e = { is_created = yes }\n").unwrap();
+        let args = json!({"mod_path": "Silk Road"});
+        let done = run("xtiger_migrate_apply", &args, &loc).unwrap();
+        assert_eq!(done.note.summary, "1 edit written to 1 file");
+        let result: Value = serde_json::from_str(&text(Ok(done))).unwrap();
+        let backup = PathBuf::from(result["backup"].as_str().unwrap());
+        assert!(backup.starts_with(loc.state_dir.join("migrate-backups")));
+        assert_eq!(
+            fs::read_to_string(backup.join("events/a.txt")).unwrap(),
+            "e = { is_created = yes }\n"
+        );
+        assert_eq!(
+            fs::read_to_string(tmp.join("user/mod/silk/events/a.txt")).unwrap(),
+            "e = { is_title_created = yes }\n"
+        );
+        let again = run("xtiger_migrate_apply", &args, &loc).unwrap();
+        assert_eq!(again.note.summary, "Nothing written");
     }
 
     #[test]

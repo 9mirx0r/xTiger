@@ -9,6 +9,7 @@ pub mod gap;
 pub mod journal;
 pub mod locate;
 pub mod migrate;
+pub mod migrate_apply;
 pub mod mods;
 pub mod overrides;
 pub mod playsets;
