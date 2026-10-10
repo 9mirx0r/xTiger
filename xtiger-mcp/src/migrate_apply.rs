@@ -210,7 +210,7 @@ mod tests {
         let report = apply(&req).unwrap();
         assert_eq!(report.files_scanned, 2);
         assert_eq!(report.total_edits, 2);
-        assert!(report.skipped.is_empty());
+        assert_eq!(report.skipped, Vec::<Skipped>::new());
         assert_eq!(
             report.changed,
             [Changed {
