@@ -3487,6 +3487,7 @@ dependencies = [
  "serde",
  "serde_json",
  "steamlocate",
+ "tiger-lib",
 ]
 
 [[package]]

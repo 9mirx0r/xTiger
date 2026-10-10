@@ -6,7 +6,8 @@
 //!
 //! A rule belongs here only when the replacement does not depend on the surrounding script. Renames
 //! that do (a removed trait, a datafunction that changed its arguments) are only explained by the
-//! validator's hints.
+//! validator's hints. Besides the hand-written rules, every effect or trigger that the validator's
+//! tables mark as removed with a single current key as its replacement is proposed as a rename.
 
 use std::fs;
 use std::path::Path;
@@ -73,8 +74,44 @@ const RULES: [Rule; 7] = [
     },
 ];
 
-static COMPILED: LazyLock<Vec<Regex>> =
-    LazyLock::new(|| RULES.iter().map(|rule| Regex::new(rule.pattern).unwrap()).collect());
+/// A rule ready to run: one of `RULES`, or a rename read from the validator's effect and trigger
+/// tables.
+struct Compiled {
+    name: &'static str,
+    regex: Regex,
+    replacement: String,
+    note: String,
+}
+
+/// `RULES`, then the one-to-one renames of the validator's tables that no rule of `RULES` covers.
+static COMPILED: LazyLock<Vec<Compiled>> = LazyLock::new(|| {
+    let mut compiled: Vec<Compiled> = RULES
+        .iter()
+        .map(|rule| Compiled {
+            name: rule.name,
+            regex: Regex::new(rule.pattern).unwrap(),
+            replacement: rule.replacement.to_owned(),
+            note: rule.note.to_owned(),
+        })
+        .collect();
+    for rename in tiger_lib::table_renames() {
+        if RULES.iter().any(|rule| rule.name == rename.old) {
+            continue;
+        }
+        compiled.push(Compiled {
+            name: rename.old,
+            // Only as a key, like the hand-written renames.
+            regex: Regex::new(&format!(r"(^|[^\w:.$@]){}(\s*=)", regex::escape(rename.old)))
+                .unwrap(),
+            replacement: format!("${{1}}{}${{2}}", rename.new),
+            note: format!(
+                "the {} was removed in {}; the validator names {} as its replacement, so check its arguments",
+                rename.kind, rename.version, rename.new
+            ),
+        });
+    }
+    compiled
+});
 
 #[derive(Debug)]
 pub struct Request<'a> {
@@ -94,10 +131,10 @@ pub struct Edit {
     pub after: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct RuleCount {
     pub rule: &'static str,
-    pub note: &'static str,
+    pub note: String,
     /// The lines this rule changes.
     pub edits: usize,
 }
@@ -155,7 +192,7 @@ fn files(dir: &Path, base: &Path, found: &mut Vec<(String, std::path::PathBuf)>)
     }
 }
 
-/// The edits a mod needs to follow the renames in `RULES`.
+/// The edits a mod needs to follow the renames in `RULES` and in the validator's tables.
 ///
 /// # Errors
 /// If the mod folder is missing.
@@ -171,7 +208,7 @@ pub fn plan(req: &Request) -> Result<Report, String> {
     found.retain(|(rel, _)| filter.is_empty() || rel.contains(&filter));
     found.sort();
 
-    let mut counts = vec![0_usize; RULES.len()];
+    let mut counts = vec![0_usize; COMPILED.len()];
     let mut edits = Vec::new();
     let mut total = 0;
     for (rel, path) in &found {
@@ -183,12 +220,12 @@ pub fn plan(req: &Request) -> Result<Report, String> {
             // (start, end, replacement) of every match of every rule, outside quotes.
             let mut changes: Vec<(usize, usize, String)> = Vec::new();
             let mut hit = Vec::new();
-            for (n, (rule, regex)) in RULES.iter().zip(COMPILED.iter()).enumerate() {
+            for (n, rule) in COMPILED.iter().enumerate() {
                 let before = changes.len();
-                for caps in regex.captures_iter(&masked) {
+                for caps in rule.regex.captures_iter(&masked) {
                     let Some(whole) = caps.get(0) else { continue };
                     let mut replacement = String::new();
-                    caps.expand(rule.replacement, &mut replacement);
+                    caps.expand(&rule.replacement, &mut replacement);
                     changes.push((whole.start(), whole.end(), replacement));
                 }
                 if changes.len() > before {
@@ -224,10 +261,10 @@ pub fn plan(req: &Request) -> Result<Report, String> {
             }
         }
     }
-    let rules = RULES
+    let rules = COMPILED
         .iter()
         .zip(&counts)
-        .map(|(rule, edits)| RuleCount { rule: rule.name, note: rule.note, edits: *edits })
+        .map(|(rule, edits)| RuleCount { rule: rule.name, note: rule.note.clone(), edits: *edits })
         .collect();
     Ok(Report { files_scanned: found.len(), total_edits: total, rules, edits })
 }
@@ -269,9 +306,47 @@ mod tests {
         );
         assert_eq!(report.edits[0].rules.len(), 2);
         assert_eq!(report.edits[1].line, 3);
-        assert_eq!(report.rules.iter().map(|r| r.edits).collect::<Vec<_>>(), [1, 1, 0, 1, 1, 0, 1]);
+        assert_eq!(
+            report.rules.iter().take(RULES.len()).map(|r| r.edits).collect::<Vec<_>>(),
+            [1, 1, 0, 1, 1, 0, 1]
+        );
+        assert!(report.rules.iter().skip(RULES.len()).all(|r| r.edits == 0));
         let limited = plan(&Request { mod_dir: &tmp, path: "nothing", limit: 10 }).unwrap();
         assert_eq!(limited.total_edits, 0);
         assert!(plan(&Request { mod_dir: &tmp.join("nope"), path: "", limit: 1 }).is_err());
+    }
+
+    #[test]
+    fn proposes_the_renames_of_the_validator_tables() {
+        let tmp = TempDir::new();
+        let dir = tmp.join("events");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("a.txt"),
+            "e.1 = {\n\timmediate = { start_diarchy = regency scheme_freeze_days = 5 }\n\
+             \ttrigger = { has_holy_site_flag = x } # start_diarchy = no\n\
+             \tsave_scope_as = start_diarchy\n\
+             \tscope:start_diarchy = { recruit_courtier_x = yes }\n\
+             \tnum_active_accolades > 1\n}\n",
+        )
+        .unwrap();
+        let report = plan(&Request { mod_dir: &tmp, path: "", limit: 10 }).unwrap();
+        let afters: Vec<&str> = report.edits.iter().map(|e| e.after.as_str()).collect();
+        assert_eq!(
+            afters,
+            [
+                "immediate = { try_start_diarchy = regency scheme_freeze = 5 }",
+                "trigger = { has_holy_site_parameter = x } # start_diarchy = no",
+            ]
+        );
+        assert_eq!(report.edits[0].rules, ["scheme_freeze_days", "start_diarchy"]);
+        let diarchy = report.rules.iter().find(|r| r.rule == "start_diarchy").unwrap();
+        assert!(diarchy.note.contains("1.16") && diarchy.note.contains("try_start_diarchy"));
+        // A hand-written rule is not listed twice.
+        let names: Vec<&str> = report.rules.iter().map(|r| r.rule).collect();
+        let mut unique = names.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), names.len());
     }
 }

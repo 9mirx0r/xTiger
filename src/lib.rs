@@ -2,6 +2,7 @@
 //! The executables are small wrappers around the functions in this library that start and
 //! perform validation.
 
+pub use crate::ck3::tables::removed::{Rename, table_renames};
 pub use crate::config_load::validate_config_file;
 pub use crate::everything::Everything;
 pub use crate::fileset::FileKind;

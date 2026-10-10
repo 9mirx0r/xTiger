@@ -495,7 +495,7 @@ fn tools() -> Vec<Tool> {
         Tool {
             name: "xtiger_migrate",
             title: "Plan the renames for a newer game version",
-            description: "A dry run: list the mechanical edits that bring a mod written for an older CK3 version in line with 1.20, such as every_character to every_living_character, is_created to is_title_created, create_holy_order_effect to create_holy_order_accompanying_effect and has_doctrine = tenet_x to has_tenet. Each edit has the file, the line, the line as it is and as it would read. Nothing is written: make the edits yourself, then xtiger_validate again. Renames that depend on the surrounding script are not here; the validator explains those.",
+            description: "A dry run: list the mechanical edits that bring a mod written for an older CK3 version in line with 1.20, such as every_character to every_living_character, is_created to is_title_created, create_holy_order_effect to create_holy_order_accompanying_effect, has_doctrine = tenet_x to has_tenet, and each removed effect or trigger that the validator names a single replacement for, such as start_diarchy to try_start_diarchy. Each edit has the file, the line, the line as it is and as it would read. Nothing is written: make the edits yourself, then xtiger_validate again. Renames that depend on the surrounding script are not here; the validator explains those.",
             params: vec![
                 (
                     "mod_path",

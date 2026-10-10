@@ -54,7 +54,7 @@ static SCOPE_EFFECT_MAP: LazyLock<TigerHashMap<&'static str, (Scopes, Effect)>> 
 
 // LAST UPDATED CK3 VERSION 1.20.0.4
 // See `effects.log` from the game data dumps
-const SCOPE_EFFECT: &[(Scopes, &str, Effect)] = &[
+pub(crate) const SCOPE_EFFECT: &[(Scopes, &str, Effect)] = &[
     (Scopes::TravelPlan, "abort_travel_plan", Boolean),
     (Scopes::Character, "accept_activity_invite", Scope(Scopes::Activity)),
     (Scopes::Character, "accept_activity_invite_without_travel", Scope(Scopes::Activity)),
