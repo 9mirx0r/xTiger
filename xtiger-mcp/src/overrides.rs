@@ -191,9 +191,7 @@ fn contains_definition(text: &str, key: &str) -> bool {
 /// Whether a script folder contains a top-level definition with this exact key.
 pub(crate) fn has_definition(dir: &Path, key: &str) -> bool {
     walk(dir, dir).into_iter().any(|(_, path)| {
-        fs::read(path)
-            .map(|bytes| contains_definition(&String::from_utf8_lossy(&bytes), key))
-            .unwrap_or(false)
+        fs::read(path).is_ok_and(|bytes| contains_definition(&String::from_utf8_lossy(&bytes), key))
     })
 }
 
