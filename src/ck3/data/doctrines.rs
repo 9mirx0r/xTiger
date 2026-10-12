@@ -7,10 +7,11 @@ use crate::desc::validate_desc;
 use crate::everything::Everything;
 use crate::item::{Item, ItemLoader};
 use crate::modif::validate_modifs;
+use crate::report::{ErrorKey, err};
 use crate::scopes::Scopes;
 use crate::token::Token;
 use crate::tooltipped::Tooltipped;
-use crate::validator::Validator;
+use crate::validator::{Validator, ValueValidator};
 
 #[derive(Clone, Debug)]
 pub struct DoctrineGroup {}
@@ -76,7 +77,10 @@ impl DbKind for DoctrineGroup {
         let loca = format!("{key}_name");
         data.verify_exists_implied(Item::Localization, &loca, key);
 
-        data.verify_icon("NGameIcons|DOCTRINE_GROUP_TYPE_ICON_PATH", key, ".dds");
+        // CK3 does not require a group icon for the special category.
+        if !block.get_field_value("category").is_some_and(|category| category.is("special")) {
+            data.verify_icon("NGameIcons|DOCTRINE_GROUP_TYPE_ICON_PATH", key, ".dds");
+        }
 
         vd.field_item("category", Item::DoctrineCategory);
         vd.field_bool("main_rite");
@@ -176,18 +180,40 @@ impl DbKind for Doctrine {
             validate_modifs(block, data, ModifKinds::Character, vd);
         });
 
-        vd.field_validated_block("special_parameters", |block, data| {
-            let mut vd = Validator::new(block, data);
-            vd.field_validated_block("hostility_levels", |block, data| {
-                let mut vd = Validator::new(block, data);
-                for f in &["same_religion", "same_family", "unrelated"] {
-                    vd.field_choice(f, &["righteous", "astray", "hostile", "evil"]);
-                }
-            });
-            vd.unknown_fields(|_, _| {});
-        });
+        vd.field_validated_block("special_parameters", validate_special_parameters);
         vd.field_validated_block("traits", validate_traits);
     }
+}
+
+fn validate_special_parameters(block: &Block, data: &Everything) {
+    let mut vd = Validator::new(block, data);
+    let hostility_levels = &["righteous", "astray", "hostile", "evil"];
+    vd.field_validated_block("hostility_levels", |block, data| {
+        let mut vd = Validator::new(block, data);
+        for f in &["same_religion", "same_family", "unrelated"] {
+            vd.field_choice(f, hostility_levels);
+        }
+    });
+    vd.field_validated_block("hostility_level_override", |block, data| {
+        let mut vd = Validator::new(block, data);
+        vd.unknown_value_fields(|key, value| {
+            if !data.item_exists(Item::Doctrine, key.as_str())
+                && !data.item_exists(Item::Tenet, key.as_str())
+            {
+                let msg = format!("tenet or doctrine {key} not defined");
+                err(ErrorKey::MissingItem).msg(msg).loc(key).push();
+            }
+            ValueValidator::new(value, data).choice(hostility_levels);
+        });
+    });
+    vd.field_validated_block("parameter_opinion_override", |block, data| {
+        let mut vd = Validator::new(block, data);
+        vd.unknown_value_fields(|key, value| {
+            data.verify_exists(Item::DoctrineParameter, key);
+            value.expect_number();
+        });
+    });
+    vd.unknown_fields(|_, _| {});
 }
 
 fn validate_parameters(block: &Block, data: &Everything) {
@@ -271,10 +297,7 @@ impl DbKind for Tenet {
             let mut vd = Validator::new(block, data);
             vd.values();
         });
-        vd.field_validated_block("special_parameters", |block, data| {
-            let mut vd = Validator::new(block, data);
-            vd.unknown_fields(|_, _| {});
-        });
+        vd.field_validated_block("special_parameters", validate_special_parameters);
         vd.field_validated_block("traits", validate_traits);
     }
 }

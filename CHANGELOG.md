@@ -1,5 +1,34 @@
 # Changelog
 
+## xTiger 1.5.9 alpha
+
+Fixes all three doctrine and tenet validation problems reported in
+[issue #3](https://github.com/9mirx0r/xTiger/issues/3).
+
+### The validator
+
+- `hostility_level_override` checks that each referenced doctrine or tenet exists and that
+  its hostility level is `righteous`, `astray`, `hostile` or `evil`.
+- `parameter_opinion_override` checks that each referenced parameter is defined by a
+  doctrine or tenet and that its opinion value is numeric.
+- Both override maps receive the same checks in doctrines and tenets. Malformed entries
+  are reported at their source locations instead of silently accepted.
+- Doctrine groups with `category = special` no longer require a group icon. Other categories
+  retain the icon check. This removes 14 false-positive reports from the base game.
+
+### Validation
+
+- CK3 1.20.0.4 accepted valid doctrine and tenet references and the special group without an
+  icon. Typo controls produced native game errors.
+- All 146 library, integration and MCP tests passed, together with formatting and Clippy.
+- Vanilla gained no diagnostics. Two repeated runs produced byte-identical JSON output.
+
+### Thanks
+
+Thank you to [shalola_author](https://github.com/shalola-author) for finding and
+[reporting these bugs](https://github.com/9mirx0r/xTiger/issues/3), including the special-category
+icon requirement. We reproduced the reported problems and fixed all three in this release.
+
 ## xTiger 1.5.8 alpha
 
 Rite definitions in `common/religion/rite_types` now receive the missing checks for their

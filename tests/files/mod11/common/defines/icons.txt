@@ -1,0 +1,1 @@
+﻿NGameIcons = { DOCTRINE_GROUP_TYPE_ICON_PATH = "gfx/interface/icons/test" DOCTRINE_TYPE_ICON_PATH = "gfx/interface/icons/test" TENET_TYPE_ICON_PATH = "gfx/interface/icons/test" }

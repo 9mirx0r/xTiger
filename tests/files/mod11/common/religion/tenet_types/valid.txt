@@ -1,0 +1,23 @@
+﻿test_valid_tenet = {
+    icon = test_icon
+    parameters = { test_tenet_flag test_tenet_number = 2 }
+    special_parameters = {
+        hostility_levels = { same_religion = astray same_family = hostile unrelated = evil }
+        hostility_level_override = {
+            test_valid_doctrine = righteous
+            test_valid_tenet = astray
+            test_other_doctrine = hostile
+            test_other_tenet = evil
+        }
+        parameter_opinion_override = {
+            test_doctrine_flag = 10
+            test_tenet_flag = -10
+            test_doctrine_number = 0
+            test_tenet_number = 1.5
+        }
+        same_hof_hostility_override = righteous
+    }
+}
+test_other_tenet = {
+    icon = test_icon
+}

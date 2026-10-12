@@ -1,0 +1,17 @@
+﻿test_invalid_tenet = {
+    icon = test_icon
+    special_parameters = {
+        hostility_level_override = {
+            test_missing_doctrine_or_tenet = astray
+            test_valid_doctrine = test_bad_hostility
+            test_valid_tenet = test_bad_hostility
+            test_other_doctrine = { invalid_block = yes }
+        }
+        parameter_opinion_override = {
+            test_missing_parameter = 10
+            test_doctrine_flag = test_bad_number
+            test_tenet_flag = test_bad_number
+            test_doctrine_number = { invalid_block = yes }
+        }
+    }
+}

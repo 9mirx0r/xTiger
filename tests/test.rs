@@ -924,3 +924,64 @@ fn test_mod10_morpheme_localization_references() {
         assert_report_at(&reports, path, line, "morpheme format requires a nonempty rule name");
     }
 }
+
+#[test]
+fn test_mod11_special_parameter_references() {
+    let reports = check_mod_helper("mod11");
+    for kind in ["doctrine", "tenet"] {
+        let valid = format!("common/religion/{kind}_types/valid.txt");
+        let invalid = format!("common/religion/{kind}_types/invalid.txt");
+        let messages_for = |path: &str| -> Vec<&str> {
+            reports
+                .iter()
+                .filter(|(_, pointers)| pointers.iter().any(|p| p[0].loc.pathname() == path))
+                .map(|(meta, _)| meta.msg.as_str())
+                .collect()
+        };
+        assert!(messages_for(&valid).is_empty(), "{valid}: {:?}", messages_for(&valid));
+        for expected in [
+            "test_missing_doctrine_or_tenet",
+            "expected one of righteous, astray, hostile, evil",
+            "test_missing_parameter",
+            "expected number",
+            "unknown field `test_other_doctrine`",
+            "unknown field `test_doctrine_number`",
+        ] {
+            assert!(
+                messages_for(&invalid).iter().any(|message| message.contains(expected)),
+                "{invalid}: expected {expected:?}, got {:?}",
+                messages_for(&invalid)
+            );
+        }
+        let offset = u32::from(kind == "doctrine");
+        assert_report_at(&reports, &invalid, 5 + offset, "test_missing_doctrine_or_tenet");
+        assert_report_at(&reports, &invalid, 6 + offset, "expected one of");
+        assert_report_at(&reports, &invalid, 7 + offset, "expected one of");
+        assert_report_at(&reports, &invalid, 11 + offset, "test_missing_parameter");
+        assert_report_at(&reports, &invalid, 12 + offset, "expected number");
+        assert_report_at(&reports, &invalid, 13 + offset, "expected number");
+    }
+}
+
+#[test]
+fn test_mod11_special_group_icon() {
+    let reports = check_mod_helper("mod11");
+    let messages_for = |path: &str| -> Vec<&str> {
+        reports
+            .iter()
+            .filter(|(_, pointers)| pointers.iter().any(|p| p[0].loc.pathname() == path))
+            .map(|(meta, _)| meta.msg.as_str())
+            .collect()
+    };
+    let special = "common/religion/doctrine_group_types/special.txt";
+    assert!(messages_for(special).is_empty(), "{special}: {:?}", messages_for(special));
+    let main = "common/religion/doctrine_group_types/main.txt";
+    assert!(messages_for(main).iter().any(|m| m.contains("test_main_group.dds does not exist")));
+    let invalid = "common/religion/doctrine_group_types/invalid.txt";
+    assert!(messages_for(invalid).iter().any(|m| m.contains("test_missing_category")));
+    assert!(
+        messages_for(invalid)
+            .iter()
+            .any(|m| m.contains("test_bad_category_group.dds does not exist"))
+    );
+}
