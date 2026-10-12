@@ -1,0 +1,68 @@
+﻿test_holy_order_military = {
+ type = military
+ government = test_holy_order_government
+ title = d_test_holy_order
+ name = test_holy_order_scoped_name
+ coat_of_arms = test_holy_order_coa
+ men_at_arms = { test_holy_order_maa }
+ tenet = test_holy_order_tenet
+ trigger = {
+  always = yes
+  scope:founder = { age > 16 }
+  scope:leader = { age > 16 }
+  scope:province = { is_coastal = yes }
+ }
+ weight = {
+  value = 10
+  if = { limit = { scope:founder = { age > 30 } } add = 2 }
+ }
+ effect = {
+  reset_title_name = yes
+  scope:title = { reset_title_name = yes }
+  scope:founder = { add_gold = 1 }
+  scope:leader = { add_prestige = 1 }
+  scope:new_holy_order = { set_order_tenet = tenet:test_holy_order_tenet }
+  if = { limit = { scope:province = { is_coastal = yes } } scope:founder = { add_gold = 1 } }
+ }
+}
+test_holy_order_monastic = {
+ type = monastic
+ government = test_holy_order_government
+ name = test_holy_order_name
+ trigger = {}
+ weight = 1
+ effect = {}
+}
+test_holy_order_default_name = {
+ type = military
+ government = test_holy_order_government
+ weight = 1
+}
+test_holy_order_title_name = {
+ type = military
+ government = test_holy_order_government
+ title = d_test_holy_order
+}
+test_holy_order_empty_title_name = {
+ type = monastic
+ government = test_holy_order_government
+ title = d_test_holy_order
+ name = ""
+}
+test_holy_order_empty_default_name = {
+ type = monastic
+ government = test_holy_order_government
+ name = ""
+}
+test_holy_order_zero_weight = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ weight = 0
+}
+test_holy_order_negative_weight = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ weight = -1
+}

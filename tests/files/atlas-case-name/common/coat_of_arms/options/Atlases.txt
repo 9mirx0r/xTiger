@@ -1,0 +1,2 @@
+﻿atlas = { tile_size = { 32 32 } nr_of_tiles = 1 }
+test_case_atlas_field = yes

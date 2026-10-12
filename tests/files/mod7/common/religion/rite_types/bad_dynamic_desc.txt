@@ -1,0 +1,4 @@
+﻿test_bad_dynamic_desc_rite = {
+	name = test_rite_name
+	desc = { triggered_desc = { trigger = { test_rite_unknown_trigger = yes } desc = test_rite_missing_dynamic_desc } }
+}

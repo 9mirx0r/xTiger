@@ -1,0 +1,5 @@
+﻿atlas = {
+    tile_size = { 230 230 }
+    tile_size = { 88 88 }
+    nr_of_tiles = 64
+}

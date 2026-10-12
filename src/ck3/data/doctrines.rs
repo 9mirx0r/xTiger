@@ -1,4 +1,4 @@
-use crate::block::Block;
+use crate::block::{BV, Block};
 use crate::ck3::modif::ModifKinds;
 use crate::ck3::validate::validate_traits;
 use crate::context::ScopeContext;
@@ -15,6 +15,8 @@ use crate::validator::Validator;
 #[derive(Clone, Debug)]
 pub struct DoctrineGroup {}
 #[derive(Clone, Debug)]
+pub struct DoctrineCategory {}
+#[derive(Clone, Debug)]
 pub struct Doctrine {}
 /// Loaded from `common/religion/tenet_types` (1.20+)
 #[derive(Clone, Debug)]
@@ -22,6 +24,9 @@ pub struct Tenet {}
 
 inventory::submit! {
     ItemLoader::Normal(Item::DoctrineGroup, DoctrineGroup::add)
+}
+inventory::submit! {
+    ItemLoader::Normal(Item::DoctrineCategory, DoctrineCategory::add)
 }
 inventory::submit! {
     ItemLoader::Normal(Item::Doctrine, Doctrine::add)
@@ -42,6 +47,22 @@ impl DoctrineGroup {
         db.add(Item::DoctrineGroup, key, block, Box::new(Self {}));
     }
 }
+
+impl DoctrineCategory {
+    pub fn add(db: &mut Db, key: Token, block: Block) {
+        db.add(Item::DoctrineCategory, key, block, Box::new(Self {}));
+    }
+}
+
+impl DbKind for DoctrineCategory {
+    fn validate(&self, key: &Token, block: &Block, data: &Everything) {
+        data.verify_exists_implied(Item::Localization, &format!("doctrine_category_{key}"), key);
+        let mut vd = Validator::new(block, data);
+        vd.field_bool("visible");
+        vd.field_integer("sort_order");
+        vd.field_list("gui_tags");
+    }
+}
 impl Doctrine {
     pub fn add(db: &mut Db, key: Token, block: Block) {
         db.add(Item::Doctrine, key, block, Box::new(Self {}));
@@ -57,7 +78,7 @@ impl DbKind for DoctrineGroup {
 
         data.verify_icon("NGameIcons|DOCTRINE_GROUP_TYPE_ICON_PATH", key, ".dds");
 
-        vd.field_value("category");
+        vd.field_item("category", Item::DoctrineCategory);
         vd.field_bool("main_rite");
         vd.field_choice("divergence", &["category", "sequence"]);
         vd.field_choice("doctrine_lock", &["none", "rite", "faith", "religion"]);
@@ -208,10 +229,8 @@ impl DbKind for Tenet {
         sc.define_list("selected_tenets", Scopes::Tenet, key);
         sc.define_list("selected_doctrines", Scopes::Doctrine.union(Scopes::Tenet), key);
 
-        if let Some(icon) = vd.field_value("icon") {
-            data.verify_icon("NGameIcons|TENET_TYPE_ICON_PATH", icon, ".dds");
-        } else {
-            vd.field_block("icon"); // triggered icons
+        let mut icon_sc = ScopeContext::new(Scopes::Faith, key);
+        if !vd.multi_field_validated_sc("icon", &mut icon_sc, validate_tenet_icon) {
             data.verify_icon("NGameIcons|TENET_TYPE_ICON_PATH", key, ".dds");
         }
 
@@ -257,5 +276,19 @@ impl DbKind for Tenet {
             vd.unknown_fields(|_, _| {});
         });
         vd.field_validated_block("traits", validate_traits);
+    }
+}
+
+fn validate_tenet_icon(bv: &BV, data: &Everything, sc: &mut ScopeContext) {
+    match bv {
+        BV::Value(icon) => {
+            data.verify_icon("NGameIcons|TENET_TYPE_ICON_PATH", icon, ".dds");
+        }
+        BV::Block(block) => {
+            let mut vd = Validator::new(block, data);
+            vd.req_field("reference");
+            vd.field_trigger("trigger", Tooltipped::No, sc);
+            vd.field_icon("reference", "NGameIcons|TENET_TYPE_ICON_PATH", ".dds");
+        }
     }
 }

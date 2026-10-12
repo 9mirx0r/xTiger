@@ -96,8 +96,15 @@ pub struct FileEntry {
 }
 
 impl FileEntry {
-    pub fn new(path: PathBuf, stage: FileStage, kind: FileKind, fullpath: PathBuf) -> Self {
+    pub fn new(mut path: PathBuf, stage: FileStage, kind: FileKind, fullpath: PathBuf) -> Self {
         assert!(path.file_name().is_some());
+        // CK3 resolves atlas filename case variants to the same canonical file. Normalize the
+        // virtual path before override selection, while keeping the physical path for reads.
+        if path.parent() == Some(Path::new("common/coat_of_arms/options"))
+            && path.file_name().is_some_and(|name| name.eq_ignore_ascii_case("atlases.txt"))
+        {
+            path.set_file_name("atlases.txt");
+        }
         Self { path, stage, kind, idx: None, fullpath }
     }
 
@@ -601,6 +608,34 @@ impl Fileset {
         // Check the files in directories in common/ to make sure they are in known directories
         let mut warned: Vec<&Path> = Vec::new();
         'outer: for entry in &self.ordered_files {
+            if entry.path.starts_with("common/coat_of_arms/options")
+                && entry
+                    .path
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
+                && entry.path != Path::new("common/coat_of_arms/options/atlases.txt")
+            {
+                // Jomini ships a comment-only readme here; active content in ignored files still
+                // needs a filename diagnostic, including a readme containing atlas definitions.
+                if entry.filename().eq_ignore_ascii_case("readme.txt")
+                    && std::fs::read_to_string(entry.fullpath()).is_ok_and(|content| {
+                        let content = content.strip_prefix('\u{feff}').unwrap_or(&content);
+                        content.lines().all(|line| {
+                            let line = line.trim();
+                            line.is_empty() || line.starts_with('#')
+                        })
+                    })
+                {
+                    continue;
+                }
+                err(ErrorKey::Filename)
+                    .msg("CK3 only loads coat of arms options from common/coat_of_arms/options/atlases.txt")
+                    .info("Move atlas definitions to that file; other filenames and subfolders are ignored.")
+                    .loc(entry)
+                    .push();
+                continue;
+            }
             if !entry.path.to_string_lossy().ends_with(".txt") {
                 continue;
             }

@@ -1,0 +1,4 @@
+﻿test_bad_desc_shape_rite = {
+	name = test_rite_name
+	desc = { test_rite_bad_desc_field = yes }
+}

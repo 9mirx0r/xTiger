@@ -1,0 +1,4 @@
+﻿test_creation_icon = {
+ custom_faith_icons = { test_rite }
+ trigger = { scope:founder = { age >= 16 } scope:faith = { fervor > 0 } is_inactive_rite = no }
+}

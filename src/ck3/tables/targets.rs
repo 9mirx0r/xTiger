@@ -509,7 +509,7 @@ const SCOPE_PREFIX: &[(Scopes, &str, Scopes, ArgumentValue)] = {
         (Scopes::None, "holy_site_type", Scopes::HolySiteType, Item(Item::HolySite)),
         (Scopes::None, "rite", Scopes::Rite, Item(Item::Rite)),
         (Scopes::None, "rite_type", Scopes::RiteType, Item(Item::Rite)),
-        (Scopes::None, "tenet", Scopes::Tenet, UncheckedValue),
+        (Scopes::None, "tenet", Scopes::Tenet, Item(Item::Tenet)),
         (Scopes::Character, "puppet", Scopes::Character, UncheckedValue),
         (Scopes::Activity, "activity_doctrine", Scopes::Doctrine, UncheckedValue),
         (Scopes::Activity, "activity_tenet", Scopes::Tenet, UncheckedValue),

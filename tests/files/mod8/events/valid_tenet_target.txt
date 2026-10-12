@@ -1,0 +1,12 @@
+﻿namespace = audit_tenet_target
+
+audit_tenet_target.0001 = {
+ type = character_event
+ hidden = yes
+ immediate = {
+  tenet:test_valid_dynamic_icon = { save_scope_as = audit_tenet }
+  if = { limit = { knows_tenet = test_valid_dynamic_icon } debug_log = AUDIT_BARE_TENET }
+  if = { limit = { knows_tenet = tenet:test_valid_dynamic_icon } debug_log = AUDIT_TENET_TARGET }
+  if = { limit = { knows_tenet = scope:audit_tenet } debug_log = AUDIT_SAVED_TENET }
+ }
+}

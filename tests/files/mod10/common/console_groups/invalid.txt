@@ -1,0 +1,3 @@
+﻿TestConsoleFields = { command = "gold 1" }
+TestConsoleNested = { { gold 1 } }
+TestConsoleShape = 42

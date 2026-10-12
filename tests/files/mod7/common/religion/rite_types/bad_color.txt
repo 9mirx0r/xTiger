@@ -1,0 +1,5 @@
+﻿test_bad_color_rite = {
+	name = test_rite_name
+	desc = test_rite_desc
+	color = { 0.1 banana 0.3 }
+}

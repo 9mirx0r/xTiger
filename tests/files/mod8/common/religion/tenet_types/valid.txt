@@ -1,0 +1,6 @@
+﻿test_valid_dynamic_icon = {
+ icon = { trigger = { fervor > 0 } reference = test_rite }
+ icon = test_rite
+ name = test_rite_creation_name
+ desc = test_description
+}

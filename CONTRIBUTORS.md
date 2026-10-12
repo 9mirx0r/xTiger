@@ -25,3 +25,4 @@ These are the people that made Tiger what it is.
 
 ## xTiger
 * Qubis (CK3 1.20 update, xTiger app, MCP server)
+* shalola-author (reported missing validation in rite types)

@@ -1,0 +1,5 @@
+﻿test_missing_founder_rite = {
+	name = test_rite_name
+	desc = test_rite_desc
+	founder = k_test_rite_missing_founder
+}

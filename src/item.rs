@@ -97,7 +97,9 @@ impl ItemExt for Item {
             | Item::EventTransition
             | Item::Flavorization
             | Item::GraphicalFaith
+            | Item::ModifierIcon
             | Item::ModifierFormat
+            | Item::MorphemeStripRule
             | Item::MottoInsert
             | Item::Motto
             | Item::Music

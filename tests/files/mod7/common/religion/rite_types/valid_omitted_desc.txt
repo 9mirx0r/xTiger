@@ -1,0 +1,3 @@
+﻿test_valid_omitted_desc_rite = {
+	name = test_rite_name
+}

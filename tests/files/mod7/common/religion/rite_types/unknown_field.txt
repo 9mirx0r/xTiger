@@ -1,0 +1,5 @@
+﻿test_unknown_field_rite = {
+	name = test_rite_name
+	desc = test_rite_desc
+	test_rite_unknown_field = yes
+}

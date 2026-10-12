@@ -1,0 +1,4 @@
+﻿test_wrong_scope_rite = {
+	name = { triggered_desc = { trigger = { is_ai = yes } desc = test_rite_name } }
+	desc = test_rite_desc
+}

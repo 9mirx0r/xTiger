@@ -1,0 +1,2 @@
+﻿test_modifier_unclosed = {
+    positive = "gfx/interface/icons/modifiers/test_modifier.dds"

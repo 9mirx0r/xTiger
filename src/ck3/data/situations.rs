@@ -83,6 +83,7 @@ impl DbKind for Situation {
                 if let Some(block) = block.get_field_block("parameters") {
                     for (key, _) in block.iter_assignments() {
                         db.add_flag(Item::SituationPhaseParameter, key.clone());
+                        db.add_flag(Item::SituationParameter, key.clone());
                     }
                 }
                 if let Some(block) = block.get_field_block("modifier_sets") {
@@ -94,6 +95,8 @@ impl DbKind for Situation {
                                         Item::SituationParticipantGroupParameter,
                                         key.clone(),
                                     );
+                                    // Phase triggers also accept parameters declared in modifier sets.
+                                    db.add_flag(Item::SituationParameter, key.clone());
                                 }
                             }
                         }

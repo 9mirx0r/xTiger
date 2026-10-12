@@ -1,0 +1,11 @@
+﻿l_english:
+ test_rite_name:0 "Test rite"
+ test_rite_name_adj:0 "Test adjective"
+ test_rite_name_adherent:0 "Test adherent"
+ test_rite_name_adherent_plural:0 "Test adherents"
+ test_rite_desc:0 "Test description"
+ test_valid_defaults_rite:0 "Default rite"
+ test_valid_defaults_rite_adj:0 "Default adjective"
+ test_valid_defaults_rite_adherent:0 "Default adherent"
+ test_valid_defaults_rite_adherent_plural:0 "Default adherents"
+ test_valid_defaults_rite_desc:0 "Default description"

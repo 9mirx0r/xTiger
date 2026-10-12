@@ -1,0 +1,10 @@
+﻿test_details_faith = {
+ faith_details = {
+  religion = test_missing_religion
+  color = { 0.5 0.5 0.5 }
+  religious_headd = d_test_title
+  HighGodName = test_missing_god_localization
+  HighGodName2 = { test_existing_god test_missing_second_god }
+ }
+ clerical_elector_titles = { d_test_missing_elector }
+}

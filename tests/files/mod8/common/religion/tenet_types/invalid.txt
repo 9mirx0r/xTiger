@@ -1,0 +1,15 @@
+﻿test_invalid_dynamic_icon = {
+ icon = { trigger = { test_unknown_tenet_trigger = yes } reference = test_missing_tenet_icon test_unknown_tenet_field = yes }
+ name = test_rite_creation_name
+ desc = test_description
+}
+test_wrong_scope_icon = {
+ icon = { trigger = { age >= 16 } reference = test_rite }
+ name = test_rite_creation_name
+ desc = test_description
+}
+test_missing_icon_reference = {
+ icon = { trigger = { always = yes } }
+ name = test_rite_creation_name
+ desc = test_description
+}

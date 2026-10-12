@@ -1,0 +1,5 @@
+﻿test_invalid_creation_icon = {
+ custom_faith_icons = { test_missing_creation_icon }
+ trigger = { test_unknown_icon_trigger = yes }
+ test_unknown_icon_field = yes
+}

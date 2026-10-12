@@ -1,0 +1,3 @@
+﻿test_missing_default_name_rite = {
+	desc = test_rite_desc
+}

@@ -3,6 +3,7 @@ use crate::ck3::tables::misc::CUSTOM_RELIGION_LOCAS;
 use crate::ck3::validate::validate_traits;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
+use crate::desc::{validate_desc, validate_desc_map};
 use crate::everything::Everything;
 use crate::fileset::FileKind;
 use crate::helpers::TigerHashMap;
@@ -173,6 +174,10 @@ fn validate_doctrines(iname: &str, data: &Everything, vd: &mut Validator) {
 
 fn validate_localization(block: &Block, data: &Everything) {
     let mut vd = Validator::new(block, data);
+    validate_localization_fields(&mut vd);
+}
+
+fn validate_localization_fields(vd: &mut Validator) {
     for field in CUSTOM_RELIGION_LOCAS {
         vd.field_validated(field, |bv, data| match bv {
             BV::Value(token) => data.verify_exists(Item::Localization, token),
@@ -309,8 +314,7 @@ impl DbKind for Faith {
             vd.field_item("head_of_rite", Item::Title);
             vd.field_item("theocracy_government_type", Item::GovernmentType);
             vd.field_item("theocracy_lease_contract_type", Item::LeaseContract);
-            // The rest are localization-like custom values (HighGodName etc.)
-            vd.unknown_value_fields(|_, _| ());
+            validate_localization_fields(&mut vd);
         });
 
         vd.field_item("origin", Item::Faith);
@@ -321,7 +325,7 @@ impl DbKind for Faith {
         vd.field_item("main_rite", Item::Rite);
         vd.field_list_items("cultures", Item::Culture);
         vd.field_bool("historical");
-        vd.field_list("clerical_elector_titles"); // TODO
+        vd.field_list_items("clerical_elector_titles", Item::Title);
         vd.multi_field_validated_block("tenet_selection_pair", |block, data| {
             let mut vd = Validator::new(block, data);
             vd.field_item("requires_dlc_flag", Item::DlcFeature);
@@ -369,12 +373,17 @@ impl Rite {
 impl DbKind for Rite {
     fn validate(&self, key: &Token, block: &Block, data: &Everything) {
         let mut vd = Validator::new(block, data);
-        if !block.has_key("name") {
-            data.verify_exists(Item::Localization, key);
+        let mut name_sc = ScopeContext::new(Scopes::Rite, key);
+        if !vd.field_validated_sc("name", &mut name_sc, validate_rite_name) {
+            validate_rite_name_key(key, data, &mut name_sc);
         }
-        vd.field("name"); // TODO: dynamic desc
-        vd.field("desc"); // TODO: dynamic desc
-        vd.field_value("icon");
+        let mut desc_sc = ScopeContext::new(Scopes::Rite, key);
+        if !vd.field_validated_sc("desc", &mut desc_sc, validate_desc) {
+            let loca = format!("{key}_desc");
+            // CK3 accepts an omitted description even if the default key does not exist.
+            data.validate_localization_sc(&loca, &mut desc_sc);
+        }
+        vd.field_icon("icon", "NGameIcons|DYNAMIC_RITE_ICON_PATH", ".dds");
         vd.field_validated("color", validate_possibly_named_color);
         vd.field_item("founder", Item::Title);
         vd.field_item("faith", Item::Faith);
@@ -390,6 +399,76 @@ impl DbKind for Rite {
             vd.field_item("fallback_tenet", Item::Tenet);
         });
         vd.field_validated_block("localization", validate_localization);
+    }
+}
+
+fn validate_rite_name_key(key: &Token, data: &Everything, sc: &mut ScopeContext) {
+    data.verify_exists(Item::Localization, key);
+    data.validate_localization_sc(key.as_str(), sc);
+    for suffix in ["_adj", "_adherent", "_adherent_plural"] {
+        let derived = format!("{key}{suffix}");
+        data.verify_exists_implied(Item::Localization, &derived, key);
+        data.validate_localization_sc(&derived, sc);
+    }
+}
+
+fn validate_rite_name(bv: &BV, data: &Everything, sc: &mut ScopeContext) {
+    validate_desc_map(bv, data, sc, validate_rite_name_key);
+}
+
+fn rite_creation_context(key: &Token) -> ScopeContext {
+    let mut sc = ScopeContext::new(Scopes::Rite, key);
+    sc.define_name("founder", Scopes::Character, key);
+    sc.define_name("faith", Scopes::Faith, key);
+    sc
+}
+
+#[derive(Clone, Debug)]
+pub struct RiteName {}
+
+inventory::submit! {
+    ItemLoader::Normal(Item::RiteName, RiteName::add)
+}
+
+impl RiteName {
+    pub fn add(db: &mut Db, key: Token, block: Block) {
+        db.add(Item::RiteName, key, block, Box::new(Self {}));
+    }
+}
+
+impl DbKind for RiteName {
+    fn validate(&self, key: &Token, block: &Block, data: &Everything) {
+        let mut vd = Validator::new(block, data);
+        let mut sc = rite_creation_context(key);
+        if !vd.field_validated_sc("name", &mut sc, validate_rite_name) {
+            // CK3 1.20 uses the key itself, despite the documented `_name` suffix.
+            validate_rite_name_key(key, data, &mut sc);
+        }
+        vd.field_trigger("trigger", Tooltipped::No, &mut sc);
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RiteIcon {}
+
+inventory::submit! {
+    ItemLoader::Normal(Item::RiteIcon, RiteIcon::add)
+}
+
+impl RiteIcon {
+    pub fn add(db: &mut Db, key: Token, block: Block) {
+        db.add(Item::RiteIcon, key, block, Box::new(Self {}));
+    }
+}
+
+impl DbKind for RiteIcon {
+    fn validate(&self, key: &Token, block: &Block, data: &Everything) {
+        let mut vd = Validator::new(block, data);
+        let mut sc = rite_creation_context(key);
+        vd.field_validated_list("custom_faith_icons", |icon, data| {
+            data.verify_icon("NGameIcons|DYNAMIC_RITE_ICON_PATH", icon, ".dds");
+        });
+        vd.field_trigger("trigger", Tooltipped::No, &mut sc);
     }
 }
 

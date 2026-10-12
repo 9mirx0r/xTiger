@@ -1,0 +1,2 @@
+﻿test_ai_goal = {}
+test_ai_other_goal = { }

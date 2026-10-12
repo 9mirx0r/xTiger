@@ -221,14 +221,14 @@ fn kill_tree(child: &mut Child) {
 
 /// Why a game run counts as failed rather than as a result, if it does. `code` is the script's
 /// exit code (`None`: it was stopped), `report` whether it got as far as writing its report.
-/// Commands the game never logged do not fail a run; they are listed in the report.
-/// Exit code 2 of `ck3-run.ps1` means a mod was not mounted by the game.
+/// Exit code 2 means a mod was not mounted; 3 means a requested command was not confirmed.
 fn failure_lead(code: Option<i32>, report: bool) -> Option<&'static str> {
     match (code, report) {
-        (Some(0), _) => None,
+        (Some(0), true) => None,
         (None, _) => Some("The run did not finish."),
         (Some(_), false) => Some("The run stopped before it could test anything."),
         (Some(2), true) => Some("A mod was not loaded by the game, so the run did not test it."),
+        (Some(3), true) => Some("The game did not confirm every requested console command."),
         (Some(_), true) => Some("The run failed."),
     }
 }
@@ -317,6 +317,42 @@ pub struct RunGame<'a> {
     pub typing: &'a str,
 }
 
+const MAX_CONSOLE_UNITS: usize = 255;
+
+fn validate_commands(commands: &[String]) -> Result<(), String> {
+    for (index, command) in commands.iter().enumerate() {
+        let number = index + 1;
+        if command.trim().is_empty() || command.chars().any(char::is_control) {
+            return Err(format!(
+                "Console command {number} must be one non-empty line without control characters."
+            ));
+        }
+        let length = command.encode_utf16().count();
+        if length > MAX_CONSOLE_UNITS {
+            return Err(format!(
+                "Console command {number} has {length} UTF-16 code units; CK3 accepts at most {MAX_CONSOLE_UNITS}. Split it into shorter commands."
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_bookmark(game: &Path, mods: &[PathBuf], bookmark: &str) -> Result<(), String> {
+    let relative = "common/bookmarks/bookmarks";
+    let exists = crate::overrides::has_definition(&game.join("game").join(relative), bookmark)
+        || mods
+            .iter()
+            .filter_map(|file| crate::mods::describe(file))
+            .any(|info| crate::overrides::has_definition(&info.dir.join(relative), bookmark));
+    if exists {
+        Ok(())
+    } else {
+        Err(format!(
+            "Bookmark {bookmark:?} was not found in CK3 or the requested mods. Use a bookmark key such as bm_867_carolingians, rather than a date."
+        ))
+    }
+}
+
 /// Start CK3, load a game, type the commands, and report. Returns the report and the
 /// screenshot, if one was taken.
 pub fn run_game(
@@ -325,6 +361,8 @@ pub fn run_game(
     cancelled: &dyn Fn() -> bool,
 ) -> Result<(String, Option<PathBuf>), String> {
     let game = loc.require_game()?;
+    validate_commands(run.commands)?;
+    validate_bookmark(game, run.mods, run.bookmark)?;
     if !["unicode", "scancode"].contains(&run.typing) {
         return Err("typing must be unicode or scancode".to_owned());
     }
@@ -631,12 +669,60 @@ mod tests {
     #[test]
     fn only_a_clean_exit_is_a_result() {
         assert_eq!(failure_lead(Some(0), true), None);
-        assert_eq!(failure_lead(Some(0), false), None);
+        assert!(failure_lead(Some(0), false).unwrap().contains("before it could test"));
         assert!(failure_lead(None, false).unwrap().contains("did not finish"));
         assert!(failure_lead(Some(1), false).unwrap().contains("before it could test"));
         assert!(failure_lead(Some(1), true).unwrap().contains("failed"));
         // A mod the game did not mount (exit 2) is a failed run too.
         assert!(failure_lead(Some(2), true).unwrap().contains("not loaded"));
+        assert!(failure_lead(Some(3), true).unwrap().contains("every requested"));
+    }
+
+    #[test]
+    fn console_preflight_prevents_truncation_and_command_splitting() {
+        assert!(validate_commands(&[]).is_ok());
+        assert!(validate_commands(&["a".repeat(255)]).is_ok());
+        assert!(validate_commands(&["a".repeat(256)]).unwrap_err().contains("256"));
+        assert!(validate_commands(&["\u{1f600}".repeat(128)]).unwrap_err().contains("256"));
+        for command in ["", "  ", "gold 1\ngold 2", "gold\r1", "gold\t1", "gold\0"] {
+            assert!(validate_commands(&[command.to_owned()]).is_err(), "{command:?}");
+        }
+        assert!(
+            validate_commands(&["gold 1".to_owned(), "a".repeat(256)])
+                .unwrap_err()
+                .contains("command 2")
+        );
+    }
+
+    #[test]
+    fn bookmark_preflight_checks_exact_keys_in_game_and_mods() {
+        let tmp = TempDir::new();
+        let game = tmp.join("install");
+        let bookmarks = game.join("game/common/bookmarks/bookmarks");
+        fs::create_dir_all(&bookmarks).unwrap();
+        fs::write(
+            bookmarks.join("base.txt"),
+            concat!(
+                "\u{feff}# bm_comment = {}\n",
+                "bm_real = { nested = { } text = \"bm_string = { } # \\\"\" } bm_compact = {}\n",
+                "\"bm_quoted\" = {}\n",
+                "bm_multiline\n = # bm_inline_comment = {}\n { }\n",
+            ),
+        )
+        .unwrap();
+        for bookmark in ["bm_real", "bm_compact", "bm_quoted", "bm_multiline"] {
+            assert!(validate_bookmark(&game, &[], bookmark).is_ok(), "{bookmark}");
+        }
+        for missing in
+            ["867.1.1", "bm_comment", "bm_string", "bm_inline_comment", "nested", "bm_re"]
+        {
+            assert!(validate_bookmark(&game, &[], missing).is_err());
+        }
+        let mod_dir = tmp.join("modded");
+        fs::create_dir_all(mod_dir.join("common/bookmarks/bookmarks")).unwrap();
+        fs::write(mod_dir.join("descriptor.mod"), "name=\"Bookmark test\"\n").unwrap();
+        fs::write(mod_dir.join("common/bookmarks/bookmarks/mod.txt"), "bm_mod = {}\n").unwrap();
+        assert!(validate_bookmark(&game, &[mod_dir.join("descriptor.mod")], "bm_mod").is_ok());
     }
 
     #[test]

@@ -1,0 +1,73 @@
+﻿namespace = audit_holy_order_type_invalid
+
+audit_holy_order_type_invalid.0001 = {
+ type = character_event
+ hidden = yes
+ immediate = {
+  create_holy_order = {
+   leader = root
+   founder = root
+   capital = root.capital_barony
+   holy_order_type = test_missing_holy_order_type
+  }
+ }
+}
+audit_holy_order_type_invalid.0002 = {
+ type = character_event
+ hidden = yes
+ immediate = {
+  holy_order = { set_order_rite = test_bare_rite_target }
+ }
+}
+
+audit_holy_order_type_invalid.0003 = {
+ type = character_event
+ hidden = yes
+ immediate = {
+  create_holy_order = {
+   leader = root
+   founder = root
+   capital = root.capital_barony
+   random_holy_order_type = any
+  }
+ }
+}
+
+audit_holy_order_type_invalid.0004 = {
+ type = character_event
+ hidden = yes
+ immediate = {
+  create_holy_order = {
+   leader = root
+   founder = root
+   capital = root.capital_barony
+   random_holy_order_type = mendicant
+  }
+ }
+}
+
+audit_holy_order_type_invalid.0005 = {
+ type = character_event
+ hidden = yes
+ immediate = {
+  create_holy_order = {
+   leader = root
+   founder = root
+   capital = root.capital_barony
+   random_holy_order_type = religious
+  }
+ }
+}
+
+audit_holy_order_type_invalid.0006 = {
+ type = character_event
+ hidden = yes
+ immediate = {
+  create_holy_order = {
+   leader = root
+   founder = root
+   capital = root.capital_barony
+   random_holy_order_type = test_invalid_order_selector
+  }
+ }
+}

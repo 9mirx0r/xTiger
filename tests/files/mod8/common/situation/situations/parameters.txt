@@ -1,0 +1,14 @@
+﻿test_parameter_situation = {
+ sub_regions = { test_region = {} }
+ participant_groups = { test_group = {} }
+ phases = {
+  test_phase = {
+   parameters = { test_phase_parameter = yes }
+   modifier_sets = {
+    test_modifiers = {
+     test_group = { parameters = { test_group_parameter = yes } }
+    }
+   }
+  }
+ }
+}

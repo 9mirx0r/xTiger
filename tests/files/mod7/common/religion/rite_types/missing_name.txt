@@ -1,0 +1,4 @@
+﻿test_missing_name_rite = {
+	name = test_rite_missing_name
+	desc = test_rite_desc
+}

@@ -58,6 +58,8 @@ impl core::ops::IndexMut<Language> for Languages {
 pub struct Localization {
     /// Which languages to check, according to the config file.
     check_langs: BitArr!(for Language::COUNT, in u16),
+    /// An explicit `check` selection is validated even without localization files in the mod.
+    explicit_langs: BitArr!(for Language::COUNT, in u16),
     /// Which languages also actually exist in the mod.
     /// This is used to not warn about missing loca when a mod doesn't have the language at all.
     /// (This saves them the effort of configuring `check_langs`).
@@ -122,6 +124,22 @@ fn is_builtin_macro<S: Borrow<str>>(s: S) -> bool {
     BUILTIN_MACROS_CK3.contains(&s)
 }
 
+/// Validate the documented string formats without interpreting numeric formatters such as V:roman.
+fn validate_morpheme_format(format: &Token, data: &Everything) {
+    if let Some((flags, rule)) = format.split_once(':')
+        && matches!(flags.as_str(), "" | "U")
+    {
+        if rule.as_str().is_empty() {
+            warn(ErrorKey::Localization)
+                .msg("morpheme format requires a nonempty rule name")
+                .loc(format)
+                .push();
+        } else {
+            data.verify_exists(Item::MorphemeStripRule, &rule);
+        }
+    }
+}
+
 /// One parsed key: value line from the localization values.
 #[derive(Debug)]
 pub struct LocaEntry {
@@ -181,7 +199,10 @@ impl LocaEntry {
             for macrovalue in v {
                 match macrovalue {
                     MacroValue::Text(token) => vec.push(token.clone().linked(link)),
-                    MacroValue::Keyword(keyword) => {
+                    MacroValue::Keyword(keyword, format) => {
+                        if let Some(format) = format {
+                            validate_morpheme_format(format, data);
+                        }
                         if let Some(entry) = from.get(keyword.as_str()) {
                             entry.used.store(true, Relaxed);
                             entry.validated.store(true, Relaxed);
@@ -262,8 +283,8 @@ pub enum LocaValue {
 #[derive(Clone, Debug)]
 pub enum MacroValue {
     Text(Token),
-    // The formatting is not stored in the enum because it's not validated.
-    Keyword(Token),
+    // Preserve the formatting token to validate morpheme references before expansion.
+    Keyword(Token, Option<Token>),
 }
 
 fn get_file_lang(filename: &OsStr) -> Option<Language> {
@@ -278,7 +299,10 @@ fn get_file_lang(filename: &OsStr) -> Option<Language> {
 
 impl Localization {
     fn iter_lang(&self) -> impl Iterator<Item = Language> {
-        Language::iter().filter(|i| self.mod_langs[i.to_idx()])
+        Language::iter().filter(|i| {
+            self.check_langs[i.to_idx()]
+                && (self.mod_langs[i.to_idx()] || self.explicit_langs[i.to_idx()])
+        })
     }
 
     pub fn exists(&self, key: &str) -> bool {
@@ -480,6 +504,9 @@ impl Localization {
             }
             // TODO: validate the formatting codes
             LocaValue::Code(chain, format) => {
+                if let Some(format) = format {
+                    validate_morpheme_format(format, data);
+                }
                 // |E is the formatting used for game concepts in ck3
                 if let Some(format) = format
                     && (format.as_str().contains('E') || format.as_str().contains('e'))
@@ -723,6 +750,8 @@ impl FileHandler<(Language, Vec<LocaEntry>)> for Localization {
                 }
             }
             self.check_langs = langs;
+            self.explicit_langs =
+                if check.is_empty() { bitarr![u16, Lsb0; 0; Language::COUNT] } else { langs };
         }
     }
 
@@ -820,6 +849,7 @@ impl Default for Localization {
     fn default() -> Self {
         Localization {
             check_langs: bitarr![u16, Lsb0; 1; Language::COUNT],
+            explicit_langs: bitarr![u16, Lsb0; 0; Language::COUNT],
             mod_langs: bitarr![u16, Lsb0; 0; Language::COUNT],
             locas: Languages(std::array::from_fn(|_| TigerHashMap::default())),
         }

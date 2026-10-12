@@ -1,0 +1,5 @@
+﻿test_valid_simple_rite = {
+	name = test_rite_name
+	desc = test_rite_desc
+	icon = test_rite
+}

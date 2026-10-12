@@ -281,17 +281,22 @@ fn tools() -> Vec<Tool> {
                           my_mod.0001\" or \"effect add_gold = 100\". The game starts as `play` (a title key) \
                           from `bookmark`. Unless keep_open is set, the game is closed afterwards. Returns which \
                           commands were sent, the deduplicated error.log, relevant game.log lines and a \
-                          screenshot. A run that tested nothing (stopped, failed, or a mod the game did not \
+                          screenshot. Every requested command must be confirmed in debug.log. A run that tested nothing (stopped, failed, or a mod the game did not \
                           load) is an error, with the report in its message. Earlier logs are moved to \
                           logs/xtiger-archive. Input stops if another \
                           window takes focus. Windows only; takes a few minutes. The mod must be enabled in the \
                           launcher playset, or passed in mods or playset.",
             params: vec![
-                ("commands", strings("Console commands, typed in order.")),
+                (
+                    "commands",
+                    strings(
+                        "Console commands, typed in order. Each must be one non-empty line of at most 255 UTF-16 code units.",
+                    ),
+                ),
                 ("screenshot", boolean("Take a screenshot of the game window at the end.", true)),
                 (
                     "bookmark",
-                    json!({"type": "string", "description": "The start date bookmark.", "default": "bm_867_carolingians"}),
+                    json!({"type": "string", "description": "An existing bookmark key, not a date; checked before launching.", "default": "bm_867_carolingians"}),
                 ),
                 (
                     "play",

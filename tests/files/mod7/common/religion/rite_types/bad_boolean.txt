@@ -1,0 +1,5 @@
+﻿test_bad_boolean_rite = {
+	name = test_rite_name
+	desc = test_rite_desc
+	convert = banana
+}

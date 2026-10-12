@@ -1,0 +1,1 @@
+﻿test_group = { category = test_nonexistent_category }

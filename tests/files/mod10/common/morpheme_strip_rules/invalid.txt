@@ -1,0 +1,68 @@
+﻿test_morpheme_bad_direction = {
+    seek_from = tails
+}
+
+test_morpheme_bad_root_field = {
+    test_unknown_morpheme_field = yes
+}
+
+test_morpheme_bad_rule_shape = {
+    rule = yes
+}
+
+test_morpheme_bad_rule_field = {
+    rule = {
+        match = { "s" }
+        strip = 1
+        test_unknown_rule_field = yes
+    }
+}
+
+test_morpheme_bad_match_shape = {
+    rule = {
+        match = "s"
+        strip = 1
+    }
+}
+
+test_morpheme_bad_match_list = {
+    rule = {
+        match = { character = "s" }
+        strip = 1
+    }
+}
+
+test_morpheme_bad_strip = {
+    rule = {
+        match = { "s" }
+        strip = many
+    }
+}
+
+test_morpheme_bad_strip_shape = {
+    rule = {
+        match = { "s" }
+        strip = { count = 1 }
+    }
+}
+
+test_morpheme_bad_multichar_match = {
+    rule = {
+        match = { "ab" }
+        strip = 1
+    }
+}
+
+test_morpheme_bad_empty_match = {
+    rule = {
+        match = { "" }
+        strip = 1
+    }
+}
+
+test_morpheme_bad_negative_strip = {
+    rule = {
+        match = { "s" }
+        strip = -1
+    }
+}

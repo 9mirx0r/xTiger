@@ -1,0 +1,63 @@
+﻿# invalid_fields.txt
+atlas = {
+    tile_size = { 230 230 }
+    nr_of_tiles = 64
+    tile_sizze = { 230 230 }
+}
+atlass = { tile_size = { 88 88 } nr_of_tiles = 1024 }
+
+# invalid_types.txt
+atlas = yes
+atlas = {
+    tile_size = yes
+    nr_of_tiles = many
+    actual_size = yes
+    fallback = no
+}
+
+# invalid_shapes.txt
+atlas = {
+    tile_size = { 230 }
+    nr_of_tiles = { 64 }
+    actual_size = { 115 115 }
+    fallback = { size = { 88 88 } }
+}
+
+# invalid_pairs.txt
+atlas = {
+    tile_size = { 230 230 230 }
+    nr_of_tiles = 64
+    actual_size = { {115 small} {115} {230 230 230} {230 230} }
+    fallback = { {88 88} {0 0} {x = 0 y = 0} {{0 0}} }
+}
+
+# invalid_duplicate.txt
+atlas = {
+    tile_size = { 230 230 }
+    tile_size = { 88 88 }
+    nr_of_tiles = 64
+}
+
+# invalid_outer_count_1
+atlas = {
+    tile_size = { 32 32 }
+    nr_of_tiles = 16
+    actual_size = { {32 32} }
+    fallback = { {32 32} }
+}
+
+# invalid_outer_count_3
+atlas = {
+    tile_size = { 32 32 }
+    nr_of_tiles = 16
+    actual_size = { {32 32} {32 32} {32 32} }
+    fallback = { {32 32} {32 32} {32 32} }
+}
+
+# invalid_outer_count_5
+atlas = {
+    tile_size = { 32 32 }
+    nr_of_tiles = 16
+    actual_size = { {32 32} {32 32} {32 32} {32 32} {32 32} }
+    fallback = { {32 32} {32 32} {32 32} {32 32} {32 32} }
+}

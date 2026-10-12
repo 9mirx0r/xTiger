@@ -1,0 +1,1 @@
+﻿test_derived_names_rite = { name = test_rite_without_derived }

@@ -1,0 +1,13 @@
+﻿l_english:
+ test_rite_creation_name:0 "Creation name"
+ test_rite_creation_name_adj:0 "Creation adjective"
+ test_rite_creation_name_adherent:0 "Creation adherent"
+ test_rite_creation_name_adherent_plural:0 "Creation adherents"
+ test_default_creation_name:0 "Default creation name"
+ test_default_creation_name_adj:0 "Default adjective"
+ test_default_creation_name_adherent:0 "Default adherent"
+ test_default_creation_name_adherent_plural:0 "Default adherents"
+ doctrine_category_test_category:0 "Test category"
+ test_rite_without_derived:0 "Missing derived keys"
+ test_existing_god:0 "Existing god"
+ test_description:0 "Description"

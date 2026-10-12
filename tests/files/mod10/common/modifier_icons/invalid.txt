@@ -1,0 +1,27 @@
+﻿test_modifier_missing_positive = {
+    positive = "gfx/interface/icons/modifiers/test_missing_positive.dds"
+}
+
+test_modifier_missing_negative = {
+    positive = "gfx/interface/icons/modifiers/test_modifier.dds"
+    negative = "gfx/interface/icons/modifiers/test_missing_negative.dds"
+}
+
+test_modifier_bad_default = {
+    positive = "gfx/interface/icons/modifiers/test_modifier.dds"
+    default = sometimes
+}
+
+test_modifier_bad_root_field = {
+    positive = "gfx/interface/icons/modifiers/test_modifier.dds"
+    test_unknown_modifier_icon_field = yes
+}
+
+test_modifier_bad_positive_shape = {
+    positive = { file = "gfx/interface/icons/modifiers/test_modifier.dds" }
+}
+
+test_modifier_bad_negative_shape = {
+    positive = "gfx/interface/icons/modifiers/test_modifier.dds"
+    negative = { file = "gfx/interface/icons/modifiers/test_modifier.dds" }
+}

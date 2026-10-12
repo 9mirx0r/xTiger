@@ -1,0 +1,3 @@
+﻿test_holy_order_unclosed = {
+ trigger = {
+  always = yes

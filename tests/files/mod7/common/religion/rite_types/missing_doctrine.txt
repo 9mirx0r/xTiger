@@ -1,0 +1,5 @@
+﻿test_missing_doctrine_rite = {
+	name = test_rite_name
+	desc = test_rite_desc
+	doctrines = { test_rite_missing_doctrine }
+}

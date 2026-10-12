@@ -1,0 +1,42 @@
+﻿namespace = audit_holy_order_type_valid
+
+audit_holy_order_type_valid.0001 = {
+ type = character_event
+ hidden = yes
+ immediate = {
+  create_holy_order = {
+   leader = root
+   founder = root
+   capital = title:b_test_holy_order_lease
+   holy_order_type = test_holy_order_military
+   save_scope_as = test_created_holy_order
+  }
+  scope:test_created_holy_order = { set_order_tenet = tenet:test_holy_order_tenet set_order_rite = root.rite }
+ }
+}
+
+audit_holy_order_type_valid.0002 = {
+ type = character_event
+ hidden = yes
+ immediate = {
+  create_holy_order = {
+   leader = root
+   founder = root
+   capital = title:b_test_holy_order_lease
+   random_holy_order_type = military
+  }
+ }
+}
+
+audit_holy_order_type_valid.0003 = {
+ type = character_event
+ hidden = yes
+ immediate = {
+  create_holy_order = {
+   leader = root
+   founder = root
+   capital = title:b_test_holy_order_lease
+   random_holy_order_type = monastic
+  }
+ }
+}

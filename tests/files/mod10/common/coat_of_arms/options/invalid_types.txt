@@ -1,0 +1,7 @@
+﻿atlas = yes
+atlas = {
+    tile_size = yes
+    nr_of_tiles = many
+    actual_size = yes
+    fallback = no
+}

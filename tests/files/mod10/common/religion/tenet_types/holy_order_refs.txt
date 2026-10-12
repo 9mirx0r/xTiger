@@ -1,0 +1,4 @@
+﻿test_holy_order_tenet = {
+ name = test_holy_order_name
+ desc = test_holy_order_name
+}

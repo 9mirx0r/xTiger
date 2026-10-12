@@ -134,7 +134,13 @@ The game tools need Windows. CK3 ignores ordinary key events, so the scripts in
 - type commands as Unicode text, which works with any keyboard layout.
 
 If another window takes focus while `ck3_run` is typing, it stops and tells you what was sent. Old
-logs are moved to `logs/xtiger-archive`, never deleted.
+logs are moved to `logs/xtiger-archive`; the runner keeps the ten most recent archives by default.
+
+Each command must be one non-empty line of at most 255 UTF-16 code units. Longer commands and
+control characters are rejected before CK3 starts. Use a bookmark key defined by the game or the
+requested mods, such as `bm_867_carolingians`; a date is not a bookmark key. A run fails if any
+requested command is unconfirmed in `debug.log`, or if its report is missing. Confirmation means
+the console accepted the command; review the reported game errors to verify its script behavior.
 
 ## Building
 

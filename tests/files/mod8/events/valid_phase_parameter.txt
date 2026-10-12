@@ -1,0 +1,16 @@
+﻿namespace = audit_phase_valid
+
+audit_phase_valid.0001 = {
+ type = character_event
+ hidden = yes
+ trigger = {
+  situation:test_parameter_situation = {
+   has_situation_top_phase_parameter = test_phase_parameter
+   has_situation_top_phase_parameter = test_group_parameter
+   any_situation_sub_region = {
+    has_sub_region_phase_parameter = test_phase_parameter
+    has_sub_region_phase_parameter = test_group_parameter
+   }
+  }
+ }
+}

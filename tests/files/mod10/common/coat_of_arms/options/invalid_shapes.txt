@@ -1,0 +1,6 @@
+﻿atlas = {
+    tile_size = { 230 }
+    nr_of_tiles = { 64 }
+    actual_size = { 115 115 }
+    fallback = { size = { 88 88 } }
+}

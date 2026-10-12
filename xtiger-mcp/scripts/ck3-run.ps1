@@ -44,6 +44,8 @@ if (-not (Test-Path $exe)) { throw "ck3.exe not found at $exe" }
 if (Get-Process ck3 -ErrorAction SilentlyContinue) { throw "CK3 is already running; close it first so the logs belong to this run." }
 # Refuse untypeable commands before launching, instead of silently dropping characters.
 foreach ($c in $Cmd) {
+    if ([string]::IsNullOrWhiteSpace($c) -or $c -match '[\x00-\x1f\x7f]') { throw "Console commands must be non-empty single lines without control characters." }
+    if ($c.Length -gt 255) { throw "Console command has $($c.Length) UTF-16 code units; CK3 accepts at most 255. Split it into shorter commands." }
     $bad = Test-Typeable $c $Typing
     if ($bad) { throw "cannot type '$(-join $bad)' in $Typing mode: $c" }
 }
@@ -105,8 +107,13 @@ foreach ($f in "error.log","game.log","exceptions.log","debug.log") {
     $src = Join-Path $logs $f
     if (Test-Path $src) { New-Item -ItemType Directory -Force $archive | Out-Null; Move-Item $src $archive }
 }
-Get-ChildItem (Join-Path $logs "xtiger-archive") -Directory -ErrorAction SilentlyContinue |
-    Sort-Object Name -Descending | Select-Object -Skip $KeepArchives | Remove-Item -Recurse -Force
+$archiveRoot = [IO.Path]::GetFullPath((Join-Path $logs "xtiger-archive"))
+Get-ChildItem -LiteralPath $archiveRoot -Directory -ErrorAction SilentlyContinue |
+    Sort-Object Name -Descending | Select-Object -Skip $KeepArchives | ForEach-Object {
+        $oldArchive = [IO.Path]::GetFullPath($_.FullName)
+        if (-not $oldArchive.StartsWith($archiveRoot.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw "Archive cleanup escapes its folder: $oldArchive" }
+        Remove-Item -LiteralPath $oldArchive -Recurse -Force
+    }
 
 function Get-LoggedCount([string]$command) {
     $dl = Join-Path $logs "debug.log"
@@ -141,6 +148,7 @@ try {
         Start-Sleep 3
         if ($p.HasExited) { throw "game exited early (code $($p.ExitCode)), check $UserDir\crashes" }
         $p.Refresh()
+        if (Select-String -Path (Join-Path $logs "error.log") -Pattern 'Unknown bookmark' -SimpleMatch -Quiet -ErrorAction SilentlyContinue) { throw "Unknown bookmark '$Bookmark'; use a bookmark key such as bm_867_carolingians." }
         if ($p.MainWindowHandle -ne 0 -and (Select-String -Path (Join-Path $logs "game.log") -Pattern $ready -SimpleMatch -Quiet -ErrorAction SilentlyContinue)) { break }
         if (((Get-Date) - $t0).TotalSeconds -gt $LoadTimeout) { throw "load timeout after $LoadTimeout s (no '$ready' in game.log)" }
     }
@@ -209,11 +217,13 @@ do {
     if (-not ($flags -contains $false)) { break }
     Start-Sleep 2
 } while ((Get-Date) -lt $deadline -and -not $p.HasExited)
+$unconfirmed = $sent.Count -ne $Cmd.Count -or ($flags -contains $false)
 $out += "commands sent: $($sent.Count) of $($Cmd.Count), run by the game: $(@($flags | Where-Object { $_ }).Count)"
 for ($i = 0; $i -lt $sent.Count; $i++) {
     $out += if ($flags[$i]) { "  ran      > $($sent[$i])" } else { "  unconfirmed > $($sent[$i])  (not in debug.log: mistyped, unknown, or a command the game does not log; check its output)" }
 }
 if ($failure) { $out += "FAILED: $failure" }
+if ($unconfirmed) { $out += "FAILED: not every requested console command was confirmed by the game." }
 
 # debug.log lists every folder the game mounted, so it shows whether each mod was really loaded.
 if ($modDirs) {
@@ -246,7 +256,8 @@ if (Test-Path $gameLog) {
 if (Test-Path $archive) { $out += "previous logs moved to $archive" }
 $out | Set-Content $Report -Encoding utf8; Write-Host "report $Report ($($out.Count) lines)"
 
-if ((-not $Keep -or $failure) -and -not $p.HasExited) { Start-Sleep 2; Stop-Process -Id $p.Id -Force; Write-Host "game closed" }
+if ((-not $Keep -or $failure -or $unconfirmed) -and -not $p.HasExited) { Start-Sleep 2; Stop-Process -Id $p.Id -Force; Write-Host "game closed" }
 if ($failure) { exit 1 }
 # A mod the game did not mount means nothing was tested: say so with an exit code of its own.
 if ($missing.Count -gt 0) { exit 2 }
+if ($unconfirmed) { exit 3 }

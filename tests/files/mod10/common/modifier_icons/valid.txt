@@ -1,0 +1,10 @@
+﻿test_modifier_both_signs = {
+    positive = "gfx/interface/icons/modifiers/test_modifier.dds"
+    negative = "gfx/interface/icons/modifiers/test_modifier.dds"
+    default = no
+}
+
+test_modifier_positive_only = {
+    positive = "gfx/interface/icons/modifiers/test_modifier.dds"
+    default = yes
+}

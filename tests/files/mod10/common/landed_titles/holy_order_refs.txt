@@ -1,0 +1,5 @@
+﻿d_test_holy_order = {}
+c_test_holy_order_county = {
+ b_test_holy_order_capital = { province = 1 }
+ b_test_holy_order_lease = { province = 2 }
+}

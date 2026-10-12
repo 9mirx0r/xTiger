@@ -10,7 +10,9 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
+use regex::Regex;
 use serde::Serialize;
 
 use crate::vanilla::depth_change;
@@ -158,6 +160,41 @@ fn definitions(text: &str) -> Vec<Def> {
 
 fn read_defs(path: &Path) -> Vec<Def> {
     fs::read(path).map(|bytes| definitions(&String::from_utf8_lossy(&bytes))).unwrap_or_default()
+}
+
+/// Exact top-level block keys, independent of line layout. The diff parser above intentionally
+/// works with whole lines, so it cannot be used to reject a bookmark before launching the game.
+fn contains_definition(text: &str, key: &str) -> bool {
+    static TOKENS: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r##"#[^\r\n]*|"(?:\\.|[^"\\])*"|[{}=]|[^\s{}="#]+"##).unwrap());
+    let mut depth = 0usize;
+    let mut previous = ["", ""];
+    for token in TOKENS.find_iter(text.trim_start_matches('\u{feff}')).map(|m| m.as_str()) {
+        if token.starts_with('#') {
+            continue;
+        }
+        match token {
+            "{" => {
+                if depth == 0 && previous[1] == "=" && previous[0].trim_matches('"') == key {
+                    return true;
+                }
+                depth += 1;
+            }
+            "}" => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        previous = [previous[1], token];
+    }
+    false
+}
+
+/// Whether a script folder contains a top-level definition with this exact key.
+pub(crate) fn has_definition(dir: &Path, key: &str) -> bool {
+    walk(dir, dir).into_iter().any(|(_, path)| {
+        fs::read(path)
+            .map(|bytes| contains_definition(&String::from_utf8_lossy(&bytes), key))
+            .unwrap_or(false)
+    })
 }
 
 /// The `.txt` files under `dir`, as `(path relative to base with forward slashes, full path)`.

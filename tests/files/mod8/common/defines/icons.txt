@@ -1,0 +1,1 @@
+﻿NGameIcons = { DYNAMIC_RITE_ICON_PATH = "gfx/interface/icons/faith/" TENET_TYPE_ICON_PATH = "gfx/interface/icons/faith/" }

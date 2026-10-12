@@ -1,0 +1,3 @@
+﻿test_ai_wrong_field = { test_unknown_ai_goal_field = yes }
+test_ai_loose = { unexpected_token { unexpected_block } }
+test_ai_wrong_shape = 42

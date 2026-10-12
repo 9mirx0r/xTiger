@@ -1,0 +1,13 @@
+﻿l_english:
+ test_morpheme_macro_base:0 "Marcus"
+ test_morpheme_valid_code:0 "[GetPlayer.GetName|:test_morpheme_tail]"
+ test_morpheme_valid_macro:0 "$test_morpheme_macro_base|:test_morpheme_tail$"
+ test_morpheme_valid_upper_code:0 "[GetPlayer.GetName|U:test_morpheme_head]"
+ test_morpheme_valid_upper_macro:0 "$test_morpheme_macro_base|U:test_morpheme_head$"
+ test_morpheme_numeric_macro:0 "$LEVEL|V:roman$"
+ test_morpheme_missing_code:0 "[GetPlayer.GetName|:test_missing_morpheme_code]"
+ test_morpheme_missing_macro:0 "$test_morpheme_macro_base|:test_missing_morpheme_macro$"
+ test_morpheme_missing_upper_code:0 "[GetPlayer.GetName|U:test_missing_morpheme_upper_code]"
+ test_morpheme_missing_upper_macro:0 "$test_morpheme_macro_base|U:test_missing_morpheme_upper_macro$"
+ test_morpheme_empty_code:0 "[GetPlayer.GetName|:]"
+ test_morpheme_empty_macro:0 "$test_morpheme_macro_base|U:$"

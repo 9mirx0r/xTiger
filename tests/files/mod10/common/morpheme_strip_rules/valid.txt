@@ -1,0 +1,35 @@
+﻿test_morpheme_tail = {
+    seek_from = tail
+    rule = {
+        match = { "s" }
+        match = { "u" "a" "o" "á" "я" }
+        strip = 2
+    }
+    rule = {
+        match = { "e" "é" "ü" }
+        strip = 1
+    }
+}
+
+test_morpheme_head = {
+    seek_from = head
+    rule = {
+        match = { "d" }
+        match = { "'" }
+        strip = 2
+    }
+}
+
+test_morpheme_default_direction = {
+    rule = {
+        match = { "i" }
+        strip = 1
+    }
+}
+
+test_morpheme_unicode_characters = {
+    rule = {
+        match = { "é" "😀" }
+        strip = 0
+    }
+}

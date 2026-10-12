@@ -1,0 +1,8 @@
+﻿test_creation_name = {
+ name = test_rite_creation_name
+ trigger = { scope:founder = { age >= 16 } scope:faith = { fervor > 0 } is_inactive_rite = no }
+}
+test_default_creation_name = { trigger = { always = yes } }
+test_dynamic_creation_name = {
+ name = { first_valid = { triggered_desc = { trigger = { scope:founder = { age >= 16 } } desc = test_rite_creation_name } desc = test_rite_creation_name } }
+}

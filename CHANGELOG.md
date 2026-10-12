@@ -1,5 +1,81 @@
 # Changelog
 
+## xTiger 1.5.8 alpha
+
+Rite definitions in `common/religion/rite_types` now receive the missing checks for their
+names, descriptions and icons. The report was reproduced and confirmed before the fix.
+Six previously unparsed CK3 folders also gain validation, with their connected references checked
+and the engine behavior verified through disposable game probes.
+
+### The validator
+
+- Simple localization keys and dynamic descriptions in `name` and `desc` are validated,
+  including nested conditions in the documented rite scope. Missing localization, unknown
+  triggers and wrong scope types are reported instead of silently accepted.
+- When `name` is omitted, its default localization key is checked. Default descriptions are
+  validated when present; an omitted description is allowed, as confirmed in the game.
+- Explicit rite icons are checked against `NGameIcons|DYNAMIC_RITE_ICON_PATH`.
+- Rite creation names, icon packs and doctrine categories are now loaded and validated.
+  Their triggers, localization, icon files and category references are checked.
+- Rite names also check the derived adjective, adherent and plural adherent localization keys.
+  Faith details validate custom localization references and reject unknown fields, and clerical
+  elector titles are checked against the title database.
+- Triggered tenet icons validate their conditions and image references. Valid triggered blocks
+  are accepted, and missing references and unknown fields are reported.
+- `knows_tenet` accepts tenet scopes and saved tenet scopes. Static `tenet:` targets check the
+  tenet database, and situation phase triggers check parameters declared on phases or in their
+  participant modifier sets. Correct syntax and typo controls were verified in CK3.
+- An explicit localization language selection is checked even when the mod has no localization
+  files for that language. Automatic language selection still follows the mod's available files.
+- Holy-order templates now validate required fields, government, title, coat of arms, tenet,
+  men-at-arms, localization, triggers, weights and creation effects. `create_holy_order` checks
+  explicit template references, and both type selectors accept the game-confirmed military and
+  monastic choices. Post-creation effects expose `scope:new_holy_order`; rite and tenet setters
+  require scope targets, with database checks for prefixed static targets.
+- Morpheme strip rules check Unicode character matches, direction and nonnegative strip counts.
+  Plain and uppercase localization formats validate their rule references in code and macros;
+  empty rule names are reported. Numeric formatters retain their existing behavior.
+- Modifier icon definitions check positive and negative image paths and boolean flags. Console
+  groups validate their command-list structure. AI goal types are parsed, with advisory reports
+  for contents outside the shipped key-only definition.
+- Coat-of-arms atlas options validate integers, size pairs and all four texture-quality entries.
+  The canonical `common/coat_of_arms/options/atlases.txt` filename is case insensitive, as confirmed
+  in CK3. Other text filenames and nested files receive a filename diagnostic instead of being
+  treated as active options. Comment-only readme documentation is allowed; active or malformed
+  content in a readme still receives the filename diagnostic.
+- Regression tests cover valid definitions and the errors that previously went unnoticed.
+  Existing faith, tenet, doctrine, culture, founder, boolean and color checks remain in place.
+
+### The MCP server
+
+- Commands longer than CK3's 255 UTF-16 code unit console limit, empty commands and control
+  characters are rejected before launch. Bookmark keys are checked against CK3 and the requested
+  mods, so a date or missing bookmark fails before the loading screen. Compact and quoted
+  bookmark definitions are accepted; comments, strings and nested keys cannot match a bookmark.
+- A run fails when any requested command is unconfirmed or its report is missing. The failure
+  includes the report and restores the user's mod list. Real CK3 runs verified both a confirmed
+  command and an unknown command that the previous runner could report as successful.
+
+### Validation
+
+- All 144 library, integration and MCP tests passed, together with formatting, Clippy and
+  PowerShell syntax checks. The game-backed rite probe detects all 13 invalid cases and leaves
+  the valid control clean.
+- Ten mods and working copies were checked in English and in all their available languages.
+  Community Flavor Pack has zero diagnostics in both runs. Added and removed diagnostics were
+  compared with the earlier audit and reviewed against the new checks.
+- All six previously unparsed folders now have loaders and valid/error regression controls.
+  The coverage probe diagnoses all 208 inventoried paths: 207 parser checks and the common-root
+  packaging diagnostic. Semantic checks and CK3 probes establish the tested behavior separately.
+- Two repeated vanilla runs produced byte-identical output. Changes from the previous validator
+  were reviewed individually; the audit includes the complete comparison data.
+
+### Thanks
+
+Thank you to [shalola-author](https://github.com/shalola-author) for
+[reporting the gap in rite validation](https://github.com/amtep/tiger/issues/323#issuecomment-6111062567).
+We reproduced the problem, confirmed the missing checks and fixed them in this release.
+
 ## xTiger 1.5.7 alpha
 
 Moving a mod to a newer game version gets more mechanical help, and the assistant can now write

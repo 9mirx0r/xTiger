@@ -1,0 +1,6 @@
+﻿test_invalid_creation_name = {
+ name = test_missing_creation_name
+ trigger = { test_unknown_rite_trigger = yes }
+ test_unknown_name_field = yes
+}
+test_wrong_creation_scope = { name = test_rite_creation_name trigger = { scope:faith = { age > 16 } } }

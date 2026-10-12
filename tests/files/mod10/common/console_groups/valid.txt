@@ -1,0 +1,2 @@
+﻿TestConsole = { observe test_save "Gold gold 1" "Label with # and { } gold 2" }
+TestConsoleEmpty = {}

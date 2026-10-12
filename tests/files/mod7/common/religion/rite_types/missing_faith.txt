@@ -1,0 +1,5 @@
+﻿test_missing_faith_rite = {
+	name = test_rite_name
+	desc = test_rite_desc
+	faith = test_rite_missing_faith
+}

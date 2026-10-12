@@ -1,0 +1,10 @@
+﻿namespace = audit_tenet_invalid
+
+audit_tenet_invalid.0001 = {
+ type = character_event
+ hidden = yes
+ trigger = {
+  knows_tenet = tenet:test_nonexistent_tenet
+  knows_tenet = root
+ }
+}

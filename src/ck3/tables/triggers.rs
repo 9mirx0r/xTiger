@@ -1193,16 +1193,8 @@ pub(crate) const TRIGGER: &[(Scopes, &str, Trigger)] = &[
     (Scopes::Character, "has_strong_implicit_claim_on", Scope(Scopes::LandedTitle)),
     (Scopes::Character, "has_strong_usable_hook", Scope(Scopes::Character)),
     (Scopes::Struggle, "has_struggle_phase_parameter", Item(Item::StrugglePhaseParameter)),
-    (
-        Scopes::Situation,
-        "has_situation_top_phase_parameter",
-        Item(Item::SituationParticipantGroupParameter),
-    ),
-    (
-        Scopes::SituationSubRegion,
-        "has_sub_region_phase_parameter",
-        Item(Item::SituationParticipantGroupParameter),
-    ),
+    (Scopes::Situation, "has_situation_top_phase_parameter", Item(Item::SituationParameter)),
+    (Scopes::SituationSubRegion, "has_sub_region_phase_parameter", Item(Item::SituationParameter)),
     (Scopes::Character, "has_subject_contract_group", Item(Item::SubjectContractGroup)),
     (Scopes::Character, "has_succession_appointment_investors", Scope(Scopes::LandedTitle)),
     (Scopes::Character, "has_targeting_faction", Boolean),
@@ -1773,7 +1765,7 @@ pub(crate) const TRIGGER: &[(Scopes, &str, Trigger)] = &[
         "knows_rite_level",
         Block(&[("target", Scope(Scopes::Rite)), ("+value", CompareValue)]),
     ),
-    (Scopes::Character, "knows_tenet", Item(Item::Tenet)),
+    (Scopes::Character, "knows_tenet", ScopeOrItem(Scopes::Tenet, Item::Tenet)),
     (Scopes::Character, "learning", CompareValue),
     (
         Scopes::Character,

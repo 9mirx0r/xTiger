@@ -378,9 +378,11 @@ impl Everything {
         let path = PathBuf::from(loader.itype().path());
         let recursive = loader.recursive();
         let expect_count = path.components().count() + 1;
+        let exact_file = loader.itype().path().ends_with(loader.extension());
         for mut block in self.fileset.filter_map_under(&path, |entry| {
-            // It's <= expect_count because some loader paths are files not directories
-            if (recursive || entry.path().components().count() <= expect_count)
+            // A file-valued path must not include descendants of a similarly named directory.
+            if (!exact_file || entry.path() == path)
+                && (recursive || entry.path().components().count() <= expect_count)
                 && entry.filename().to_string_lossy().ends_with(loader.extension())
             {
                 PdxFile::read_encoded(entry, loader.encoding(), &self.parser)

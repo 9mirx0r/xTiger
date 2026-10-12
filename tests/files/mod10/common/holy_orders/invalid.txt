@@ -1,0 +1,124 @@
+﻿test_holy_order_missing_references = {
+ type = misspelled_order_type
+ government = test_missing_holy_order_government
+ title = d_test_missing_holy_order
+ name = test_missing_holy_order_name
+ coat_of_arms = test_missing_holy_order_coa
+ men_at_arms = { test_missing_holy_order_maa }
+ tenet = test_missing_holy_order_tenet
+}
+test_missing_holy_order_default_name = {
+ type = military
+ government = test_holy_order_government
+}
+test_holy_order_unknown_field = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ goverment = test_holy_order_government
+}
+test_holy_order_unknown_trigger = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ trigger = { test_unknown_holy_order_trigger = yes }
+}
+test_holy_order_wrong_trigger_scope = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ trigger = { age > 16 }
+}
+test_holy_order_wrong_named_scope = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ trigger = { scope:province = { age > 16 } }
+}
+test_holy_order_missing_named_scope = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ trigger = { scope:holy_order = { is_military_order = yes } }
+}
+test_holy_order_unknown_effect = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ effect = { test_unknown_holy_order_effect = yes }
+}
+test_holy_order_wrong_effect_scope = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ effect = { add_gold = 1 }
+}
+test_holy_order_unknown_weight_trigger = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ weight = { value = 1 if = { limit = { test_unknown_holy_order_weight_trigger = yes } add = 1 } }
+}
+test_holy_order_wrong_weight_scope = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ weight = { value = 1 if = { limit = { scope:province = { age > 16 } } add = 1 } }
+}
+test_holy_order_missing_weight = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ weight = test_missing_holy_order_weight
+}
+test_holy_order_bad_shapes = {
+ type = {}
+ government = {}
+ title = {}
+ name = {}
+ coat_of_arms = {}
+ tenet = {}
+ men_at_arms = test_holy_order_maa
+ trigger = yes
+ effect = yes
+}
+test_holy_order_bad_name_scope = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_bad_scoped_name
+}
+test_holy_order_mendicant = {
+ type = mendicant
+ government = test_holy_order_government
+ name = test_holy_order_name
+}
+test_holy_order_any = {
+ type = any
+ government = test_holy_order_government
+ name = test_holy_order_name
+}
+test_holy_order_religious = {
+ type = religious
+ government = test_holy_order_government
+ name = test_holy_order_name
+}
+test_holy_order_missing_type = {
+ government = test_holy_order_government
+ name = test_holy_order_name
+}
+test_holy_order_missing_government = {
+ type = military
+ name = test_holy_order_name
+}
+test_holy_order_old_effect_scope = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ effect = { scope:holy_order = { set_order_tenet = tenet:test_holy_order_tenet } }
+}
+test_holy_order_typo_effect_scope = {
+ type = military
+ government = test_holy_order_government
+ name = test_holy_order_name
+ effect = { scope:test_missing_created_order = { set_order_tenet = tenet:test_holy_order_tenet } }
+}

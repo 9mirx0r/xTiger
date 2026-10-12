@@ -892,9 +892,11 @@ pub fn validate_create_holy_order(
     vd.field_target("leader", sc, Scopes::Character);
     vd.field_target("capital", sc, Scopes::LandedTitle);
     vd.field_target("founder", sc, Scopes::Character);
+    vd.field_item("holy_order_type", Item::HolyOrderType);
     vd.field_item("name", Item::Localization);
     vd.field_item("coat_of_arms", Item::Coa);
-    vd.field_choice("random_holy_order_type", &["military", "monastic", "religious"]);
+    // Native creation confirms only military and monastic can select an order in CK3 1.20.
+    vd.field_choice("random_holy_order_type", &["military", "monastic"]);
     if let Some(name) = vd.field_identifier("save_scope_as", "scope name") {
         sc.define_name_token(name.as_str(), Scopes::HolyOrder, name, Temporary::No);
     }

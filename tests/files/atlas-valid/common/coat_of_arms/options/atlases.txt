@@ -1,0 +1,12 @@
+﻿# Repeated atlas blocks are all checked independently.
+atlas = {
+    tile_size = { 230 230 }
+    nr_of_tiles = 64
+    actual_size = { {115 115} {115 115} {230 230} {230 230} }
+}
+atlas = {
+    tile_size = { 172 172 }
+    nr_of_tiles = 64
+    fallback = { {230 230} {0 0} {0 0} {0 0} }
+}
+atlas = { tile_size = {80 80} nr_of_tiles = 128 actual_size = {{40 40} {40 40} {80 80} {80 80}} }
