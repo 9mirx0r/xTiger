@@ -2,6 +2,7 @@
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -9,12 +10,15 @@ use serde_json::{Map, Value, json};
 use crate::docs::{self, Lookup};
 use crate::game::{self, LOGS, ReadLog, RunGame};
 use crate::gap;
+use crate::jobs;
 use crate::journal::{self, ModRef, Tally};
+use crate::ledger;
 use crate::locate::Locations;
 use crate::migrate;
 use crate::migrate_apply;
 use crate::mods::{self, ModInfo};
 use crate::overrides;
+use crate::projects;
 use crate::requests::{self, Status};
 use crate::runs::{self, Counts, Filter, GROUPS, Options, QueryResult, Row, SEVERITIES, Summary};
 use crate::vanilla::{self, Search};
@@ -133,6 +137,56 @@ fn reason() -> Value {
     string(
         "One short sentence on why you are making this call, such as \"Checking that the new event loads\". The user sees it in the xTiger app.",
     )
+}
+
+/// The arguments of `ck3_run` and `ck3_run_start`.
+fn run_params() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "commands",
+            strings(
+                "Console commands, typed in order. Each must be one non-empty line of at most 255 UTF-16 code units.",
+            ),
+        ),
+        ("screenshot", boolean("Take a screenshot of the game window at the end.", true)),
+        (
+            "bookmark",
+            json!({"type": "string", "description": "An existing bookmark key, not a date; checked before launching.", "default": "bm_867_carolingians"}),
+        ),
+        (
+            "play",
+            json!({"type": "string", "description": "The title key of the ruler to play, such as k_france or c_jaffa. It must be a title that \
+                                       is held at the bookmark's date; if it is not, the game stays on the lobby.", "default": "k_france"}),
+        ),
+        ("keep_open", boolean("Leave the game running, to continue with ck3_keys.", false)),
+        ("mods", strings("Mods to load: names, folders or .mod files, as for xtiger_validate.")),
+        (
+            "playset",
+            string(
+                "A launcher playset whose enabled mods are loaded first, in its order, to test the mod \
+                     together with others. xtiger_playsets lists them.",
+            ),
+        ),
+        ("load_timeout", integer("Seconds to wait for the game to load.", 300, 30)),
+        (
+            "typing",
+            json!({"type": "string", "enum": ["unicode", "scancode"], "default": "unicode",
+                       "description": "unicode works on any keyboard layout. scancode is a fallback that \
+                                       only types letters, digits, space, '.', '-' and '_'."}),
+        ),
+        (
+            "background",
+            boolean(
+                "Do not take over the user's screen: nothing is typed, no screenshot is taken, the game \
+                     starts minimized at idle priority and never takes the focus. It cannot send commands, so \
+                     the mod must trigger what it tests itself, for example from an on_action such as \
+                     on_game_start_after_lobby; read the result with ck3_logs. Always on when the user \
+                     chose background game tests in the xTiger app's settings (the default), whatever \
+                     is passed here.",
+                false,
+            ),
+        ),
+    ]
 }
 
 fn tools() -> Vec<Tool> {
@@ -284,47 +338,56 @@ fn tools() -> Vec<Tool> {
                           screenshot. Every requested command must be confirmed in debug.log. A run that tested nothing (stopped, failed, or a mod the game did not \
                           load) is an error, with the report in its message. Earlier logs are moved to \
                           logs/xtiger-archive. Input stops if another \
-                          window takes focus. Windows only; takes a few minutes. The mod must be enabled in the \
+                          window takes focus; use background to leave the user's screen alone. Windows only; takes a few minutes. The mod must be enabled in the \
                           launcher playset, or passed in mods or playset.",
+            params: run_params(),
+            required: &[],
+            kind: GAME,
+        },
+        Tool {
+            name: "ck3_run_start",
+            title: "Start a play-test in CK3",
+            description: "Start the same play-test as ck3_run, but as a job: it answers at once with a job id and the game \
+                          keeps running in the xTiger server, so a client that gives up waiting after a few minutes \
+                          has not stopped it. Use it for runs that may take longer than the client's limit, such as a \
+                          long list of commands or a big mod (raise load_timeout, for example to 480). It takes the \
+                          same arguments as ck3_run and is refused for the same reasons, before any game starts. Read the \
+                          job with ck3_job: status (state, latest progress line, how many commands were typed), result (the \
+                          report, once it is over) and cancel. The job remembers which files the mod had when it started, and \
+                          ck3_job says whether they still do. A client timeout is not a game failure: the job is still there.",
+            params: run_params(),
+            required: &[],
+            kind: GAME,
+        },
+        Tool {
+            name: "ck3_job",
+            title: "Read or stop a play-test job",
+            description: "Look at a play-test started with ck3_run_start. action status (the default) gives the job's state \
+                          (running, finished, failed, cancelled, interrupted), the phase (starting, loading, commands, \
+                          finishing), the latest progress line, elapsed seconds and the commands typed; give wait to hold the \
+                          call for up to 30 seconds until the job ends. result gives the report of a job that is over, with \
+                          the screenshot: failed means the run tested nothing, finished only means it ran, and what the mod \
+                          did is in the logs (ck3_logs). cancel stops the job and puts the mod list back. list shows the jobs \
+                          on record, newest first. Without job_id the newest job is used. Jobs are kept after the server \
+                          restarts; one whose server stopped is shown as interrupted.",
             params: vec![
                 (
-                    "commands",
-                    strings(
-                        "Console commands, typed in order. Each must be one non-empty line of at most 255 UTF-16 code units.",
+                    "action",
+                    json!({"type": "string", "enum": ["status", "result", "cancel", "list"], "default": "status",
+                           "description": "What to do with the job."}),
+                ),
+                ("job_id", string("The job to look at. The newest one when not given.")),
+                (
+                    "wait",
+                    integer(
+                        "Seconds to wait for the job to end, at most 30. Only for status.",
+                        0,
+                        0,
                     ),
-                ),
-                ("screenshot", boolean("Take a screenshot of the game window at the end.", true)),
-                (
-                    "bookmark",
-                    json!({"type": "string", "description": "An existing bookmark key, not a date; checked before launching.", "default": "bm_867_carolingians"}),
-                ),
-                (
-                    "play",
-                    json!({"type": "string", "description": "The title key of the ruler to play, such as k_france or c_jaffa. It must be a title that \
-                                           is held at the bookmark's date; if it is not, the game stays on the lobby.", "default": "k_france"}),
-                ),
-                ("keep_open", boolean("Leave the game running, to continue with ck3_keys.", false)),
-                (
-                    "mods",
-                    strings("Mods to load: names, folders or .mod files, as for xtiger_validate."),
-                ),
-                (
-                    "playset",
-                    string(
-                        "A launcher playset whose enabled mods are loaded first, in its order, to test the mod \
-                         together with others. xtiger_playsets lists them.",
-                    ),
-                ),
-                ("load_timeout", integer("Seconds to wait for the game to load.", 300, 30)),
-                (
-                    "typing",
-                    json!({"type": "string", "enum": ["unicode", "scancode"], "default": "unicode",
-                           "description": "unicode works on any keyboard layout. scancode is a fallback that \
-                                           only types letters, digits, space, '.', '-' and '_'."}),
                 ),
             ],
             required: &[],
-            kind: GAME,
+            kind: LOCAL,
         },
         Tool {
             name: "ck3_keys",
@@ -496,9 +559,115 @@ fn tools() -> Vec<Tool> {
                 ),
                 ("diff_lines", integer("The most diff lines shown for one definition.", 20, 0)),
                 ("limit", integer("How many files, definitions and names to list.", 15, 1)),
+                (
+                    "base",
+                    string(
+                        "A copy of the game version the mod was written for: the folder that holds game/. \
+                         With it each difference says who made it, the mod or the game since, and a \
+                         `rebase` verdict suggests what to do: keep_mod, take_game, combine or review. \
+                         Without it, nothing can say which side made a difference.",
+                    ),
+                ),
             ],
             required: &["mod_path"],
             kind: READ_ONLY,
+        },
+        Tool {
+            name: "xtiger_project",
+            title: "Keep an update project for a mod",
+            description: "A durable record for bringing one mod to a newer game version. It outlives the 20 saved runs, keeps its baseline when the work moves to a new folder, and says which results still belong to the files on disk. Status also has an `update` object with the stages process, static, runtime and review: a stage that did not run says so, and `update_complete` is true only when nothing blocks. Actions: create (with copy_to the work happens on a copy and the original is never touched; base is the old game folder, as for xtiger_overrides), list, status (what changed since the project began, which runs are stale, what still needs a decision), ledger (each definition of common/, events/ and history/ as preserved, changed, removed or added, with the lines and calls lost), decide (a removed definition or a dropped call needs an `intended` or `restore` decision with a note, bound to that exact difference), annotate (a note on diagnostics of the latest run: an intentional override, a test assertion, a defect still to fix or only formatting; the diagnostics stay in the run and in every count, and a note stops applying when its definition changes), pin or unpin a run (a pinned run is kept beyond the newest 20), baseline (choose the run to compare with) and export (the record, manifest, ledger and the runs that matter, into a new folder). The ledger compares text, not behaviour: it never says a mod plays the same.",
+            params: vec![
+                (
+                    "action",
+                    choice(
+                        "What to do (default status).",
+                        &[
+                            "create", "list", "status", "ledger", "decide", "annotate", "pin",
+                            "unpin", "baseline", "export",
+                        ],
+                    ),
+                ),
+                (
+                    "project",
+                    string(
+                        "The project id, from list or create. Left out, the project of mod_path, or the only project.",
+                    ),
+                ),
+                (
+                    "mod_path",
+                    string(
+                        "create: the mod: its name, workshop id, folder or .mod file. xtiger_mods lists them.",
+                    ),
+                ),
+                ("name", string("create: a name for the project. The mod's name when left out.")),
+                (
+                    "copy_to",
+                    string(
+                        "create: a new or empty folder. The mod is copied there and the project works on the copy.",
+                    ),
+                ),
+                (
+                    "base",
+                    string(
+                        "create: a copy of the game version the mod was written for: the folder that holds game/.",
+                    ),
+                ),
+                (
+                    "run_id",
+                    string(
+                        "pin, unpin, baseline, create: a saved run (xtiger_runs lists them). Pin and unpin default to the newest run of the project's mod; create defaults to the mod's newest run as baseline.",
+                    ),
+                ),
+                (
+                    "definition",
+                    string(
+                        "decide: the definition, as the ledger shows it (`folder: name`) or just its name.",
+                    ),
+                ),
+                (
+                    "decision",
+                    choice(
+                        "decide: `intended` if the removal or dropped call is wanted, `restore` if it must be put back.",
+                        &["intended", "restore"],
+                    ),
+                ),
+                ("note", string("decide, annotate: why. Kept with the project.")),
+                (
+                    "key",
+                    string(
+                        "annotate: the key of the diagnostics to write a note on, as xtiger_reports shows it.",
+                    ),
+                ),
+                (
+                    "path",
+                    string(
+                        "annotate: a part of the file path the diagnostics are in. Any file when left out.",
+                    ),
+                ),
+                ("line", integer("annotate: only the diagnostics at this line. 0 for any.", 0, 0)),
+                (
+                    "message",
+                    string(
+                        "annotate: the message of one diagnostic. Then the note goes on that diagnostic alone, even when others share its key and line; path must be its whole path and line its line (xtiger_reports shows both). Left out, every diagnostic of the key, path and line gets the note.",
+                    ),
+                ),
+                (
+                    "kind",
+                    choice(
+                        "annotate: what the diagnostics are.",
+                        &[
+                            "intentional_override",
+                            "test_assertion",
+                            "unresolved_defect",
+                            "advisory_formatting",
+                        ],
+                    ),
+                ),
+                ("to", string("export: a new or empty folder to write the evidence into.")),
+                ("limit", integer("ledger: how many definitions to list in each group.", 25, 1)),
+            ],
+            required: &[],
+            kind: LOCAL,
         },
         Tool {
             name: "xtiger_migrate",
@@ -542,7 +711,7 @@ fn tools() -> Vec<Tool> {
         Tool {
             name: "xtiger_game_gap",
             title: "What the game said and Tiger did not",
-            description: "Set the game's error.log against a saved validation of a mod: the log entries that point to a file of the mod, grouped by cause, and whether Tiger reported anything on that file. tiger `nothing` usually means the validator is blind to that file, the likeliest source of a missing rule; `other lines` means it reported there but not on that line. Play-test with ck3_run first so the log is fresh, and validate the mod so the run is current.",
+            description: "Set the game's error.log against a saved validation of a mod: every log entry ends in one state (`states` adds up to `log_entries`): `matched` (Tiger reported about the same thing in that file, on the same line or within 3 lines, since the game names the line where the statement opens; near matches are counted in `matched_near_line` with examples; a tip or untidy report never matches), `same_location_other_cause`, `same_file_other_lines`, `no_tiger_report` (usually the validator is blind to that file, the likeliest source of a missing rule), `unattributed` (names no file of the mod, with the reason) or `unsupported_format` (a path it cannot place). Rows group entries by cause and keep the game's stack lines. The report says which saved run it used and whether that run still fits the files on disk (`run.files`). Play-test with ck3_run first so the log is fresh, and validate the mod so the run is current.",
             params: vec![
                 (
                     "mod_path",
@@ -892,6 +1061,312 @@ fn status_phrase(status: &Value) -> String {
     }
 }
 
+/// Find the project an `xtiger_project` call is about.
+fn pick_project(args: &Args, loc: &Locations) -> Result<projects::Project, CallError> {
+    let id = args.string("project", "")?;
+    if !id.trim().is_empty() {
+        return Ok(projects::load(loc, id.trim())?);
+    }
+    let all = projects::list(loc);
+    let wanted = args.string("mod_path", "")?;
+    if !wanted.trim().is_empty() {
+        let mods = all_mods(loc);
+        let file = mods::resolve(&wanted, &mods)?;
+        let key = runs::mod_key(&file);
+        let mut mine = all.into_iter().filter(|p| {
+            runs::mod_key(&p.mod_file) == key
+                || p.original_mod_file.as_deref().is_some_and(|o| runs::mod_key(o) == key)
+        });
+        return mine.next().ok_or_else(|| {
+            CallError::from("That mod has no project. Use action create, or action list.")
+        });
+    }
+    let mut all = all.into_iter();
+    match (all.next(), all.next()) {
+        (None, _) => Err("There are no projects. Use action create.".into()),
+        (Some(only), None) => Ok(only),
+        (Some(_), Some(_)) => {
+            Err("There is more than one project: give `project`. Action list shows them.".into())
+        }
+    }
+}
+
+fn project_tool(args: &Args, loc: &Locations, ctx: &mut Context) -> Result<Done, CallError> {
+    let action = args.string("action", "status")?;
+    let by = ctx.client.unwrap_or("An AI assistant").to_owned();
+    match action.as_str() {
+        "list" => {
+            let found = projects::list(loc);
+            let summary = plural(found.len(), "project", "projects");
+            let shown = json!({"count": found.len(), "projects": found});
+            Ok(Done::new(vec![json_text(&shown)], summary))
+        }
+        "create" => {
+            let mods = all_mods(loc);
+            let mod_file = mods::resolve(&args.string("mod_path", "")?, &mods)?;
+            (ctx.working_on)(&mod_ref(&mods, &mod_file));
+            let name = args.string("name", "")?;
+            let copy_to = args.string("copy_to", "")?;
+            let base = args.string("base", "")?;
+            let run_id = args.string("run_id", "")?;
+            let copy_to = (!copy_to.trim().is_empty()).then(|| PathBuf::from(copy_to.trim()));
+            let base = (!base.trim().is_empty()).then(|| PathBuf::from(base.trim()));
+            let project = projects::create(
+                loc,
+                &projects::Create {
+                    mod_file: &mod_file,
+                    name: (!name.trim().is_empty()).then(|| name.trim().to_owned()),
+                    copy_to: copy_to.as_deref(),
+                    old_game: base.as_deref(),
+                    baseline_run: (!run_id.trim().is_empty()).then_some(run_id.trim()),
+                },
+            )?;
+            let summary = format!("Project {} started", project.id);
+            Ok(Done::new(vec![json_text(&project)], summary))
+        }
+        "status" => {
+            let project = pick_project(args, loc)?;
+            let status = projects::status(loc, &project)?;
+            let summary = format!(
+                "{}: {}",
+                project.id,
+                status.review.as_ref().map_or("no baseline", |r| r.state)
+            );
+            Ok(Done::new(vec![json_text(&status)], summary))
+        }
+        "ledger" => {
+            let project = pick_project(args, loc)?;
+            let entries = projects::ledger_of(loc, &project)?;
+            let limit = usize_of(args.integer("limit", 25)?).max(1);
+            let summary = ledger::summarize(&entries, &project.decisions, limit);
+            let phrase = format!(
+                "{} removed, {} changed, {} added",
+                summary.counts.removed, summary.counts.changed, summary.counts.added
+            );
+            Ok(Done::new(vec![json_text(&summary)], phrase))
+        }
+        "decide" => {
+            let project = pick_project(args, loc)?;
+            let (project, review) = projects::decide(
+                loc,
+                &project.id,
+                &args.string("definition", "")?,
+                &args.string("decision", "")?,
+                &args.string("note", "")?,
+                &by,
+            )?;
+            let phrase = format!("{}: {}", project.id, review.state);
+            Ok(Done::new(vec![json_text(&review)], phrase))
+        }
+        "annotate" => {
+            let project = pick_project(args, loc)?;
+            let message = args.string("message", "")?;
+            let (project, done) = projects::annotate(
+                loc,
+                &project.id,
+                &projects::Annotate {
+                    key: &args.string("key", "")?,
+                    path: &args.string("path", "")?,
+                    line: usize_of(args.integer("line", 0)?),
+                    message: (!message.is_empty()).then_some(message.as_str()),
+                    kind: &args.string("kind", "")?,
+                    note: &args.string("note", "")?,
+                    by: &by,
+                },
+            )?;
+            let phrase = format!(
+                "{} noted in {}",
+                plural(done.annotated, "diagnostic", "diagnostics"),
+                project.id
+            );
+            Ok(Done::new(vec![json_text(&done)], phrase))
+        }
+        "pin" | "unpin" => {
+            let project = pick_project(args, loc)?;
+            let run_id = args.string("run_id", "")?;
+            let run_id = if run_id.trim().is_empty() {
+                runs::newest_in(&runs::runs_dir(loc), &project.mod_file)
+                    .map(|(meta, _)| meta.run_id)
+                    .ok_or("The project's mod has no saved run to pin.")?
+            } else {
+                run_id.trim().to_owned()
+            };
+            let pinned = action == "pin";
+            projects::pin(loc, &project.id, &run_id, pinned)?;
+            let phrase = format!("{run_id} {}", if pinned { "pinned" } else { "unpinned" });
+            Ok(Done::new(vec![json_text(&json!({"run_id": run_id, "pinned": pinned}))], phrase))
+        }
+        "baseline" => {
+            let project = pick_project(args, loc)?;
+            let run_id = args.string("run_id", "")?;
+            let project = projects::set_baseline(loc, &project.id, run_id.trim())?;
+            let phrase = format!("{} baseline set", project.id);
+            Ok(Done::new(vec![json_text(&project)], phrase))
+        }
+        "export" => {
+            let project = pick_project(args, loc)?;
+            let to = args.string("to", "")?;
+            if to.trim().is_empty() {
+                return Err("export needs `to`: a new or empty folder.".into());
+            }
+            let exported = projects::export(loc, &project, std::path::Path::new(to.trim()))?;
+            let phrase = format!("{} written", plural(exported.files.len(), "file", "files"));
+            Ok(Done::new(vec![json_text(&exported)], phrase))
+        }
+        other => Err(format!("Unknown action {other:?}.").into()),
+    }
+}
+
+/// What a play-test call asks for, with the mods resolved.
+struct PreparedRun {
+    playset_note: String,
+    commands: Vec<String>,
+    play: String,
+    bookmark: String,
+    typing: String,
+    mods: Vec<PathBuf>,
+    screenshot: bool,
+    keep_open: bool,
+    load_timeout: u64,
+    background: bool,
+    /// The first mod asked for, and its folder.
+    working: Option<ModRef>,
+    mod_dir: Option<PathBuf>,
+}
+
+impl PreparedRun {
+    fn run(&self) -> RunGame<'_> {
+        RunGame {
+            commands: &self.commands,
+            screenshot: self.screenshot,
+            bookmark: &self.bookmark,
+            play: &self.play,
+            keep_open: self.keep_open,
+            mods: &self.mods,
+            load_timeout: self.load_timeout,
+            typing: &self.typing,
+            background: self.background,
+        }
+    }
+}
+
+/// The arguments of `ck3_run` and `ck3_run_start`, checked and with the mods and the playset resolved.
+fn prepare_run(args: &Args, loc: &Locations, ctx: &mut Context) -> Result<PreparedRun, CallError> {
+    let mods_wanted = args.strings("mods")?;
+    let known = if mods_wanted.is_empty() { Vec::new() } else { all_mods(loc) };
+    let wanted: Vec<PathBuf> =
+        mods_wanted.iter().map(|wanted| mods::resolve(wanted, &known)).collect::<Result<_, _>>()?;
+    let working = wanted.first().map(|file| mod_ref(&known, file));
+    let mod_dir = wanted.first().and_then(|file| {
+        known
+            .iter()
+            .find(|info| info.mod_file == *file)
+            .map(|info| info.dir.clone())
+            .or_else(|| mods::describe(file).map(|info| info.dir))
+    });
+    let playset = args.string("playset", "")?;
+    let mut mods = Vec::new();
+    let mut playset_note = String::new();
+    if !playset.trim().is_empty() {
+        let found = playsets::find(&loc.user_dir, &playset)?;
+        let (files, missing) = playsets::load_order(&found);
+        playset_note =
+            format!("Playset {}: {} loaded", found.name, plural(files.len(), "mod", "mods"));
+        if !missing.is_empty() {
+            let _ = write!(playset_note, "; left out, no .mod file: {}", missing.join(", "));
+        }
+        playset_note.push_str(".\n\n");
+        mods = files;
+    }
+    for file in wanted {
+        if !mods.contains(&file) {
+            mods.push(file);
+        }
+    }
+    if let Some(working) = &working {
+        (ctx.working_on)(working);
+    }
+    Ok(PreparedRun {
+        playset_note,
+        commands: args.strings("commands")?,
+        play: args.string("play", "k_france")?,
+        bookmark: args.string("bookmark", "bm_867_carolingians")?,
+        typing: args.string("typing", "unicode")?,
+        mods,
+        screenshot: args.boolean("screenshot", true)?,
+        keep_open: args.boolean("keep_open", false)?,
+        load_timeout: args.integer("load_timeout", 300)?.max(30),
+        background: loc.game_tests_background || args.boolean("background", false)?,
+        working,
+        mod_dir,
+    })
+}
+
+/// `ck3_job`: look at, collect or stop a play-test job.
+fn job_tool(args: &Args, loc: &Locations, ctx: &mut Context) -> Result<Done, CallError> {
+    let action = args.string("action", "status")?;
+    let state_dir = &loc.state_dir;
+    if action == "list" {
+        let views: Vec<jobs::View> = jobs::list(state_dir)
+            .into_iter()
+            .map(|record| jobs::View::new(record, false))
+            .collect();
+        let summary = plural(views.len(), "job", "jobs");
+        return Ok(Done::new(vec![json_text(&views)], summary));
+    }
+    if !["status", "result", "cancel"].contains(&action.as_str()) {
+        return Err(format!("Unknown action {action:?}.").into());
+    }
+    let id = args.string("job_id", "")?;
+    let id = if id.trim().is_empty() {
+        jobs::list(state_dir)
+            .into_iter()
+            .next()
+            .map(|record| record.id)
+            .ok_or("There are no jobs on record. ck3_run_start starts one.")?
+    } else {
+        id.trim().to_owned()
+    };
+    let record = match action.as_str() {
+        "cancel" => jobs::cancel(state_dir, &id)?,
+        "status" => {
+            let wait = Duration::from_secs(args.integer("wait", 0)?);
+            (ctx.progress)(&format!("waiting for {id}"));
+            jobs::status(state_dir, &id, wait, ctx.cancelled)?
+        }
+        _ => jobs::load(state_dir, &id).ok_or_else(|| {
+            format!("No job {id:?}. ck3_job with action list shows the jobs on record.")
+        })?,
+    };
+    let working = record.mod_ref.clone();
+    let summary = format!("Job {id}: {:?}", record.state).to_lowercase();
+    let mut content = Vec::new();
+    let mut text = String::new();
+    if action == "result" {
+        if record.state == jobs::State::Running {
+            text.push_str("The job is still running; there is no report yet. ");
+            text.push_str("ck3_job with action status and wait follows it.\n\n");
+        } else if let Some(report) = jobs::result_text(state_dir, &id) {
+            let shot = record.screenshot.clone().filter(|path| path.is_file());
+            let view = jobs::View::new(record, true);
+            text =
+                format!("{}\n\n{report}", serde_json::to_string_pretty(&view).unwrap_or_default());
+            content.push(Content::Text(text));
+            content.extend(shot.map(Content::Image));
+            return Ok(Done {
+                content,
+                note: Note { summary, mod_ref: working, run_id: None, found: None },
+            });
+        } else {
+            text.push_str("The job left no report.\n\n");
+        }
+    }
+    let view = jobs::View::new(record, action != "status");
+    text.push_str(&serde_json::to_string_pretty(&view).unwrap_or_default());
+    content.push(Content::Text(text));
+    Ok(Done { content, note: Note { summary, mod_ref: working, run_id: None, found: None } })
+}
+
 fn mod_ref(mods: &[ModInfo], mod_file: &std::path::Path) -> ModRef {
     ModRef { name: mod_name(mods, mod_file), file: mod_file.to_path_buf() }
 }
@@ -1059,57 +1534,25 @@ pub fn call(
             Ok(Done { content, note })
         }
         "ck3_run" => {
-            let mods_wanted = args.strings("mods")?;
-            let known = if mods_wanted.is_empty() { Vec::new() } else { all_mods(loc) };
-            let wanted: Vec<PathBuf> = mods_wanted
-                .iter()
-                .map(|wanted| mods::resolve(wanted, &known))
-                .collect::<Result<_, _>>()?;
-            let working = wanted.first().map(|file| mod_ref(&known, file));
-            let playset = args.string("playset", "")?;
-            let mut mods = Vec::new();
-            let mut playset_note = String::new();
-            if !playset.trim().is_empty() {
-                let found = playsets::find(&loc.user_dir, &playset)?;
-                let (files, missing) = playsets::load_order(&found);
-                playset_note = format!(
-                    "Playset {}: {} loaded",
-                    found.name,
-                    plural(files.len(), "mod", "mods")
-                );
-                if !missing.is_empty() {
-                    let _ =
-                        write!(playset_note, "; left out, no .mod file: {}", missing.join(", "));
-                }
-                playset_note.push_str(".\n\n");
-                mods = files;
-            }
-            for file in wanted {
-                if !mods.contains(&file) {
-                    mods.push(file);
-                }
-            }
-            if let Some(working) = &working {
-                (ctx.working_on)(working);
-            }
-            let commands = args.strings("commands")?;
-            let play = args.string("play", "k_france")?;
-            let run = RunGame {
-                commands: &commands,
-                screenshot: args.boolean("screenshot", true)?,
-                bookmark: &args.string("bookmark", "bm_867_carolingians")?,
-                play: &play,
-                keep_open: args.boolean("keep_open", false)?,
-                mods: &mods,
-                load_timeout: args.integer("load_timeout", 300)?.max(30),
-                typing: &args.string("typing", "unicode")?,
+            let prepared = prepare_run(&args, loc, ctx)?;
+            let run = prepared.run();
+            let mut progress = |line: &str| (ctx.progress)(line);
+            let mut control = game::Control {
+                cancelled: ctx.cancelled,
+                progress: &mut progress,
+                tick: &mut || {},
             };
-            let (text, shot) = game::run_game(loc, &run, ctx.cancelled)?;
-            let text = format!("{playset_note}{text}");
-            let mut summary = format!(
-                "Played as {play}, {}",
-                plural(commands.len(), "console command", "console commands")
-            );
+            let (text, shot) = game::run_game(loc, &run, &mut control)?;
+            let text = format!("{}{text}", prepared.playset_note);
+            let mut summary = if run.background {
+                format!("Played as {} in the background", prepared.play)
+            } else {
+                format!(
+                    "Played as {}, {}",
+                    prepared.play,
+                    plural(prepared.commands.len(), "console command", "console commands")
+                )
+            };
             if shot.is_some() {
                 summary.push_str(", screenshot taken");
             }
@@ -1117,9 +1560,47 @@ pub fn call(
                 std::iter::once(Content::Text(text)).chain(shot.map(Content::Image)).collect();
             Ok(Done {
                 content,
-                note: Note { summary, mod_ref: working, run_id: None, found: None },
+                note: Note { summary, mod_ref: prepared.working, run_id: None, found: None },
             })
         }
+        "ck3_run_start" => {
+            let prepared = prepare_run(&args, loc, ctx)?;
+            let run = prepared.run();
+            let meta = jobs::Meta {
+                mod_ref: prepared.working.clone(),
+                mod_dir: prepared.mod_dir.clone(),
+                reason: journal::clean_reason(arguments.get(REASON)),
+                client: ctx.client.map(str::to_owned),
+                session: ctx.session.to_owned(),
+                args: journal::brief_args(arguments),
+            };
+            let record = jobs::start(loc, &run, meta)?;
+            let id = record.id.clone();
+            let budget = record.budget_secs;
+            let text = format!(
+                "{}Job {id} started: {}, up to {} s. The game runs in this server; ck3_job with \
+                 action status (wait up to 30 s) follows it, and action result gives the report \
+                 once it is over. A client that times out in the meantime has not stopped it.\n\n{}",
+                prepared.playset_note,
+                if run.background {
+                    "background run".to_owned()
+                } else {
+                    format!("{} console commands", run.commands.len())
+                },
+                budget,
+                serde_json::to_string_pretty(&jobs::View::new(record, false)).unwrap_or_default()
+            );
+            Ok(Done {
+                content: vec![Content::Text(text)],
+                note: Note {
+                    summary: format!("Job {id} started"),
+                    mod_ref: prepared.working,
+                    run_id: None,
+                    found: None,
+                },
+            })
+        }
+        "ck3_job" => job_tool(&args, loc, ctx),
         "ck3_keys" => {
             let scancodes = args.string("scancodes", "")?;
             let text = args.string("text", "")?;
@@ -1252,12 +1733,15 @@ pub fn call(
             let mod_file = mods::resolve(&args.string("mod_path", "")?, &mods)?;
             let info = mods::describe(&mod_file)
                 .ok_or_else(|| format!("Cannot read {}.", mod_file.display()))?;
+            let base = args.string("base", "")?;
+            let base = (!base.trim().is_empty()).then(|| PathBuf::from(base.trim()));
             let report = overrides::compare_with_game(&overrides::Request {
                 install: loc.require_game()?,
                 mod_dir: &info.dir,
                 path: &args.string("path", "")?,
                 diff_lines: usize_of(args.integer("diff_lines", 20)?),
                 limit: usize_of(args.integer("limit", 15)?).max(1),
+                base: base.as_deref(),
             })?;
             let summary = format!(
                 "{} replace a game file, {} replace a game definition",
@@ -1266,6 +1750,7 @@ pub fn call(
             );
             Ok(Done::new(vec![json_text(&report)], summary))
         }
+        "xtiger_project" => project_tool(&args, loc, ctx),
         "xtiger_migrate" => {
             let mods = all_mods(loc);
             let mod_file = mods::resolve(&args.string("mod_path", "")?, &mods)?;
@@ -1333,14 +1818,23 @@ pub fn call(
                 format!("{} does not exist yet. Play-test with ck3_run first.", log_path.display())
             })?;
             let log = String::from_utf8_lossy(&bytes);
-            let report = gap::compare(&gap::Request {
+            let mut report = gap::compare(&gap::Request {
                 log: &log,
                 mod_dir: &info.dir,
                 reports: &run.reports,
                 limit: usize_of(args.integer("limit", 30)?),
             });
+            let now = projects::manifest_hash(&info.dir);
+            report.run = Some(gap::RunBinding {
+                run_id: run.meta.run_id.clone(),
+                files: match (run.meta.snapshot.as_deref(), now.as_deref()) {
+                    (Some(then), Some(now)) if then == now => "current",
+                    (Some(_), _) => "stale",
+                    (None, _) => "unknown",
+                },
+            });
             let summary = format!(
-                "{} about the mod, {} reported by Tiger, {} not ({} in files Tiger said nothing about)",
+                "{} about the mod, {} matched by Tiger, {} not ({} in files Tiger said nothing about)",
                 report.about_the_mod,
                 report.reported_by_tiger,
                 report.gaps,
@@ -1439,7 +1933,7 @@ mod tests {
     fn every_tool_is_listed_with_a_schema() {
         let list = list();
         let tools = list["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 19);
+        assert_eq!(tools.len(), 22);
         for tool in tools {
             assert_eq!(tool["inputSchema"]["type"], "object");
             assert!(tool["description"].as_str().unwrap().len() > 40);
@@ -1580,5 +2074,35 @@ mod tests {
         assert_eq!(status["user_dir"]["from"], "CK3_USER_DIR");
         assert_eq!(status["validator"]["ok"], false);
         assert_eq!(status["xtiger_mcp"], env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn jobs_are_read_by_id_or_as_the_newest_and_a_missing_one_is_said_so() {
+        let tmp = TempDir::new();
+        let loc = locations(&tmp);
+        let err = run("ck3_job", &json!({}), &loc).unwrap_err();
+        assert_eq!(
+            err,
+            CallError::Failed("There are no jobs on record. ck3_run_start starts one.".into())
+        );
+        assert_eq!(text(run("ck3_job", &json!({"action": "list"}), &loc)), "[]");
+        let err =
+            run("ck3_job", &json!({"action": "status", "job_id": "job-1"}), &loc).unwrap_err();
+        assert!(
+            matches!(&err, CallError::Failed(message) if message.contains("No job")),
+            "{err:?}"
+        );
+        let err = run("ck3_job", &json!({"action": "dance", "job_id": "job-1"}), &loc).unwrap_err();
+        assert!(matches!(&err, CallError::Failed(message) if message.contains("Unknown action")));
+    }
+
+    #[test]
+    fn a_job_that_cannot_start_is_refused_before_it_is_one() {
+        let tmp = TempDir::new();
+        let loc = locations(&tmp);
+        // The same checks as ck3_run, so no job is left behind to find.
+        let err = run("ck3_run_start", &json!({"commands": ["a\nb"]}), &loc).unwrap_err();
+        assert!(matches!(err, CallError::Failed(_)));
+        assert_eq!(text(run("ck3_job", &json!({"action": "list"}), &loc)), "[]");
     }
 }

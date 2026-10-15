@@ -1,0 +1,20 @@
+namespace = ovr
+
+# Same id in two files: the later file has the higher priority, so this one is dead code.
+ovr.0001 = {
+	hidden = yes
+	immediate = { bogus_dead_a1 = yes }
+}
+
+# Higher priority than the later file, so this one is the live one although it comes first.
+ovr.0002 = {
+	id_override_priority = 2
+	hidden = yes
+	immediate = { bogus_live_a2 = yes }
+}
+
+# Same priority in both files: an error, and the first one is kept.
+ovr.0003 = {
+	hidden = yes
+	immediate = { bogus_tie_a3 = yes }
+}

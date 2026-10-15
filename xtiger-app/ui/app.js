@@ -28,6 +28,9 @@ const state = {
   selectedMod: null,
   pictures: new Map(),
   run: null,
+  // The update project of the mod on screen: undefined while it loads, null when none follows it.
+  project: undefined,
+  projectOpen: false,
   validating: null,
   view: { severities: new Set(SEVERITIES), onlyNew: false, groupBy: 'file', text: '', selected: 0, collapsed: new Set(), limit: PAGE_SIZE },
   notice: null,
@@ -122,6 +125,8 @@ const icon = {
   close: '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.6"/></svg>',
   chevron: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
   spark: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18"/></svg>',
+  down: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></svg>',
+  up: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>',
   folder: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
 };
 
@@ -209,7 +214,7 @@ function placeTabPill(root) {
 /* ---------- Navigation ---------- */
 
 const SCREENS = {};
-const RAIL_SCREENS = new Set(['mods', 'results', 'allclear', 'activity', 'settings']);
+const RAIL_SCREENS = new Set(['home', 'mods','results', 'allclear', 'activity', 'settings']);
 
 // The screen the latest go() asked for. Swaps can run late when quick clicks cut transitions short,
 // so each swap renders the latest target rather than its own.
@@ -340,6 +345,20 @@ function filterCards(root) {
 
 /* ---------- Validation ---------- */
 
+/* Let the bar fill up before the results take its place. */
+async function finishProgress() {
+  const v = state.validating;
+  const fill = $('#fill');
+  if (!v || !fill || state.screen !== 'validating' || reducedMotion()) return;
+  v.finished = true;
+  $('.progress')?.classList.remove('indeterminate');
+  $('.progress')?.classList.add('done');
+  fill.style.width = '100%';
+  const phase = $('#phase');
+  if (phase) phase.textContent = 'Done';
+  await new Promise((resolve) => setTimeout(resolve, 650));
+}
+
 async function validate(mod) {
   if (!mod) return;
   state.selectedMod = mod.modFile;
@@ -348,7 +367,9 @@ async function validate(mod) {
   go('validating');
   try {
     const result = await call('validate', { modFile: mod.modFile });
+    await finishProgress();
     state.run = { ...result, mod, finished: Date.now() };
+    state.project = undefined;
     state.view = { ...state.view, selected: 0, collapsed: new Set(), limit: PAGE_SIZE, onlyNew: false };
     state.setup.lastMod = mod.modFile;
     mod.lastCount = result.reports.length;
@@ -362,6 +383,25 @@ async function validate(mod) {
 }
 
 /* ---------- Reports ---------- */
+
+/* The files with the most reports, worst ones first: where an hour of fixing pays off most. */
+function hotspots(reports, limit = 3) {
+  const places = new Map();
+  for (const report of reports) {
+    const path = where(report)?.path;
+    if (!path) continue;
+    const place = places.get(path) ?? { path, total: 0, bad: 0, worst: 'tips' };
+    place.total += 1;
+    const severity = severityOf(report);
+    if (severity === 'fatal' || severity === 'error') place.bad += 1;
+    if (SEVERITIES.indexOf(severity) < SEVERITIES.indexOf(place.worst)) place.worst = severity;
+    places.set(path, place);
+  }
+  return [...places.values()]
+    .filter((place) => place.total > 1 || places.size <= limit)
+    .sort((a, b) => b.bad - a.bad || b.total - a.total || a.path.localeCompare(b.path))
+    .slice(0, limit);
+}
 
 function severityOf(report) {
   return SEVERITIES.includes(report.severity) ? report.severity : 'tips';
@@ -472,6 +512,7 @@ function detailHtml(report) {
         ${report.wiki ? `<button class="btn" data-act="copy-wiki">Copy wiki link</button>` : ''}
         <button class="btn" data-act="ask-ai">${icon.spark}Ask AI to fix</button>
       </div>
+      ${noteHtml(report)}
       <div class="hint">Double-click a report to jump to its line. Use ↑ ↓ to move and Enter to open.</div>
     </div>`;
 }
@@ -636,6 +677,316 @@ async function openUpdateBrief() {
   });
 }
 
+/* ---------- Update tracking ---------- */
+
+/* The update of a mod, as the project record of xTiger keeps it (the one the AI assistants read
+ * too): which checks have run, which are still missing, and the notes made on reports. A note
+ * says what was decided about a report; it never removes the report from a list or a count. */
+
+const NOTE_KINDS = [
+  ['intentional_override', 'On purpose', 'The mod does this deliberately, for example it replaces a game file or definition.'],
+  ['test_assertion', 'Checked in the game', 'A game test showed that it works, or that it does not matter.'],
+  ['advisory_formatting', 'Only formatting', 'Style advice that does not change how the mod behaves.'],
+  ['unresolved_defect', 'Still a defect', 'A real problem that is not fixed yet. It keeps the update open.'],
+];
+const NOTE_BULK = 25;
+
+const normalizeText = (text) => String(text ?? '').split(/\s+/).join(' ').trim();
+const slashed = (path) => String(path ?? '').replaceAll('\\', '/');
+
+/* The records list each noted report by its key, its normalised message and the place of its
+ * first location, with the id of its note and whether that note still applies. A report matches
+ * its record on those, and the note's identity holds the same things plus the definition, which
+ * the place already fixes: another report with the same key and message in another definition of
+ * the same file has no note of its own. The table is rebuilt only when the status is replaced. */
+let spotCache = { source: null, spots: new Map() };
+const spotKey = (key, path, line, message) => `${key}\n${path}\n${line}\n${message}`;
+
+function spotOf(report) {
+  const source = state.project?.triage?.noted;
+  if (!source?.length) return null;
+  if (spotCache.source !== source) {
+    spotCache = { source, spots: new Map(source.map((spot) => [spotKey(spot.key, spot.path, spot.line, spot.message), spot])) };
+  }
+  const loc = where(report);
+  return spotCache.spots.get(spotKey(report.key, slashed(loc?.path), loc?.linenr ?? 0, normalizeText(report.message))) ?? null;
+}
+
+/* The newest note of a report: the one its record names by id, as the records count it. */
+function noteOf(report) {
+  const id = spotOf(report)?.id;
+  if (!id) return null;
+  const notes = state.project?.project?.annotations ?? [];
+  for (let i = notes.length - 1; i >= 0; i -= 1) {
+    if (notes[i].id === id) return notes[i];
+  }
+  return null;
+}
+
+/* A note stops applying when the definition it was written for changes: that report needs a new look. */
+const needsLook = (report) => spotOf(report)?.applies === false;
+
+/* The tag a report row carries for its note: stale notes ask for a new look instead. */
+function noteTagHtml(report) {
+  if (!noteOf(report)) return '';
+  return needsLook(report)
+    ? '<span class="note-tag" data-look title="The code changed after this note was written">NEEDS A NEW LOOK</span>'
+    : '<span class="note-tag">NOTE</span>';
+}
+
+const STEP_GLYPHS = {
+  ok: '<svg class="upd-glyph" viewBox="0 0 16 16" fill="none" stroke="var(--good)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8"/></svg>',
+  warn: '<svg class="upd-glyph" viewBox="0 0 16 16" fill="none" stroke="var(--sev-warning)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 7v3"/></svg>',
+  bad: '<svg class="upd-glyph" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="2" fill="var(--sev-error)"/></svg>',
+  todo: '<svg class="upd-glyph" viewBox="0 0 16 16" fill="none" stroke="var(--faint)" stroke-width="1.8" aria-hidden="true"><circle cx="8" cy="8" r="4.6"/></svg>',
+};
+
+/* The four stages as [label, tone, words, explanation]. A stage that did not run says so. */
+function updateSteps(status) {
+  const { update, latest_run: latest, triage } = status;
+  const open = triage ? triage.needs_review + triage.unreviewed + (triage.reviewed?.unresolved_defect ?? 0) : 0;
+  const pick = (table, key) => table[key] ?? ['todo', key];
+  return [
+    ['Validated', ...pick({ completed: ['ok', 'Done'], not_run: ['todo', 'Not run'] }, update.process), 'A validator run was finished and saved.'],
+    ['Static check', ...pick({
+      clean: ['ok', 'No errors'],
+      errors: ['bad', plural(latest?.errors ?? 0, 'error')],
+      stale: ['warn', 'Out of date'],
+      not_run: ['todo', 'Not run'],
+    }, update.static), 'What the validator found in the files. Out of date means the files changed since that run.'],
+    ['Game test', ...pick({
+      not_run: ['todo', 'Not run'],
+      ran_after_last_edit: ['ok', 'Ran after the last edit'],
+      ran_before_last_edit: ['warn', 'Edited since'],
+      failed: ['bad', 'Did not finish'],
+    }, update.runtime), 'The game was started with this mod. Whether the mod behaved is for the game logs to show.'],
+    ['Review', ...pick({
+      not_run: ['todo', 'Nothing to review'],
+      pending: ['warn', `${plural(open, 'item')} open`],
+      done: ['ok', 'All reviewed'],
+    }, update.review), 'Every report has a note, no note is a defect, and no definition changed after its note.'],
+  ];
+}
+
+function updateDetailHtml(status) {
+  const { update, latest_run: latest, triage } = status;
+  const blocking = update.blocking.length
+    ? `<ul class="upd-list">${update.blocking.map((line) => `<li>${esc(line)}</li>`).join('')}</ul>`
+    : '<p>Nothing blocks this update.</p>';
+  const facts = [];
+  if (latest) {
+    facts.push(latest.files === 'current' ? 'The latest run matches the files on disk.'
+      : latest.files === 'stale' ? 'The mod changed after the latest run. Validate again.'
+        : 'The files cannot be compared with the latest run.');
+  }
+  if (status.game_changed) facts.push('The game was updated after this update was started.');
+  if (status.mod_changed) facts.push('The mod was edited since this update was started.');
+  let notes = '';
+  if (triage) {
+    const reviewed = Object.entries(triage.reviewed ?? {});
+    const parts = [];
+    for (const [kind, count] of reviewed) {
+      const label = NOTE_KINDS.find(([id]) => id === kind)?.[1] ?? kind;
+      parts.push(`${count} marked “${label}”`);
+    }
+    if (triage.needs_review) parts.push(`${triage.needs_review} need a new look because their code changed after the note`);
+    if (triage.unreviewed) parts.push(`${triage.unreviewed} have no note`);
+    notes = `
+      <div>
+        <div class="ov-title">Reports in the latest run: ${triage.diagnostics.toLocaleString()}</div>
+        <p>${parts.length ? esc(parts.join(', ')) : 'None.'}${triage.notes_without_diagnostic ? ` ${plural(triage.notes_without_diagnostic, 'note')} belong to reports that are gone.` : ''}</p>
+        ${triage.examples?.length ? `<ul class="upd-list upd-mono">${triage.examples.map((line) => `<li>${esc(line)}</li>`).join('')}</ul>` : ''}
+        <p class="muted">Notes never hide a report: it stays in every list and count.</p>
+      </div>`;
+  }
+  return `
+    <div class="upd-more" id="upd-more">
+      <div>
+        <div class="ov-title">${update.update_complete ? 'Complete' : 'Still open'}</div>
+        ${blocking}
+        ${facts.map((line) => `<p class="muted">${esc(line)}</p>`).join('')}
+      </div>
+      ${notes}
+    </div>`;
+}
+
+function updateBandHtml() {
+  const status = state.project;
+  if (status === undefined) return '';
+  if (status === null) {
+    return `
+      <div class="upd-row">
+        <p class="upd-off">Not following an update for this mod. Following it shows which checks are still missing, and lets you leave notes on reports.</p>
+        <button class="btn btn-sm" data-upd="track" title="The latest check becomes the starting point to compare with">Follow this update</button>
+      </div>`;
+  }
+  const { update } = status;
+  const open = state.projectOpen;
+  const steps = updateSteps(status).map(([label, tone, words, why]) => `
+    <li class="upd-step" data-tone="${tone}" title="${esc(why)}">${STEP_GLYPHS[tone]}<b>${esc(label)}</b><span class="st">${esc(words)}</span></li>`).join('');
+  const verdict = update.update_complete
+    ? '<span class="upd-verdict" data-done>Update complete</span>'
+    : `<span class="upd-verdict">${plural(update.blocking.length, 'thing')} still open</span>`;
+  return `
+    <div class="upd-row">
+      <ol class="upd-steps" aria-label="Update stages">${steps}</ol>
+      ${verdict}
+      <button class="btn btn-sm" data-upd="toggle" aria-expanded="${open}" aria-controls="upd-more">${open ? 'Hide' : 'Details'}</button>
+    </div>
+    ${open ? updateDetailHtml(status) : ''}`;
+}
+
+function paintProject() {
+  const band = $('#upd');
+  if (band) band.innerHTML = updateBandHtml();
+  for (const row of $$('#list .row')) {
+    const report = listedReports()[Number(row.dataset.index)];
+    $('.note-tag', row)?.remove();
+    if (report) $('.row-meta', row)?.insertAdjacentHTML('beforeend', noteTagHtml(report));
+  }
+}
+
+async function loadProject() {
+  const modFile = state.run?.mod.modFile;
+  if (!modFile) return;
+  try {
+    const status = await call('project_status', { modFile });
+    if (state.run?.mod.modFile !== modFile) return;
+    state.project = status;
+  } catch {
+    // Without a record the screen simply offers to start one.
+    state.project = null;
+  }
+  paintProject();
+  renderDetail();
+}
+
+function bindProject(root) {
+  const band = $('#upd', root);
+  if (!band) return;
+  band.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-upd]');
+    if (!button) return;
+    if (button.dataset.upd === 'toggle') {
+      state.projectOpen = !state.projectOpen;
+      paintProject();
+      return;
+    }
+    button.disabled = true;
+    try {
+      state.project = await call('project_track', { modFile: state.run.mod.modFile });
+      toast('Following this update. This check is the starting point.');
+    } catch (error) {
+      toast(String(error));
+    }
+    paintProject();
+    renderDetail();
+  });
+}
+
+/* The note of the selected report, and the form to write or change it. */
+function noteHtml(report) {
+  if (state.project === undefined) return '';
+  if (state.project === null) {
+    return '<div class="note"><p class="muted">Notes belong to an update you follow. Use “Follow this update” above to start one.</p></div>';
+  }
+  const loc = where(report);
+  const saved = noteOf(report);
+  const look = saved && needsLook(report);
+  const kind = saved ? NOTE_KINDS.find(([id]) => id === saved.kind) : null;
+  const path = slashed(loc?.path);
+  const same = path ? state.run.reports.filter((other) => other.key === report.key
+    && (other.locations ?? []).some((place) => slashed(place.path).includes(path))).length : 1;
+  const bulk = same > 1;
+  const tooMany = same > NOTE_BULK;
+  const current = saved?.kind ?? 'intentional_override';
+  const options = NOTE_KINDS.map(([id, label]) => `<option value="${id}" ${id === current ? 'selected' : ''}>${esc(label)}</option>`).join('');
+  const hint = NOTE_KINDS.find(([id]) => id === current)[2];
+  return `
+    <div class="note">
+      ${saved ? `
+        <div class="note-saved" data-defect="${saved.kind === 'unresolved_defect'}" ${look ? 'data-look' : ''}>
+          <div class="note-kind">${esc(kind?.[1] ?? saved.kind)}</div>
+          <p class="selectable">${esc(saved.note)}</p>
+          <div class="muted">${esc(saved.by)}, ${ago(saved.at)}</div>
+          ${look ? `
+            <div class="note-look">
+              <p>Needs a new look: the code changed after this note was written.</p>
+              <button type="button" class="btn btn-sm" data-act="keep-note" title="Saves the same note again for the code as it is now">Still true, keep the note</button>
+            </div>` : ''}
+        </div>` : ''}
+      <details class="note-edit">
+        <summary class="btn btn-sm">${saved ? 'Change the note' : 'Add a note'}</summary>
+        <form class="note-form" autocomplete="off">
+          <label class="note-field"><span>What is this report?</span>
+            <select class="field" name="kind" data-note="kind">${options}</select>
+          </label>
+          <p class="muted" data-note="hint">${esc(hint)}</p>
+          <label class="note-field"><span>Why? <span class="muted">Required, kept with the update.</span></span>
+            <textarea class="field" name="note" rows="3" maxlength="600" data-note="text" spellcheck="true">${esc(saved?.note ?? '')}</textarea>
+          </label>
+          ${bulk ? `
+            <label class="check note-scope">
+              <input type="checkbox" name="scope" ${tooMany ? 'disabled' : ''}>
+              <span>Apply to all ${same} “${esc(report.key)}” reports in this file${tooMany ? `, too many at once (at most ${NOTE_BULK})` : ''}</span>
+            </label>` : ''}
+          <div class="note-actions">
+            <button type="button" class="btn btn-primary btn-sm" data-act="save-note" disabled>Save note</button>
+            <span class="muted">The report stays in every list and count.</span>
+          </div>
+        </form>
+      </details>
+    </div>`;
+}
+
+async function saveNote(report, form) {
+  const everywhere = form.elements.scope?.checked ?? false;
+  const note = form.elements.note.value.trim();
+  if (!note) return;
+  await writeNote(report, form.elements.kind.value, note, everywhere, $('[data-act="save-note"]', form));
+}
+
+/* Saves the note again as it is, so that it applies to the code as it is now. Only this report's
+ * note is written: its message picks out this one diagnostic, even when another shares its line. */
+async function keepNote(report, button) {
+  const saved = noteOf(report);
+  if (saved) await writeNote(report, saved.kind, saved.note, false, button);
+}
+
+async function writeNote(report, kind, note, everywhere, button) {
+  const loc = where(report);
+  button.disabled = true;
+  try {
+    const done = await call('project_annotate', {
+      modFile: state.run.mod.modFile,
+      key: report.key,
+      path: slashed(loc?.path),
+      line: everywhere ? 0 : (loc?.linenr ?? 0),
+      kind,
+      note,
+      message: everywhere ? null : normalizeText(report.message),
+    });
+    state.project = done.status;
+    paintProject();
+    renderDetail();
+    toast(`Note saved on ${plural(done.annotated, 'report')}. ${done.annotated === 1 ? 'It stays' : 'They stay'} in the list.`);
+  } catch (error) {
+    button.disabled = false;
+    toast(String(error));
+  }
+}
+
+/* Keeps the note form honest while it is typed in: the hint follows the kind, and nothing can be
+ * saved without a reason. */
+function noteFormChanged(event) {
+  const form = event.target.closest('.note-form');
+  if (!form) return;
+  const kind = NOTE_KINDS.find(([id]) => id === form.elements.kind.value);
+  const hint = $('[data-note="hint"]', form);
+  if (hint && kind) hint.textContent = kind[2];
+  $('[data-act="save-note"]', form).disabled = form.elements.note.value.trim() === '';
+}
+
 /* ---------- Screens ---------- */
 
 SCREENS.boot = {
@@ -704,6 +1055,69 @@ SCREENS.welcome = {
     $('[data-act="change-game"]', root).addEventListener('click', () => changeGame());
     $('[data-act="change-paradox"]', root).addEventListener('click', () => changeParadox());
     $('[data-act="vscode"]', root)?.addEventListener('change', (event) => setPreference({ openInEditor: event.target.checked }));
+  },
+};
+
+/* The first stop after the setup: pick a game, then see what can be done with its mods. */
+SCREENS.home = {
+  html() {
+    const { game } = state.setup;
+    const total = state.mods.length;
+    const checked = state.mods.filter((mod) => mod.lastCount != null).length;
+    const withReports = state.mods.filter((mod) => mod.lastCount > 0).length;
+    const last = state.mods.find((mod) => mod.modFile === state.setup.lastMod);
+    const facts = [
+      `<span><b>${total}</b> ${total === 1 ? 'mod' : 'mods'}</span>`,
+      `<span><b>${checked}</b> checked</span>`,
+      withReports ? `<span><b>${withReports}</b> with reports</span>` : '',
+    ].join('');
+    return `
+      <div class="home">
+        <div class="home-field" data-field></div>
+        <div class="home-inner stagger">
+          <div class="home-head">
+            <div class="q q-idle" role="img" aria-label="Qubis" style="width:88px;height:88px"></div>
+            <div>
+              <h1 class="home-title">xTiger</h1>
+            </div>
+          </div>
+          <p class="home-sub">Check your mods, read the reports, and let an assistant help with the fixing. Pick a game to start.</p>
+          <div class="home-games">
+            <section class="card game game-live">
+              <div class="game-top">
+                <span class="logo logo-ck3" role="img" aria-label="Crusader Kings III"></span>
+                <div>
+                  <h2>Crusader Kings III</h2>
+                  <div class="meta">${game?.version ? `Game version ${esc(game.version)}` : 'Game found'}</div>
+                </div>
+              </div>
+              <div class="game-facts">${facts}</div>
+              <p class="blurb">${last ? `Last time: ${esc(last.name)}.` : 'Validate a mod, compare runs and move it to a new game version.'}</p>
+              <button class="btn btn-primary" data-act="open-ck3">${icon.magnifier}Open my mods</button>
+            </section>
+          </div>
+          <section class="soon" aria-label="Stellaris, coming soon">
+            <span class="soon-tag">Coming soon</span>
+            <span class="logo logo-stellaris" role="img" aria-label="Stellaris"></span>
+            <p>A mod auditor with the same reports and the same help from your assistant.</p>
+          </section>
+          <div class="home-foot">
+            <span>xTiger ${esc(state.version ?? '')}</span>
+            <button class="btn btn-xs" data-act="home-settings">Settings</button>
+          </div>
+        </div>
+      </div>`;
+  },
+  bind(root) {
+    const field = $('[data-field]', root);
+    const art = 'assets/qubis-tiger.webp';
+    if (state.setup.asciiBackground) {
+      AsciiField.mount(field, { src: art });
+    } else {
+      field.insertAdjacentHTML('afterbegin', `<img class="home-art" src="${art}" alt="">`);
+    }
+    $('[data-act="open-ck3"]', root).addEventListener('click', () => go('mods'));
+    $('[data-act="home-settings"]', root).addEventListener('click', () => go('settings'));
   },
 };
 
@@ -923,7 +1337,7 @@ SCREENS.validating = {
     const progress = $('.progress', root);
     const phase = $('#phase', root);
     const tick = () => {
-      if (!fill.isConnected || state.validating !== v || v.error) return;
+      if (!fill.isConnected || state.validating !== v || v.error || v.finished) return;
       const ms = Date.now() - v.started;
       elapsed.textContent = clock(ms) + (v.estimate ? ` / ~${clock(v.estimate)}` : '');
       if (v.estimate) {
@@ -970,9 +1384,25 @@ SCREENS.results = {
     const version = state.setup.game?.version ? ` against CK3 ${esc(state.setup.game.version)}` : '';
     const change = run.previousCount == null ? 'first check of this mod' : `${plural(run.newCount, 'new one', 'new')} since the last run`;
     const qubis = counts.fatal + counts.error > 0 ? 'q-worried' : 'q-idle';
-    const chips = SEVERITIES.filter((s) => s !== 'fatal' || counts.fatal > 0).map((s) => `
+    const shownSeverities = SEVERITIES.filter((s) => s !== 'fatal' || counts.fatal > 0);
+    const chips = shownSeverities.map((s) => `
       <button class="chip" data-sev="${s}" aria-pressed="${state.view.severities.has(s)}" style="--sev: var(--sev-${s})">
         <span class="dot ${s === 'error' || s === 'fatal' ? 'square' : ''}"></span>${SEVERITY_LABELS[s]}<span class="count">${counts[s]}</span>
+      </button>`).join('');
+    const segments = shownSeverities.filter((s) => counts[s] > 0).map((s, i) => `
+      <button class="seg" data-sev="${s}" tabindex="-1" aria-hidden="true" title="${plural(counts[s], SEVERITY_LABELS[s].toLowerCase().replace(/s$/, ''))}" ${state.view.severities.has(s) ? '' : 'data-off'}
+        style="--sev: var(--sev-${s}); --n: ${counts[s]}; --d: ${i * 90}ms"></button>`).join('');
+    const fixed = run.previousCount == null ? 0 : Math.max(0, run.previousCount - (total - run.newCount));
+    const deltas = run.previousCount == null ? '' : `
+      <span class="ov-delta ov-fixed" title="Reports the last run had that are gone now">${icon.down}${fixed} fixed</span>
+      <span class="ov-delta ov-new ${run.newCount > 0 ? 'ov-hot' : ''}" title="Reports the last run did not have">${icon.up}${run.newCount} new</span>`;
+    const places = hotspots(run.reports);
+    const worst = Math.max(1, ...places.map((place) => place.total));
+    const hotspotRows = places.map((place, i) => `
+      <button class="place" data-place="${esc(place.path)}" style="--sev: var(--sev-${place.worst}); --w: ${place.total / worst}; --d: ${180 + i * 90}ms" aria-pressed="${state.view.text === place.path}" title="${esc(place.path)}">
+        <span class="place-name">${esc(fileName(place.path))}</span>
+        <span class="place-bar"><span></span></span>
+        <span class="place-count">${place.total}</span>
       </button>`).join('');
     return `
       <section class="results-head">
@@ -985,13 +1415,27 @@ SCREENS.results = {
         <button class="btn" data-act="export">Export…</button>
         <button class="btn btn-primary" data-act="again">${icon.again}Validate again</button>
       </section>
+      <section class="overview" aria-label="Summary">
+        <div class="ov-main">
+          <div class="ov-stack" role="presentation">${segments}</div>
+          <div class="ov-legend">
+            ${chips}
+            ${deltas}
+          </div>
+        </div>
+        ${hotspotRows ? `
+        <div class="ov-places" aria-label="Where most reports are">
+          <div class="ov-title">Where to look first</div>
+          ${hotspotRows}
+        </div>` : ''}
+      </section>
+      <section class="upd" id="upd" aria-label="Update status">${updateBandHtml()}</section>
       <section class="filters" aria-label="Filters">
-        ${chips}
-        <span class="spacer"></span>
         <label class="check" style="font-size:13px" title="${run.previousCount == null ? 'There is no earlier run to compare with yet' : 'Only reports that the last run did not have'}">
           <input type="checkbox" data-act="only-new" ${state.view.onlyNew ? 'checked' : ''} ${run.previousCount == null ? 'disabled' : ''}>
           Only new
         </label>
+        <span class="spacer"></span>
         <label for="groupby" class="muted" style="font-size:13px;margin-left:8px">Group by</label>
         <select id="groupby" class="field" data-act="group">
           ${[['file', 'File'], ['key', 'Key'], ['severity', 'Severity']].map(([value, label]) => `<option value="${value}" ${state.view.groupBy === value ? 'selected' : ''}>${label}</option>`).join('')}
@@ -1016,7 +1460,24 @@ SCREENS.results = {
         if (on) state.view.severities.delete(s);
         else state.view.severities.add(s);
         chip.setAttribute('aria-pressed', String(!on));
+        $(`.seg[data-sev="${s}"]`, root)?.toggleAttribute('data-off', on);
         state.view.selected = 0;
+        renderList();
+      });
+    }
+    for (const seg of $$('.seg', root)) {
+      seg.addEventListener('click', () => $(`.chip[data-sev="${seg.dataset.sev}"]`, root)?.click());
+    }
+    const filterBox = $('#filter', root);
+    for (const place of $$('.place', root)) {
+      place.addEventListener('click', () => {
+        const path = place.dataset.place;
+        const on = state.view.text !== path;
+        state.view.text = on ? path : '';
+        filterBox.value = state.view.text;
+        for (const other of $$('.place', root)) other.setAttribute('aria-pressed', String(on && other === place));
+        state.view.selected = 0;
+        state.view.limit = PAGE_SIZE;
         renderList();
       });
     }
@@ -1034,6 +1495,7 @@ SCREENS.results = {
     const filter = $('#filter', root);
     filter.addEventListener('input', () => {
       state.view.text = filter.value;
+      for (const place of $$('.place', root)) place.setAttribute('aria-pressed', String(place.dataset.place === filter.value));
       state.view.selected = 0;
       state.view.limit = PAGE_SIZE;
       renderList();
@@ -1071,7 +1533,9 @@ SCREENS.results = {
       if (!button) return;
       const report = listedReports()[state.view.selected];
       const act = button.dataset.act;
-      if (act === 'open-main') openReport(report);
+      if (act === 'save-note') saveNote(report, button.closest('.note-form'));
+      else if (act === 'keep-note') keepNote(report, button);
+      else if (act === 'open-main') openReport(report);
       else if (act === 'copy-report') copy(reportText(report), 'Report');
       else if (act === 'copy-wiki') copy(report.wiki, 'Link');
       else if (act === 'ask-ai') askToFix(report);
@@ -1083,7 +1547,11 @@ SCREENS.results = {
         call('open_location', { path: button.dataset.path, line, column }).catch((e) => toast(String(e)));
       }
     });
+    detail.addEventListener('input', noteFormChanged);
+    detail.addEventListener('change', noteFormChanged);
+    bindProject(root);
     renderList();
+    loadProject();
   },
 };
 
@@ -1115,6 +1583,7 @@ function renderList({ keepScroll = false } = {}) {
               ${loc?.linenr ? `<span>line ${loc.linenr}</span>` : ''}
               ${state.view.groupBy !== 'key' ? `<span>${esc(report.key)}</span>` : ''}
               ${report.isNew ? '<span class="new-tag">NEW</span>' : ''}
+              ${noteTagHtml(report)}
             </span>
           </span>
         </button>`;
@@ -1172,6 +1641,7 @@ SCREENS.allclear = {
             <div class="card stat"><div class="stat-value">${formatDuration(run.durationMs)}</div><div class="stat-label">to check it</div></div>
             <div class="card stat"><div class="stat-value" ${delta ? `data-count="${delta}"` : ''}>${delta == null ? '—' : delta === 0 ? '0' : delta}</div><div class="stat-label">${delta == null ? 'first check' : 'since the last run'}</div></div>
           </div>
+          <section class="upd upd-flat" id="upd" aria-label="Update status">${updateBandHtml()}</section>
           <div style="display:flex;gap:12px">
             <button class="btn btn-primary" data-act="mods" style="height:44px;padding:0 22px;font-size:15px">Back to my mods</button>
             <button class="btn" data-act="again" style="height:44px;padding:0 22px;font-size:15px">${icon.again}Validate again</button>
@@ -1185,6 +1655,8 @@ SCREENS.allclear = {
     const party = $('.party', root);
     setTimeout(() => sparkle(party), 350);
     party.addEventListener('click', () => sparkle(party, 14));
+    bindProject(root);
+    loadProject();
   },
 };
 
@@ -1749,69 +2221,124 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && state.screen === 'activity' && !activity.timer) pollActivity(activity.session);
 });
 
+const GAME_TESTS_NOTE = {
+  background: 'The game runs minimized at low priority and never takes the focus, so you can keep playing something else. Nothing is typed into it: the mod has to start its own events, and the answer comes from the logs of the game.',
+  foreground: 'The game comes to the front and console commands are typed into it, so you cannot use the keyboard meanwhile. Needed to try an event or an effect by typing it.',
+};
+
+const SETTINGS_SECTIONS = [
+  ['folders', 'Folders'],
+  ['reports', 'Reports'],
+  ['assistants', 'AI assistants'],
+  ['game', 'Game tests'],
+  ['look', 'Look'],
+  ['updates', 'Updates'],
+  ['about', 'About'],
+];
+
 SCREENS.settings = {
   html() {
-    const { game, paradox, hasVscode, openInEditor, theme, checkUpdates } = state.setup;
+    const { game, paradox, hasVscode, openInEditor, theme, checkUpdates, asciiBackground, startOnHome, gameTestsBackground } = state.setup;
     const update = updates.status?.update;
     const checked = updates.status?.checkedAt;
     const aboutDesc = update
       ? `Version ${esc(update.version)} is out.`
       : checked ? `Up to date. Checked ${ago(checked)}.` : 'A validator for Crusader Kings III mods, built on Tiger. Free software under the GPL.';
+    const toggle = (act, on, title, desc, disabled = false) => `
+      <label class="setting">
+        <div class="grow">
+          <div class="name">${title}</div>
+          <div class="desc">${desc}</div>
+        </div>
+        <input type="checkbox" class="switch" data-act="${act}" ${on ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
+      </label>`;
     return `
-      <div class="page" style="overflow-y:auto;align-items:center">
-        <div class="settings stagger">
-          <h1 class="title-lg">Settings</h1>
-          <h2>Folders</h2>
-          <div class="card setting">
-            <div class="grow">
-              <div class="name">Game folder</div>
-              <div class="path" title="${esc(game?.path ?? '')}"><bdi>${esc(game ? shortPath(game.path) : 'Not set')}</bdi></div>
-            </div>
-            <button class="btn btn-sm" data-act="change-game">Change…</button>
-          </div>
-          <div class="card setting">
-            <div class="grow">
-              <div class="name">Paradox documents folder</div>
-              <div class="path" title="${esc(paradox ?? '')}"><bdi>${esc(paradox ? shortPath(paradox) : 'Not found')}</bdi></div>
-            </div>
-            <button class="btn btn-sm" data-act="change-paradox">Change…</button>
-          </div>
-          <h2>Reports</h2>
-          <label class="card setting" style="cursor:pointer">
-            <div class="grow">
-              <div class="name">Open reports in VS Code</div>
-              <div class="desc">${hasVscode ? 'Jump straight to the line. When this is off, files open in their default program.' : 'VS Code was not found, so files open in their default program.'}</div>
-            </div>
-            <input type="checkbox" class="switch" data-act="vscode" ${openInEditor && hasVscode ? 'checked' : ''} ${hasVscode ? '' : 'disabled'}>
-          </label>
-          <h2>AI assistants</h2>
-          <div class="ai-clients" data-ai>${aiHtml()}</div>
-          <h2>Look</h2>
-          <div class="card setting">
-            <div class="grow">
-              <div class="name">Theme</div>
-              <div class="desc">System follows the Windows setting.</div>
-            </div>
-            <div class="segmented" role="group" aria-label="Theme">
-              ${['system', 'dark', 'light'].map((value) => `<button data-theme-choice="${value}" aria-pressed="${theme === value}">${value[0].toUpperCase() + value.slice(1)}</button>`).join('')}
-            </div>
-          </div>
-          <h2>Updates</h2>
-          <label class="card setting" style="cursor:pointer">
-            <div class="grow">
-              <div class="name">Look for new versions</div>
-              <div class="desc">xTiger asks GitHub for a new release when it opens and every hour after. Nothing about you or your mods is sent.</div>
-            </div>
-            <input type="checkbox" class="switch" data-act="check-updates" ${checkUpdates ? 'checked' : ''}>
-          </label>
-          <h2>About</h2>
-          <div class="card setting">
-            <div class="q q-idle" style="width:48px;height:48px"></div>
-            <div class="grow">
-              <div class="name">xTiger ${esc(state.version ?? '')}</div>
-              <div class="desc">${aboutDesc}</div>
-            </div>
-            ${update ? `<button class="btn btn-primary btn-sm" data-act="show-update">Update to ${esc(update.version)}</button>` : ''}
+      <div class="page" style="overflow-y:auto;align-items:center" data-scroller>
+        <div class="settings-layout stagger">
+          <nav class="settings-nav" aria-label="Settings sections">
+            <h1 class="title-lg">Settings</h1>
+            ${SETTINGS_SECTIONS.map(([id, label]) => `<button data-jump="${id}" aria-current="false">${label}</button>`).join('')}
+          </nav>
+          <div class="settings-body">
+            <section id="set-folders">
+              <h2>Folders</h2>
+              <div class="card group">
+                <div class="setting">
+                  <div class="grow">
+                    <div class="name">Game folder</div>
+                    <div class="path" title="${esc(game?.path ?? '')}"><bdi>${esc(game ? shortPath(game.path) : 'Not set')}</bdi></div>
+                  </div>
+                  <button class="btn btn-sm" data-act="change-game">Change…</button>
+                </div>
+                <div class="setting">
+                  <div class="grow">
+                    <div class="name">Paradox documents folder</div>
+                    <div class="path" title="${esc(paradox ?? '')}"><bdi>${esc(paradox ? shortPath(paradox) : 'Not found')}</bdi></div>
+                  </div>
+                  <button class="btn btn-sm" data-act="change-paradox">Change…</button>
+                </div>
+              </div>
+            </section>
+            <section id="set-reports">
+              <h2>Reports</h2>
+              <div class="card group">
+                ${toggle('vscode', openInEditor && hasVscode, 'Open reports in VS Code', hasVscode ? 'Jump straight to the line. When this is off, files open in their default program.' : 'VS Code was not found, so files open in their default program.', !hasVscode)}
+              </div>
+            </section>
+            <section id="set-assistants">
+              <h2>AI assistants</h2>
+              <p class="section-note">Connect an assistant and it can validate your mods, read the reports and start the game for you. It sees what it reads, the same as when you paste it into a chat.</p>
+              <div class="ai-wrap" data-ai>${aiHtml()}</div>
+            </section>
+            <section id="set-game">
+              <h2>Game tests</h2>
+              <div class="card group">
+                <div class="setting">
+                  <div class="grow">
+                    <div class="name">When an assistant tests in the game</div>
+                    <div class="desc" data-game-desc>${GAME_TESTS_NOTE[gameTestsBackground ? 'background' : 'foreground']}</div>
+                  </div>
+                  <div class="segmented" role="group" aria-label="Game tests">
+                    ${[['background', 'In the background'], ['foreground', 'Take over the screen']].map(([value, label]) => `<button data-game-tests="${value}" aria-pressed="${(value === 'background') === !!gameTestsBackground}">${label}</button>`).join('')}
+                  </div>
+                </div>
+              </div>
+            </section>
+            <section id="set-look">
+              <h2>Look</h2>
+              <div class="card group">
+                <div class="setting">
+                  <div class="grow">
+                    <div class="name">Theme</div>
+                    <div class="desc">System follows the Windows setting.</div>
+                  </div>
+                  <div class="segmented" role="group" aria-label="Theme">
+                    ${['system', 'dark', 'light'].map((value) => `<button data-theme-choice="${value}" aria-pressed="${theme === value}">${value[0].toUpperCase() + value.slice(1)}</button>`).join('')}
+                  </div>
+                </div>
+                ${toggle('ascii', asciiBackground, 'Moving letters on the home screen', 'The picture is drawn with letters and digits that ripple like water when you move the pointer. It stays still when Windows is set to reduce motion.')}
+                ${toggle('start-home', startOnHome, 'Start on the home screen', 'When this is off, xTiger opens straight on your mods.')}
+              </div>
+            </section>
+            <section id="set-updates">
+              <h2>Updates</h2>
+              <div class="card group">
+                ${toggle('check-updates', checkUpdates, 'Look for new versions', 'xTiger asks GitHub for a new release when it opens and every hour after. Nothing about you or your mods is sent.')}
+              </div>
+            </section>
+            <section id="set-about">
+              <h2>About</h2>
+              <div class="card group">
+                <div class="setting">
+                  <div class="q q-idle" style="width:48px;height:48px"></div>
+                  <div class="grow">
+                    <div class="name">xTiger ${esc(state.version ?? '')}</div>
+                    <div class="desc">${aboutDesc}</div>
+                  </div>
+                  ${update ? `<button class="btn btn-primary btn-sm" data-act="show-update">Update to ${esc(update.version)}</button>` : ''}
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </div>`;
@@ -1820,13 +2347,43 @@ SCREENS.settings = {
     $('[data-act="change-game"]', root).addEventListener('click', () => changeGame());
     $('[data-act="change-paradox"]', root).addEventListener('click', () => changeParadox());
     $('[data-act="vscode"]', root).addEventListener('change', (event) => setPreference({ openInEditor: event.target.checked }));
+    for (const button of $$('[data-game-tests]', root)) {
+      button.addEventListener('click', () => {
+        const mode = button.dataset.gameTests;
+        for (const other of $$('[data-game-tests]', root)) other.setAttribute('aria-pressed', String(other === button));
+        $('[data-game-desc]', root).textContent = GAME_TESTS_NOTE[mode];
+        setPreference({ gameTestsBackground: mode === 'background' });
+      });
+    }
+    $('[data-act="ascii"]', root).addEventListener('change', (event) => setPreference({ asciiBackground: event.target.checked }));
+    $('[data-act="start-home"]', root).addEventListener('change', (event) => setPreference({ startOnHome: event.target.checked }));
     $('[data-act="show-update"]', root)?.addEventListener('click', () => openUpdate());
-    const ai = $('[data-ai]', root);
-    bindAi(ai);
+    bindAi($('[data-ai]', root));
+
+    const scroller = $('[data-scroller]', root);
+    const buttons = $$('[data-jump]', root);
+    const sections = SETTINGS_SECTIONS.map(([id]) => $(`#set-${id}`, root));
+    const mark = (id) => {
+      for (const button of buttons) button.setAttribute('aria-current', String(button.dataset.jump === id));
+    };
+    const spy = () => {
+      const line = scroller.getBoundingClientRect().top + 48;
+      let current = SETTINGS_SECTIONS[0][0];
+      sections.forEach((section, index) => {
+        if (section.getBoundingClientRect().top <= line) current = SETTINGS_SECTIONS[index][0];
+      });
+      if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) current = SETTINGS_SECTIONS.at(-1)[0];
+      mark(current);
+    };
+    const jump = (id) => $(`#set-${id}`, root).scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
+    for (const button of buttons) button.addEventListener('click', () => jump(button.dataset.jump));
+    scroller.addEventListener('scroll', spy, { passive: true });
+    spy();
     if (state.scrollTo === 'ai') {
       state.scrollTo = null;
-      ai.previousElementSibling.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
+      jump('assistants');
     }
+
     $('[data-act="check-updates"]', root).addEventListener('change', async (event) => {
       const on = event.target.checked;
       await setPreference({ checkUpdates: on });
@@ -1857,9 +2414,21 @@ SCREENS.settings = {
 // Filled when Settings opens; `null` until the first answer.
 const ai = { overview: null, justConnected: null, busy: null };
 
-function aiRow(client, serverOk) {
+const AI_KIND = {
+  'claude-desktop': 'Chat app',
+  'claude-code': 'Coding agent',
+  codex: 'Coding agent',
+  cursor: 'Code editor',
+  vscode: 'Code editor',
+  windsurf: 'Code editor',
+};
+
+const aiMark = (id, extra = '') => `<span class="ai-mark ${extra}" data-brand="${id}" aria-hidden="true">${brandIcon(id)}</span>`;
+
+function aiTile(client, serverOk) {
   const busy = ai.busy === client.id;
-  const disabled = busy || ai.busy ? 'disabled' : '';
+  const disabled = ai.busy ? 'disabled' : '';
+  const connect = (label) => `<button class="btn btn-primary btn-sm" data-ai-act="connect" data-id="${client.id}" ${serverOk ? disabled : 'disabled'}>${busy ? 'Connecting…' : label}</button>`;
   const file = client.file ? `<div class="path" title="${esc(client.file)}"><bdi>${esc(shortPath(client.file))}</bdi></div>` : '';
   let status;
   let desc;
@@ -1867,32 +2436,40 @@ function aiRow(client, serverOk) {
   switch (client.state) {
     case 'connected':
       status = '<span class="ai-state ai-on">Connected</span>';
-      desc = ai.justConnected === client.id ? esc(client.after) : 'It can validate your mods and read the reports.';
-      action = `<button class="btn btn-sm" data-ai-act="disconnect" data-id="${client.id}" ${disabled}>Disconnect</button>`;
+      desc = ai.justConnected === client.id
+        ? `<div class="ai-next">${esc(client.after)}</div>`
+        : '<p class="desc">It can validate your mods, read the reports and start the game.</p>';
+      action = `<button class="btn btn-sm" data-ai-act="disconnect" data-id="${client.id}" ${disabled}>${busy ? 'Disconnecting…' : 'Disconnect'}</button>`;
       break;
     case 'elsewhere':
       status = '<span class="ai-state ai-warn">Other copy</span>';
-      desc = `Set up with another copy of xTiger: <bdi class="mono">${esc(shortPath(client.otherCommand))}</bdi>`;
-      action = `<button class="btn btn-primary btn-sm" data-ai-act="connect" data-id="${client.id}" ${serverOk ? disabled : 'disabled'}>Use this copy</button>`;
+      desc = `<p class="desc">It starts <bdi class="mono">${esc(shortPath(client.otherCommand))}</bdi>, not this copy of xTiger.</p>`;
+      action = connect('Use this copy');
       break;
     case 'unreadable':
-      status = '<span class="ai-state ai-warn">Set up by hand</span>';
-      desc = 'Its settings file has comments or is not plain JSON, so xTiger leaves it alone. Copy the settings and paste them in.';
+      status = '<span class="ai-state ai-warn">Manual step</span>';
+      desc = '<p class="desc">Its settings file has comments or is not plain JSON, so xTiger leaves it alone. Copy the settings and paste them in.</p>';
       action = `<button class="btn btn-sm" data-ai-act="copy" data-id="${client.id}">Copy settings</button>`;
       break;
     default:
-      status = '';
-      desc = 'Not connected.';
-      action = `<button class="btn btn-primary btn-sm" data-ai-act="connect" data-id="${client.id}" ${serverOk ? disabled : 'disabled'}>${busy ? 'Connecting…' : 'Connect'}</button>`;
+      status = '<span class="ai-state">Not connected</span>';
+      desc = '<p class="desc">Found on this PC. One click adds xTiger to its tools.</p>';
+      action = connect('Connect');
   }
+  const play = ai.justConnected === client.id ? 'data-play' : '';
   return `
-    <div class="card setting ai-client">
-      <div class="grow">
-        <div class="name">${esc(client.name)} ${status}</div>
-        <div class="desc">${desc}</div>
-        ${file}
+    <div class="card ai-client" data-state="${client.state}" ${play}>
+      <div class="ai-top">
+        ${aiMark(client.id)}
+        <div class="ai-id">
+          <div class="name">${esc(client.name)}</div>
+          <div class="ai-kind">${AI_KIND[client.id] ?? 'Assistant'}</div>
+        </div>
+        ${status}
       </div>
-      ${action}
+      ${desc}
+      ${file}
+      <div class="ai-actions">${action}</div>
     </div>`;
 }
 
@@ -1902,21 +2479,48 @@ function aiHtml() {
   const serverOk = Boolean(overview.server);
   const found = overview.clients.filter((client) => client.state !== 'missing');
   const missing = overview.clients.filter((client) => client.state === 'missing');
-  const intro = `
-    <div class="desc ai-intro">Connect an assistant and it can validate your mods, read the reports and start the game for you. The assistant sees what it reads, the same as when you paste it into a chat.</div>`;
+  const connected = found.filter((client) => client.state === 'connected').length;
+  const summary = found.length === 0
+    ? 'No assistant found on this PC'
+    : `${connected} of ${found.length} connected`;
+  const pips = found.map((client) => `<span class="ai-pip" data-state="${client.state}"></span>`).join('');
+  const server = serverOk
+    ? `<div class="ai-server"><span class="ai-state ai-on">Ready</span> xtiger-mcp is installed next to xTiger.</div>`
+    : '';
   const notice = serverOk ? '' : `
     <div class="notice">xtiger-mcp.exe is missing next to xTiger, so assistants cannot be connected. Reinstall xTiger to get it back.</div>`;
-  const none = found.length ? '' : `
-    <div class="card setting"><div class="grow"><div class="desc">No supported assistant was found. Install Claude Desktop, Claude Code, Cursor, VS Code or Windsurf, or set up another one below.</div></div></div>`;
-  const other = `
-    <div class="card setting">
-      <div class="grow">
-        <div class="name">Another assistant</div>
-        <div class="desc">Add these settings to its MCP servers.${missing.length ? ` Not found here: ${missing.map((client) => esc(client.name)).join(', ')}.` : ''}</div>
-      </div>
-      <button class="btn btn-sm" data-ai-act="copy-any">Copy settings</button>
+  const absent = missing.length === 0 ? '' : `
+    <div class="ai-absent">
+      <span class="ai-absent-label">Not found on this PC</span>
+      ${missing.map((client) => `<span class="ai-chip" title="${esc(client.name)} is not installed">${aiMark(client.id, 'ai-mark-sm')}${esc(client.name)}</span>`).join('')}
     </div>`;
-  return intro + notice + none + found.map((client) => aiRow(client, serverOk)).join('') + other;
+  const other = `
+    <div class="card ai-client">
+      <div class="ai-top">
+        <span class="ai-mark ai-mark-plus" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></span>
+        <div class="ai-id">
+          <div class="name">Another assistant</div>
+          <div class="ai-kind">Any that supports MCP</div>
+        </div>
+        <span class="ai-state">Manual</span>
+      </div>
+      <p class="desc">Add these settings to its MCP servers.</p>
+      <div class="ai-actions"><button class="btn btn-sm" data-ai-act="copy-any">Copy settings</button></div>
+    </div>`;
+  return `
+    <div class="ai-head">
+      <div class="grow">
+        <div class="ai-summary">${summary}</div>
+        ${server}
+      </div>
+      <div class="ai-pips" aria-hidden="true">${pips}</div>
+    </div>
+    <div class="ai-clients">
+      ${notice}
+      ${found.map((client) => aiTile(client, serverOk)).join('')}
+      ${other}
+    </div>
+    ${absent}`;
 }
 
 function bindAi(box) {
@@ -2008,7 +2612,14 @@ async function addModFolder() {
 async function setPreference(change) {
   Object.assign(state.setup, change);
   try {
-    await call('set_preferences', { openInEditor: change.openInEditor ?? null, theme: change.theme ?? null, checkUpdates: change.checkUpdates ?? null });
+    await call('set_preferences', {
+      openInEditor: change.openInEditor ?? null,
+      theme: change.theme ?? null,
+      checkUpdates: change.checkUpdates ?? null,
+      asciiBackground: change.asciiBackground ?? null,
+      startOnHome: change.startOnHome ?? null,
+      gameTestsBackground: change.gameTestsBackground ?? null,
+    });
   } catch (error) {
     toast(String(error));
   }
@@ -2356,7 +2967,7 @@ async function start() {
     return;
   }
   await loadMods();
-  go(state.setup.lastMod ? 'mods' : 'welcome');
+  go(!state.setup.lastMod ? 'welcome' : state.setup.startOnHome ? 'home' : 'mods');
   await showWhatsNew();
 }
 

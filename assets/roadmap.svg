@@ -2,6 +2,11 @@
   <title id="t">xTiger roadmap</title>
   <desc id="d">Three milestones: 1.0 alpha Frankokratia (released), 2.0 Menorá (mod updater, next), Vatican (help for mod creators, later).</desc>
   <style>
+    .ring { transform-box: fill-box; transform-origin: center; animation: ring 2.4s ease-out infinite; }
+    @keyframes ring { 0% { transform: scale(1); opacity: .7; } 100% { transform: scale(1.9); opacity: 0; } }
+    .fill { transform-box: fill-box; transform-origin: left center; animation: fill 2.2s cubic-bezier(.2,.8,.2,1) both; }
+    @keyframes fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
     text { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
     .title { font-size: 30px; font-weight: 700; fill: #f4efe0; }
     .sub { font-size: 15px; fill: #9fb4d9; }
@@ -20,12 +25,13 @@
 
   <!-- timeline -->
   <rect x="140" y="178" width="920" height="6" rx="3" fill="#2a3a78"/>
-  <rect x="140" y="178" width="460" height="6" rx="3" fill="#4f7bd9"/>
+  <rect class="fill" x="140" y="178" width="460" height="6" rx="3" fill="#4f7bd9"/>
 
   <!-- node 1: released -->
   <circle cx="200" cy="181" r="22" fill="#f4efe0"/>
   <path d="M189 181 L197 189 L212 172" fill="none" stroke="#141c3d" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
   <!-- node 2: next -->
+  <circle class="ring" cx="600" cy="181" r="22" fill="none" stroke="#4f7bd9" stroke-width="3"/>
   <circle cx="600" cy="181" r="22" fill="#141c3d" stroke="#4f7bd9" stroke-width="6"/>
   <circle cx="600" cy="181" r="8" fill="#4f7bd9"/>
   <!-- node 3: later -->

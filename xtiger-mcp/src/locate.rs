@@ -97,12 +97,26 @@ pub fn app_data_dir(exe_dir: Option<&Path>) -> Option<PathBuf> {
 }
 
 /// The part of the xTiger app's settings that the server reads.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
     pub game_dir: Option<PathBuf>,
     pub paradox_dir: Option<PathBuf>,
     pub extra_mods: Vec<PathBuf>,
+    /// Run game tests minimized and without taking the focus, so the user can keep playing
+    /// something else.
+    pub game_tests_background: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            game_dir: None,
+            paradox_dir: None,
+            extra_mods: Vec::new(),
+            game_tests_background: true,
+        }
+    }
 }
 
 impl AppSettings {
@@ -192,6 +206,8 @@ pub struct Locations {
     pub state_from: &'static str,
     /// Mod folders added by hand in the xTiger app.
     pub extra_mods: Vec<PathBuf>,
+    /// The user asked, in the xTiger app, for game tests that leave their screen alone.
+    pub game_tests_background: bool,
 }
 
 impl Locations {
@@ -220,6 +236,7 @@ impl Locations {
             state_dir,
             state_from,
             extra_mods: sources.app_settings.extra_mods.clone(),
+            game_tests_background: sources.app_settings.game_tests_background,
         }
     }
 
@@ -527,6 +544,9 @@ mod tests {
         let settings = AppSettings::load(&tmp);
         assert_eq!(settings.game_dir, Some(PathBuf::from("C:/Games/CK3")));
         assert_eq!(settings.extra_mods, vec![PathBuf::from("a")]);
+        assert!(settings.game_tests_background, "background is the default");
+        fs::write(tmp.join("settings.json"), r#"{"game_tests_background": false}"#).unwrap();
+        assert!(!AppSettings::load(&tmp).game_tests_background);
         fs::write(tmp.join("settings.json"), "not json").unwrap();
         assert!(AppSettings::load(&tmp).game_dir.is_none());
     }

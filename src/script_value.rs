@@ -338,6 +338,66 @@ pub fn validate_script_value_no_breakdown(bv: &BV, data: &Everything, sc: &mut S
     validate_bv(bv, data, sc, false);
 }
 
+/// Validate a script value in a place that needs a number, such as `add_gold` or `gold >= `.
+/// Script values may be boolean elsewhere, but here the game logs "Badly read script value yes"
+/// for a literal `yes` or `no`, and skips the effect or fails the comparison.
+///
+/// A `scope:name` that was certainly saved as a boolean with `save_scope_value_as` or
+/// `save_temporary_scope_value_as` earlier in the same context is reported too.
+pub fn validate_numeric_script_value(bv: &BV, data: &Everything, sc: &mut ScopeContext) {
+    let boolean_literal = |token: &Token| {
+        let msg = format!("`{token}` is a boolean, but a number is required here");
+        let info = "the game logs \"Badly read script value\" and ignores it";
+        err(ErrorKey::Validation).msg(msg).info(info).loc(token).push();
+    };
+    let boolean_scope_value = |token: &Token| {
+        let msg = format!("`{token}` was saved as a boolean, but a number is required here");
+        let info = "the game logs a type error and ignores it";
+        err(ErrorKey::Validation).msg(msg).info(info).loc(token).push();
+    };
+    match bv {
+        BV::Value(token) if token.is("yes") || token.is("no") => {
+            boolean_literal(token);
+            return;
+        }
+        BV::Value(token) => {
+            if is_boolean_scope_value(token, sc) {
+                boolean_scope_value(token);
+            }
+        }
+        BV::Block(block) => {
+            if let Some(BV::Value(token)) = block.get_field("value") {
+                if token.is("yes") || token.is("no") {
+                    boolean_literal(token);
+                } else if is_boolean_scope_value(token, sc) {
+                    boolean_scope_value(token);
+                }
+            }
+        }
+    }
+    validate_script_value(bv, data, sc);
+}
+
+/// Is `token` a plain `scope:name` that was certainly saved as a boolean with
+/// `save_scope_value_as` or `save_temporary_scope_value_as`? Scope chains are not followed.
+pub fn is_boolean_scope_value(token: &Token, sc: &ScopeContext) -> bool {
+    token
+        .as_str()
+        .strip_prefix("scope:")
+        .is_some_and(|name| !name.contains('.') && sc.is_boolean_scope_value(name))
+}
+
+/// Is the value of a `save_scope_value_as` certainly a boolean? A `scope:name` counts when it was
+/// saved as a boolean itself. Anything else, such as a script value, may be a number.
+pub fn is_boolean_save_value(bv: Option<&BV>, sc: &ScopeContext) -> bool {
+    match bv {
+        Some(BV::Value(token)) => {
+            token.is("yes") || token.is("no") || is_boolean_scope_value(token, sc)
+        }
+        _ => false,
+    }
+}
+
 /// Validate a script value that's not allowed to do calculations. It must be a literal or the name of another script value
 /// that's also not allowed to do calculations.
 pub fn validate_non_dynamic_script_value(bv: &BV, data: &Everything) {

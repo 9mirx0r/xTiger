@@ -21,6 +21,8 @@ enum Style {
     McpServersTyped,
     /// VS Code: `"servers": {"name": {"type": "stdio", "command": ...}}`.
     Servers,
+    /// Codex: a `[mcp_servers.xtiger]` table in a TOML file.
+    Toml,
 }
 
 impl Style {
@@ -28,17 +30,176 @@ impl Style {
         match self {
             Style::McpServers | Style::McpServersTyped => "mcpServers",
             Style::Servers => "servers",
+            Style::Toml => "mcp_servers",
         }
     }
 
     fn entry(self, server: &Path) -> Value {
         let command = server.display().to_string();
         match self {
-            Style::McpServers => json!({"command": command, "args": []}),
+            Style::McpServers | Style::Toml => json!({"command": command, "args": []}),
             Style::McpServersTyped | Style::Servers => {
                 json!({"type": "stdio", "command": command, "args": []})
             }
         }
+    }
+}
+
+/// The TOML settings of Codex are edited as text, so comments and the order of everything else
+/// stay as the user wrote them. Only the `[mcp_servers.xtiger]` table is ever touched.
+mod toml {
+    use super::SERVER_NAME;
+
+    fn header_name(line: &str) -> Option<&str> {
+        let line = line.trim();
+        let inner = line.strip_prefix('[')?;
+        if inner.starts_with('[') {
+            return Some("");
+        }
+        let end = inner.find(']')?;
+        Some(inner[..end].trim())
+    }
+
+    fn is_ours(name: &str) -> bool {
+        let table = format!("mcp_servers.{SERVER_NAME}");
+        name == table || name.strip_prefix(&table).is_some_and(|rest| rest.starts_with('.'))
+    }
+
+    /// The lines of our table, as a range of line numbers, and where its own keys end.
+    fn section(lines: &[&str]) -> Option<(usize, usize, usize)> {
+        let table = format!("mcp_servers.{SERVER_NAME}");
+        let start = lines.iter().position(|line| header_name(line) == Some(table.as_str()))?;
+        let mut keys_end = None;
+        let mut end = lines.len();
+        for (offset, line) in lines.iter().enumerate().skip(start + 1) {
+            if let Some(name) = header_name(line) {
+                keys_end.get_or_insert(offset);
+                if !is_ours(name) {
+                    end = offset;
+                    break;
+                }
+            }
+        }
+        Some((start, keys_end.unwrap_or(end), end))
+    }
+
+    /// Is there an entry for our server that `section()` would not find, such as a quoted header,
+    /// a dotted key or an inline table? Adding a plain table next to it would make the file
+    /// invalid, so the caller refuses to edit.
+    pub fn has_other_form(text: &str) -> bool {
+        let lines: Vec<&str> = text.lines().collect();
+        if section(&lines).is_some() {
+            return false;
+        }
+        text.lines().any(|line| {
+            let line = line.split('#').next().unwrap_or("").replace(['"', '\''], "");
+            let line = line.trim();
+            let named = line.contains(&format!("mcp_servers.{SERVER_NAME}"))
+                || line
+                    .strip_prefix(SERVER_NAME)
+                    .is_some_and(|rest| rest.trim_start().starts_with(['=', '.']));
+            named || (line.starts_with('[') && line.contains(&format!(".{SERVER_NAME}")))
+        })
+    }
+
+    fn quote(text: &str) -> String {
+        format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
+    }
+
+    fn unquote(value: &str) -> Option<String> {
+        let value = value.trim();
+        if let Some(rest) = value.strip_prefix('\'') {
+            return Some(rest[..rest.find('\'')?].to_owned());
+        }
+        let rest = value.strip_prefix('"')?;
+        let mut out = String::new();
+        let mut chars = rest.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                '"' => return Some(out),
+                '\\' => out.push(match chars.next()? {
+                    'n' => '\n',
+                    't' => '\t',
+                    other => other,
+                }),
+                other => out.push(other),
+            }
+        }
+        None
+    }
+
+    /// The program our entry runs, if there is an entry.
+    pub fn command(text: &str) -> Option<Option<String>> {
+        let lines: Vec<&str> = text.lines().collect();
+        let (start, keys_end, _) = section(&lines)?;
+        let command = lines[start + 1..keys_end].iter().find_map(|line| {
+            let (key, value) = line.split_once('=')?;
+            (key.trim() == "command").then(|| unquote(value))?
+        });
+        Some(command)
+    }
+
+    fn key_of(line: &str) -> Option<&str> {
+        Some(line.split_once('=')?.0.trim())
+    }
+
+    /// The text with our entry pointing to `server`, or without it when `server` is `None`.
+    pub fn set(text: &str, server: Option<&str>) -> String {
+        let lines: Vec<&str> = text.lines().collect();
+        let mut out: Vec<String> = Vec::new();
+        let fresh = |out: &mut Vec<String>, server: &str| {
+            out.push(format!("command = {}", quote(server)));
+            out.push("args = []".to_owned());
+        };
+        match (section(&lines), server) {
+            (Some((start, _, end)), None) => {
+                out.extend(lines[..start].iter().map(|line| (*line).to_owned()));
+                // Do not leave a gap where the table was.
+                while out.last().is_some_and(|line| line.trim().is_empty()) {
+                    out.pop();
+                }
+                let rest = &lines[end..];
+                if !out.is_empty() && !rest.is_empty() {
+                    out.push(String::new());
+                }
+                out.extend(rest.iter().map(|line| (*line).to_owned()));
+            }
+            (Some((start, keys_end, _)), Some(server)) => {
+                out.extend(lines[..=start].iter().map(|line| (*line).to_owned()));
+                fresh(&mut out, server);
+                // Keep what the user added to the entry, such as `startup_timeout_sec`.
+                let mut skipping_args = false;
+                for line in &lines[start + 1..keys_end] {
+                    if skipping_args {
+                        skipping_args = !line.contains(']');
+                        continue;
+                    }
+                    match key_of(line) {
+                        Some("command") => {}
+                        Some("args") => skipping_args = line.contains('[') && !line.contains(']'),
+                        _ => out.push((*line).to_owned()),
+                    }
+                }
+                out.extend(lines[keys_end..].iter().map(|line| (*line).to_owned()));
+            }
+            (None, Some(server)) => {
+                out.extend(lines.iter().map(|line| (*line).to_owned()));
+                if out.last().is_some_and(|line| !line.trim().is_empty()) {
+                    out.push(String::new());
+                }
+                out.push(format!("[mcp_servers.{SERVER_NAME}]"));
+                fresh(&mut out, server);
+            }
+            (None, None) => return text.to_owned(),
+        }
+        let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+        let mut text = out.join(newline);
+        text.push_str(newline);
+        text
+    }
+
+    pub fn snippet(server: &str) -> String {
+        format!("[mcp_servers.{SERVER_NAME}]\ncommand = {}\nargs = []\n", quote(server))
     }
 }
 
@@ -81,6 +242,14 @@ fn claude_store_dirs() -> Vec<PathBuf> {
         .collect()
 }
 
+/// Codex keeps its settings in `~/.codex`, or wherever `CODEX_HOME` points.
+fn codex_home(home: &Path) -> PathBuf {
+    std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .unwrap_or_else(|| home.join(".codex"))
+}
+
 fn clients() -> Vec<Client> {
     let home = home().unwrap_or_default();
     let config = config_dir().unwrap_or_default();
@@ -117,6 +286,13 @@ fn clients() -> Vec<Client> {
             style: Style::Servers,
             files: vec![config.join("Code/User/mcp.json")],
             after: "In VS Code, run \"MCP: List Servers\" and start xtiger, or reload the window.",
+        },
+        Client {
+            id: "codex",
+            name: "Codex",
+            style: Style::Toml,
+            files: vec![codex_home(&home).join("config.toml")],
+            after: "Start a new Codex session; it reads its settings when it opens.",
         },
         Client {
             id: "windsurf",
@@ -170,6 +346,14 @@ pub struct ClientStatus {
     snippet: String,
 }
 
+fn read_text(path: &Path) -> Result<Option<String>, String> {
+    match fs::read_to_string(path) {
+        Ok(text) => Ok(Some(text.trim_start_matches('\u{feff}').to_owned())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("cannot read {}: {e}", path.display())),
+    }
+}
+
 fn read_json(path: &Path) -> Result<Option<Map<String, Value>>, String> {
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
@@ -193,11 +377,15 @@ fn read_json(path: &Path) -> Result<Option<Map<String, Value>>, String> {
 /// Replace the file in one step, so a crash never leaves half a file. The old file is kept
 /// next to it as `.xtiger-backup`.
 fn write_json(path: &Path, map: &Map<String, Value>) -> Result<(), String> {
+    let mut text = serde_json::to_string_pretty(map).map_err(|e| e.to_string())?;
+    text.push('\n');
+    write_text(path, &text)
+}
+
+fn write_text(path: &Path, text: &str) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     }
-    let mut text = serde_json::to_string_pretty(map).map_err(|e| e.to_string())?;
-    text.push('\n');
     let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
     if path.is_file() {
         let backup = path.with_file_name(format!("{name}.xtiger-backup"));
@@ -220,12 +408,31 @@ fn same_program(command: &str, server: &Path) -> bool {
 }
 
 fn snippet(style: Style, server: &Path) -> String {
+    if style == Style::Toml {
+        return toml::snippet(&server.display().to_string());
+    }
     let doc = json!({ style.key(): { SERVER_NAME: style.entry(server) } });
     serde_json::to_string_pretty(&doc).unwrap_or_default()
 }
 
 /// What one settings file says about xTiger.
 fn file_state(path: &Path, style: Style, server: &Path) -> (State, Option<String>) {
+    if style == Style::Toml {
+        return match read_text(path) {
+            Err(_) => (State::Unreadable, None),
+            Ok(text) => match toml::command(&text.unwrap_or_default()) {
+                None => (State::Available, None),
+                Some(command) => {
+                    let command = command.unwrap_or_default();
+                    if same_program(&command, server) {
+                        (State::Connected, None)
+                    } else {
+                        (State::Elsewhere, Some(command))
+                    }
+                }
+            },
+        };
+    }
     match read_json(path) {
         Err(_) => (State::Unreadable, None),
         Ok(None) => (State::Available, None),
@@ -369,6 +576,17 @@ pub fn disconnect(id: &str) -> Result<ClientStatus, String> {
 /// Put the entry in (`Some`) or take it out (`None`). Everything else in the file is kept as it
 /// was, in the same order.
 fn set_entry(file: &Path, style: Style, server: Option<&Path>) -> Result<(), String> {
+    if style == Style::Toml {
+        let text = read_text(file)?.unwrap_or_default();
+        if server.is_some() && toml::has_other_form(&text) {
+            return Err(format!(
+                "{} already has an xtiger entry written in a form xTiger does not edit. Remove or rewrite it as a plain [mcp_servers.xtiger] table, then connect again.",
+                file.display()
+            ));
+        }
+        let next = toml::set(&text, server.map(|server| server.display().to_string()).as_deref());
+        return if next == text { Ok(()) } else { write_text(file, &next) };
+    }
     let mut map = read_json(file)?.unwrap_or_default();
     let servers = map.entry(style.key()).or_insert_with(|| Value::Object(Map::new()));
     let Value::Object(servers) = servers else {
@@ -463,6 +681,73 @@ mod tests {
             set_entry(&file, Style::Servers, Some(&server)).unwrap_err().contains("not plain JSON")
         );
         assert_eq!(fs::read_to_string(&file).unwrap(), "// comment\n{}");
+    }
+
+    #[test]
+    fn codex_toml_is_edited_as_text() {
+        let tmp = Temp::new("toml");
+        let file = tmp.0.join("config.toml");
+        let server = tmp.0.join("xtiger-mcp.exe");
+        fs::write(&server, "").unwrap();
+        let original = "# my settings\nmodel = \"x\"\n\n[mcp_servers.other]\ncommand = \"npx\"\nargs = [\"-y\", \"thing\"]\n";
+        fs::write(&file, original).unwrap();
+        assert_eq!(file_state(&file, Style::Toml, &server), (State::Available, None));
+        set_entry(&file, Style::Toml, Some(&server)).unwrap();
+        let text = fs::read_to_string(&file).unwrap();
+        assert!(text.starts_with(original.trim_end()), "kept: {text}");
+        assert_eq!(file_state(&file, Style::Toml, &server), (State::Connected, None));
+        // An old entry is pointed here, keeping what was added to it.
+        fs::write(
+            &file,
+            "[mcp_servers.xtiger]\ncommand = 'D:/old/xtiger-mcp.exe'\nargs = [\n  \"a\",\n]\nstartup_timeout_sec = 30\n\n[mcp_servers.xtiger.env]\nA = \"1\"\n\n[other]\nx = 1\n",
+        )
+        .unwrap();
+        assert_eq!(
+            file_state(&file, Style::Toml, &server),
+            (State::Elsewhere, Some("D:/old/xtiger-mcp.exe".to_owned()))
+        );
+        set_entry(&file, Style::Toml, Some(&server)).unwrap();
+        let text = fs::read_to_string(&file).unwrap();
+        assert!(text.contains("startup_timeout_sec = 30") && text.contains("A = \"1\""), "{text}");
+        assert!(!text.contains("old") && !text.contains("\"a\""), "{text}");
+        assert_eq!(file_state(&file, Style::Toml, &server), (State::Connected, None));
+        set_entry(&file, Style::Toml, None).unwrap();
+        let text = fs::read_to_string(&file).unwrap();
+        assert_eq!(text, "[other]\nx = 1\n");
+        assert_eq!(file_state(&file, Style::Toml, &server), (State::Available, None));
+    }
+
+    #[test]
+    fn codex_toml_entries_in_other_forms_are_not_duplicated() {
+        let tmp = Temp::new("toml-other");
+        let file = tmp.0.join("config.toml");
+        let server = tmp.0.join("xtiger-mcp.exe");
+        fs::write(&server, "").unwrap();
+        for original in [
+            "[mcp_servers.\"xtiger\"]
+command = \"x\"
+",
+            "[mcp_servers]
+xtiger = { command = \"x\" }
+",
+            "mcp_servers.xtiger.command = \"x\"
+",
+        ] {
+            fs::write(&file, original).unwrap();
+            let error = set_entry(&file, Style::Toml, Some(&server)).unwrap_err();
+            assert!(error.contains("already has an xtiger entry"), "{original}: {error}");
+            assert_eq!(fs::read_to_string(&file).unwrap(), original);
+        }
+        // Unrelated mentions and a plain table are fine.
+        fs::write(
+            &file,
+            "# xtiger is nice
+[mcp_servers.other]
+command = \"xtiger-tool\"
+",
+        )
+        .unwrap();
+        set_entry(&file, Style::Toml, Some(&server)).unwrap();
     }
 
     #[test]

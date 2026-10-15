@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 250" width="1200" height="250" role="img" aria-labelledby="t d">
+<title id="t">How a fix flows</title>
+<desc id="d">Five steps: validate the mod, read the reports, ask an assistant, test in the game, ship.</desc>
+<style>
+.run{stroke-dasharray:10 10;animation:run 1.2s linear infinite}
+@keyframes run{to{stroke-dashoffset:-20}}
+.dot{animation:travel 8s linear infinite}
+@keyframes travel{from{transform:translateX(0)}to{transform:translateX(960px)}}
+.n0{animation:n0 8s linear infinite;transform-box:fill-box;transform-origin:center}
+@keyframes n0{0%,-3%{transform:scale(1)}0%{transform:scale(1.18)}8%,100%{transform:scale(1)}}
+.n1{animation:n1 8s linear infinite;transform-box:fill-box;transform-origin:center}
+@keyframes n1{0%,22%{transform:scale(1)}25%{transform:scale(1.18)}33%,100%{transform:scale(1)}}
+.n2{animation:n2 8s linear infinite;transform-box:fill-box;transform-origin:center}
+@keyframes n2{0%,47%{transform:scale(1)}50%{transform:scale(1.18)}58%,100%{transform:scale(1)}}
+.n3{animation:n3 8s linear infinite;transform-box:fill-box;transform-origin:center}
+@keyframes n3{0%,72%{transform:scale(1)}75%{transform:scale(1.18)}83%,100%{transform:scale(1)}}
+.n4{animation:n4 8s linear infinite;transform-box:fill-box;transform-origin:center}
+@keyframes n4{0%,97%{transform:scale(1)}100%{transform:scale(1.18)}108%,100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<rect width="1200" height="250" rx="28" fill="#0a1030"/>
+<path d="M120 112 H1080" stroke="#2a3a78" stroke-width="4" stroke-linecap="round"/>
+<path class="run" d="M120 112 H1080" stroke="#4f7bd9" stroke-width="3" stroke-linecap="round" fill="none"/>
+<g>
+  <circle class="n0" cx="120" cy="112" r="38" fill="#1a2557" stroke="#6f9bf0" stroke-width="4"/>
+  <text x="120" y="121" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="26" font-weight="800" fill="#6f9bf0">1</text>
+  <text x="120" y="186" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="20" font-weight="700" fill="#f4efe0">Validate</text>
+  <text x="120" y="210" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="14" fill="#9fb4d9">Check the mod</text>
+</g>
+<g>
+  <circle class="n1" cx="360" cy="112" r="38" fill="#1a2557" stroke="#8fb0f5" stroke-width="4"/>
+  <text x="360" y="121" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="26" font-weight="800" fill="#8fb0f5">2</text>
+  <text x="360" y="186" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="20" font-weight="700" fill="#f4efe0">Read</text>
+  <text x="360" y="210" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="14" fill="#9fb4d9">Reports with the line</text>
+</g>
+<g>
+  <circle class="n2" cx="600" cy="112" r="38" fill="#1a2557" stroke="#f4c542" stroke-width="4"/>
+  <text x="600" y="121" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="26" font-weight="800" fill="#f4c542">3</text>
+  <text x="600" y="186" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="20" font-weight="700" fill="#f4efe0">Ask</text>
+  <text x="600" y="210" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="14" fill="#9fb4d9">Hand it to your AI</text>
+</g>
+<g>
+  <circle class="n3" cx="840" cy="112" r="38" fill="#1a2557" stroke="#ff8a65" stroke-width="4"/>
+  <text x="840" y="121" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="26" font-weight="800" fill="#ff8a65">4</text>
+  <text x="840" y="186" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="20" font-weight="700" fill="#f4efe0">Test</text>
+  <text x="840" y="210" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="14" fill="#9fb4d9">Play it in CK3</text>
+</g>
+<g>
+  <circle class="n4" cx="1080" cy="112" r="38" fill="#1a2557" stroke="#6fd6a0" stroke-width="4"/>
+  <text x="1080" y="121" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="26" font-weight="800" fill="#6fd6a0">5</text>
+  <text x="1080" y="186" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="20" font-weight="700" fill="#f4efe0">Ship</text>
+  <text x="1080" y="210" text-anchor="middle" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="14" fill="#9fb4d9">Nothing left to fix</text>
+</g>
+<g class="dot"><circle cx="120" cy="112" r="9" fill="#f4efe0"/><circle cx="120" cy="112" r="15" fill="#f4efe0" fill-opacity=".18"/></g>
+</svg>

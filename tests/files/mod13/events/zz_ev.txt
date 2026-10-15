@@ -1,0 +1,30 @@
+namespace = ovr
+
+ovr.0001 = {
+	id_override_priority = 1
+	hidden = yes
+	immediate = { bogus_live_z1 = yes }
+}
+
+ovr.0002 = {
+	id_override_priority = 1
+	hidden = yes
+	immediate = { bogus_dead_z2 = yes }
+}
+
+ovr.0003 = {
+	hidden = yes
+	immediate = { bogus_tie_z3 = yes }
+}
+
+# A typo in the field name: the game rejects it and treats the priority as 0.
+ovr.0004 = {
+	id_overide_priority = 1
+	hidden = yes
+}
+
+# A priority alone is not an error, and a single definition needs none.
+ovr.0005 = {
+	id_override_priority = 3
+	hidden = yes
+}

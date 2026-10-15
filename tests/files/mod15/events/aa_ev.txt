@@ -1,0 +1,26 @@
+namespace = shd
+
+# Shadowed by the later file, with a typo in a field name: the game still logs an error.
+shd.0001 = {
+	id_overide_priority = 1
+	hidden = yes
+}
+
+# Shadowed and clean: no report, and the unknown effect inside is dead code that is not checked.
+shd.0002 = {
+	hidden = yes
+	immediate = { bogus_dead_shadow = yes }
+}
+
+# Shadowed by the later file even though it has a priority, with an unknown field.
+shd.0003 = {
+	id_override_priority = 1
+	hidden = yes
+	bogus_field_shadow = yes
+}
+
+# Shadowed with a priority that is not a number.
+shd.0004 = {
+	id_override_priority = high
+	hidden = yes
+}

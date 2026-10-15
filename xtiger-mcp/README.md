@@ -65,6 +65,7 @@ an error, never quietly ignored.
 | `xtiger_reports` | Filters or groups the reports of a saved run by regex, file, severity or key |
 | `xtiger_compare` | Compares two saved runs: the totals of each, and which reports are new or fixed, by key and one by one |
 | `xtiger_overrides` | Shows what a mod overrides in the base game and how each copy differs from the game installed now, near copies first |
+| `xtiger_project` | A durable record for updating one mod: baseline, working copy, runs pinned beyond the newest 20, stale-result detection, a ledger of removed or changed definitions (script, localization keys, gui templates and widgets, gfx sprites) that need a decision, notes on diagnostics that never hide them, an update status by stage (a clean static check is not a tested update), and an evidence export |
 | `xtiger_migrate` | Dry run of the mechanical renames needed to move a mod to 1.20: file, line, and the line as it would read. Writes nothing |
 | `xtiger_migrate_apply` | Writes the renames `xtiger_migrate` lists into the mod, after copying each changed file to a backup folder outside the mod |
 | `xtiger_game_gap` | Sets the game's `error.log` against a saved run: log entries about the mod's files that Tiger did not report, grouped by cause. The holes in the validator |
@@ -73,6 +74,8 @@ an error, never quietly ignored.
 | `xtiger_finish_request` | Closes a request as done or skipped, with a note the user sees in the app |
 | `xtiger_playsets` | Lists the launcher's playsets, or the mods of one in load order |
 | `ck3_run` | Starts CK3, loads a bookmark, types console commands, takes a screenshot, reports `error.log` and closes the game. With `playset`, the mods of that playset are loaded too |
+| `ck3_run_start` | The same play-test as `ck3_run`, started as a job: it answers at once with a job id and the game keeps running in the server, for runs longer than the client is willing to wait (a long list of commands, `load_timeout` of 480) |
+| `ck3_job` | Reads a job: `status` (state, phase, latest progress line, elapsed time, commands typed; `wait` holds the call up to 30 seconds), `result` (the report and screenshot), `cancel` or `list`. Jobs are kept on disk |
 | `ck3_keys` | Sends keys or text to a running game and returns a screenshot |
 | `ck3_logs` | Reads the start or end of a CK3 log, optionally filtered by a regex |
 | `ck3_vanilla` | Searches the base game's files: where a trigger, effect, event, decision, GUI type or localization key is defined, or the lines that match a regex |
@@ -133,7 +136,14 @@ The game tools need Windows. CK3 ignores ordinary key events, so the scripts in
 - send hardware scancodes;
 - type commands as Unicode text, which works with any keyboard layout.
 
-If another window takes focus while `ck3_run` is typing, it stops and tells you what was sent. Old
+If another window takes focus while `ck3_run` is typing, it stops and tells you what was sent.
+
+The xTiger app's Settings has a "Game tests" choice. By default `ck3_run` runs in the background: the
+game starts minimized at idle priority, nothing is typed, no screenshot is taken and the window never
+takes the focus, so the user can keep playing something else. The mod under test has to start what it
+checks itself (for example an `on_action` chained from `on_game_start_after_lobby`), and the result is
+read with `ck3_logs`. Console commands need the other choice, "Take over the screen". Passing
+`background` to `ck3_run` turns the quiet mode on even then. Old
 logs are moved to `logs/xtiger-archive`; the runner keeps the ten most recent archives by default.
 
 Each command must be one non-empty line of at most 255 UTF-16 code units. Longer commands and
@@ -141,6 +151,12 @@ control characters are rejected before CK3 starts. Use a bookmark key defined by
 requested mods, such as `bm_867_carolingians`; a date is not a bookmark key. A run fails if any
 requested command is unconfirmed in `debug.log`, or if its report is missing. Confirmation means
 the console accepted the command; review the reported game errors to verify its script behavior.
+
+A client that stops waiting (most give up after about five minutes) has not stopped the game. For a run that
+may take longer, start it with `ck3_run_start` and read it with `ck3_job`: the job is recorded in the state
+folder (`jobs`), survives the client's timeout, and says whether the mod's files are still the ones it was
+started with. A job whose server stopped is shown as interrupted, and the next run puts the mod list back.
+A timeout on the client's side is not a game failure; look at the job before running again.
 
 ## Building
 

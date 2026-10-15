@@ -31,6 +31,9 @@ public class CK3Input {
     if (att) AttachThreadInput(me, fg, false);
     return ok;
   }
+  // Background runs keep the game out of the way: minimized, and without activating it, so the window
+  // the user is working in keeps the focus. 7 is SW_SHOWMINNOACTIVE.
+  public static void KeepMinimized(IntPtr h) { if (h != IntPtr.Zero && !IsIconic(h)) ShowWindow(h, 7); }
   // SendInput returns how many events it injected; 0 means Windows refused them (input blocked by
   // another thread, a locked session or the secure desktop; UIPI blocking can also fail it, though
   // the error code does not say so). Say so instead of losing the key.

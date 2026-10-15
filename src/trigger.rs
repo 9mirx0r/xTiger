@@ -19,7 +19,10 @@ use crate::report::{ErrorKey, Severity, err, fatal, tips, warn};
 use crate::scopes::{
     ArgumentValue, Scopes, needs_prefix, scope_iterator, scope_prefix, scope_to_scope,
 };
-use crate::script_value::validate_script_value;
+use crate::script_value::{
+    is_boolean_save_value, is_boolean_scope_value, validate_numeric_script_value,
+    validate_script_value,
+};
 use crate::token::{Loc, Token};
 use crate::tooltipped::Tooltipped;
 use crate::validate::{
@@ -380,6 +383,25 @@ pub fn validate_trigger_key_bv(
         return side_effects;
     }
 
+    // A scope value saved as a boolean can't be compared as a number. The game logs
+    // "different types boolean vs value" for `scope:x != 0`, and ordering needs numbers too.
+    if is_boolean_scope_value(key, sc) {
+        let ordering = matches!(
+            cmp,
+            Comparator::LessThan
+                | Comparator::GreaterThan
+                | Comparator::AtMost
+                | Comparator::AtLeast
+        );
+        let number_equality = matches!(cmp, Comparator::NotEquals | Comparator::Equals(Double))
+            && bv.get_value().is_some_and(Token::is_number);
+        if ordering || number_equality {
+            let msg = format!("`{key}` was saved as a boolean, but is compared as a number here");
+            let info = "the game logs a type error and the comparison fails";
+            err(ErrorKey::Validation).msg(msg).info(info).loc(key).push();
+        }
+    }
+
     // `10 < script value` is a valid trigger
     if key.is_number() {
         validate_script_value(bv, data, sc);
@@ -660,13 +682,13 @@ fn match_trigger_bv(
                 return side_effects;
             }
             // TODO: check side_effects
-            validate_script_value(bv, data, sc);
+            validate_numeric_script_value(bv, data, sc);
         }
         Trigger::CompareValueWarnEq => {
             must_be_eq = false;
             warn_if_eq = true;
             // TODO: check side_effects
-            validate_script_value(bv, data, sc);
+            validate_numeric_script_value(bv, data, sc);
             // TODO HOI4
         }
         Trigger::SetValue => {
@@ -1003,13 +1025,9 @@ fn match_trigger_bv(
                         BV::Block(_) => validate_script_value(bv, data, sc),
                     });
                     // TODO: figure out the scope type of `value` and use that
+                    let is_boolean = is_boolean_save_value(block.get_field("value"), sc);
                     if let Some(name) = vd.field_value("name") {
-                        sc.define_name_token(
-                            name.as_str(),
-                            Scopes::primitive(),
-                            name,
-                            Temporary::Yes,
-                        );
+                        sc.define_scope_value(name.as_str(), name, Temporary::Yes, is_boolean);
                         side_effects = true;
                     }
                 }

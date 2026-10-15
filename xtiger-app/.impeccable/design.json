@@ -1,0 +1,260 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-15T01:00:57.605431+00:00",
+  "title": "Design System: xTiger",
+  "extensions": {
+    "colorMeta": {
+      "signal-blue": {
+        "role": "primary",
+        "displayName": "Signal Blue",
+        "canonical": "#458AFD",
+        "tonalRamp": [
+          "#1F3E72",
+          "#295398",
+          "#3468BE",
+          "#3E7CE4",
+          "#619CFD",
+          "#86B3FE",
+          "#ABCAFE",
+          "#DAE8FF"
+        ]
+      },
+      "harbor-navy": {
+        "role": "neutral",
+        "displayName": "Harbor Navy",
+        "canonical": "#0A1530",
+        "tonalRamp": [
+          "#040916",
+          "#060D1D",
+          "#081024",
+          "#09132B",
+          "#2F384F",
+          "#606778",
+          "#9196A2",
+          "#CED0D6"
+        ]
+      },
+      "harbor-surface": {
+        "role": "neutral",
+        "displayName": "Harbor Surface",
+        "canonical": "#10275B",
+        "tonalRamp": [
+          "#071229",
+          "#0A1737",
+          "#0C1D44",
+          "#0E2352",
+          "#344774",
+          "#647394",
+          "#939EB5",
+          "#CFD4DE"
+        ]
+      },
+      "good-mint": {
+        "role": "semantic",
+        "displayName": "Good Mint",
+        "canonical": "#6FD3A6",
+        "tonalRamp": [
+          "#325F4B",
+          "#437F64",
+          "#539E7C",
+          "#64BE95",
+          "#85DAB3",
+          "#A1E2C5",
+          "#BEEBD7",
+          "#E2F6ED"
+        ]
+      },
+      "sev-error": {
+        "role": "semantic",
+        "displayName": "Error Orange",
+        "canonical": "#FF8A5C",
+        "tonalRamp": [
+          "#733E29",
+          "#995337",
+          "#BF6845",
+          "#E67C53",
+          "#FF9C74",
+          "#FFB395",
+          "#FFCAB6",
+          "#FFE8DE"
+        ]
+      },
+      "sev-warning": {
+        "role": "semantic",
+        "displayName": "Warning Gold",
+        "canonical": "#F2C94C",
+        "tonalRamp": [
+          "#6D5A22",
+          "#91792E",
+          "#B69739",
+          "#DAB544",
+          "#F4D167",
+          "#F7DC8B",
+          "#F9E7AE",
+          "#FCF4DB"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Screen titles."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Mod name on results."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Everything else."
+      },
+      "label": {
+        "displayName": "Pixel label",
+        "purpose": "Wordmark and eyebrows only."
+      },
+      "code": {
+        "displayName": "Mono",
+        "purpose": "Paths, keys, counts."
+      }
+    },
+    "shadows": [
+      {
+        "name": "float",
+        "value": "0 10px 30px rgba(0,0,0,0.35)",
+        "purpose": "Hovered cards, modals, toasts."
+      },
+      {
+        "name": "accent-glow",
+        "value": "0 6px 20px color-mix(in srgb, #458AFD 40%, transparent)",
+        "purpose": "Primary button hover."
+      },
+      {
+        "name": "focus-ring",
+        "value": "0 0 0 3px color-mix(in srgb, #458AFD 25%, transparent)",
+        "purpose": "Focused fields."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Entrances and bar growth."
+      },
+      {
+        "name": "ease-spring",
+        "value": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+        "purpose": "Press, pop and overshoot."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow",
+        "value": "900px"
+      },
+      {
+        "name": "single-column",
+        "value": "760px"
+      },
+      {
+        "name": "compact",
+        "value": "640px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main action: Validate, Connect.",
+      "html": "<button class=\"ds-btn-primary\">Validate again</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:10px;font:14px 'Geist','Segoe UI',system-ui,sans-serif;white-space:nowrap;cursor:pointer;transition:background-color .15s,border-color .15s,transform .18s cubic-bezier(.34,1.56,.64,1),box-shadow .2s;border:1px solid transparent;background:#458AFD;color:#071027;font-weight:600}.ds-btn-primary:hover{background:#5B99FF;box-shadow:0 6px 20px rgba(69,138,253,.4)}.ds-btn-primary:active{transform:scale(.96)}.ds-btn-primary:focus-visible{outline:2px solid #458AFD;outline-offset:2px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Everything else; the border turns blue on hover.",
+      "html": "<button class=\"ds-btn\">Export…</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:10px;font:14px 'Geist','Segoe UI',system-ui,sans-serif;white-space:nowrap;cursor:pointer;transition:background-color .15s,border-color .15s,transform .18s cubic-bezier(.34,1.56,.64,1),box-shadow .2s;border:1px solid #2E4C8F;background:transparent;color:#E8EEFB}.ds-btn:hover{background:rgba(22,50,114,.6);border-color:#458AFD}.ds-btn:active{transform:scale(.96)}.ds-btn:focus-visible{outline:2px solid #458AFD;outline-offset:2px}"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Text and select fields.",
+      "html": "<input class=\"ds-field\" placeholder=\"Filter by text or key\">",
+      "css": ".ds-field{height:40px;padding:0 14px;border:1px solid #2E4C8F;border-radius:10px;background:#071027;color:#E8EEFB;font:14px 'Geist','Segoe UI',system-ui,sans-serif;transition:border-color .15s,box-shadow .2s}.ds-field::placeholder{color:#7F93BC}.ds-field:focus{outline:none;border-color:#458AFD;box-shadow:0 0 0 3px rgba(69,138,253,.25)}"
+    },
+    {
+      "name": "Severity Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Filter toggle tinted by severity.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\"><span class=\"ds-dot\"></span>Errors <b>3</b></button>",
+      "css": ".ds-chip{--sev:#FF8A5C;display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:16px;border:1px solid #2E4C8F;background:transparent;color:#C8D8F5;font:13px 'Geist','Segoe UI',system-ui,sans-serif;cursor:pointer;transition:transform .15s}.ds-chip b{font:12px 'Geist Mono',Consolas,monospace;opacity:.8}.ds-chip:active{transform:scale(.92)}.ds-chip[aria-pressed=true]{background:color-mix(in srgb,var(--sev) 16%,transparent);border-color:color-mix(in srgb,var(--sev) 55%,transparent);color:#E8EEFB}.ds-dot{width:8px;height:8px;border-radius:2px;background:var(--sev)}"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Surface container for tiles and panels.",
+      "html": "<div class=\"ds-card\"><strong>Silk Road Events</strong><span>v1.4.2 · game 1.20.*</span></div>",
+      "css": ".ds-card{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border:1px solid #24407F;border-radius:12px;background:#10275B;color:#E8EEFB;font:14px 'Geist','Segoe UI',system-ui,sans-serif;transition:transform .25s cubic-bezier(.22,1,.36,1),box-shadow .25s}.ds-card span{color:#9DB0D6;font:12px 'Geist Mono',Consolas,monospace}.ds-card:hover{transform:translateY(-3px);box-shadow:0 10px 30px rgba(0,0,0,.35)}"
+    },
+    {
+      "name": "Severity Stack",
+      "kind": "custom",
+      "refersTo": "",
+      "description": "Overview bar: segments flex by count and grow in.",
+      "html": "<div class=\"ds-stack\"><i style=\"--sev:#FF8A5C;--n:3\"></i><i style=\"--sev:#F2C94C;--n:2\"></i><i style=\"--sev:#B8C6E3;--n:1\"></i><i style=\"--sev:#8FB6FF;--n:1\"></i></div>",
+      "css": ".ds-stack{display:flex;gap:3px;height:14px;width:320px}.ds-stack i{flex:var(--n) 1 0;min-width:8px;border-radius:4px;background:var(--sev);transform-origin:left center;animation:ds-grow .7s cubic-bezier(.22,1,.36,1) backwards}.ds-stack i:hover{transform:scaleY(1.45)}@keyframes ds-grow{from{transform:scaleX(0);opacity:.4}to{transform:scaleX(1);opacity:1}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Night Workbench",
+    "overview": "xTiger is the bench you work at late, next to the game and the editor: a deep navy surface lit by a single blue accent, with every tool within reach and nothing shouting. It is calm at rest and lively under the hand: controls press down, spring back with a small overshoot, and the results draw themselves in. A pixel font for the wordmark and eyebrow labels, and Qubis the blob as the maker's mark, keep the tool friendly without making it a toy.\n\nThe system is built for long sessions on dense information (reports, files, counts), so density and legibility come first and expression lives in details: the ASCII water behind the Home screen, severity colors as signal lights, the small brand-logo animations on assistant tiles. The light theme (\"Chart Paper\") is a first-class twin, not an inversion.",
+    "keyCharacteristics": [
+      "Deep-navy tonal layering instead of heavy shadows; one blue accent.",
+      "Soft-edged, springy controls (8–12px radius, press-down scale, spring easing).",
+      "Severity is the only multi-color vocabulary and always pairs color with a shape or label.",
+      "Motion explains change (growing bars, popping badges, a bar that fills to Done) and is switched off by `prefers-reduced-motion`."
+    ],
+    "rules": [
+      {
+        "name": "The One Blue Rule",
+        "body": "Signal Blue is the only accent; any other hue on screen means severity or a third-party brand logo.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Themes Rule",
+        "body": "Every color is a token on `:root` with a `[data-theme=\"light\"]` twin. No raw hex in components except third-party brand marks.",
+        "section": "colors"
+      },
+      {
+        "name": "The Pixel Is a Wink Rule",
+        "body": "Pixelify Sans appears only on the wordmark and eyebrows, never in body text or controls.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-Until-Touched Rule",
+        "body": "Surfaces are flat at rest; shadow or glow appears only in response to hover, focus or an overlay.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use tokens for every color and provide the light-theme twin.",
+      "Do use `--ease-out` (cubic-bezier(0.22, 1, 0.36, 1)) for entrances and `--ease-spring` (cubic-bezier(0.34, 1.56, 0.64, 1)) for press and pop.",
+      "Do keep animation CSS-only and let the global reduced-motion rule neutralize it.",
+      "Do pair severity color with a label or a dot shape.",
+      "Do keep all copy in plain English, short and literal."
+    ],
+    "donts": [
+      "Don't add a second accent hue; severity and third-party logos are the only other colors.",
+      "Don't use heavy resting shadows, gradient text, or glassmorphism beyond the modal backdrop blur.",
+      "Don't load fonts, images or scripts from the network; CSP allows self only (`img-src 'self' data:`) and no inline scripts.",
+      "Don't use Pixelify Sans for body text or controls.",
+      "Don't let motion block work: the validation finish waits about 0.65s at most."
+    ]
+  }
+}

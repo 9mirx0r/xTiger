@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 230" width="1200" height="230" role="img" aria-labelledby="t d">
+<title id="t">Reports on unmodded vanilla CK3</title>
+<desc id="d">Tiger reports about 144,000 problems on the unmodded base game. xTiger reports about 15,000.</desc>
+<style>
+.b1{transform-origin:left center;animation:grow1 7s cubic-bezier(.2,.8,.2,1) infinite}
+@keyframes grow1{0%{transform:scaleX(0)}16%,90%{transform:scaleX(1)}100%{transform:scaleX(1)}}
+.b2{transform-origin:left center;animation:grow2 7s cubic-bezier(.2,.8,.2,1) infinite}
+@keyframes grow2{0%,10%{transform:scaleX(0)}26%,90%{transform:scaleX(1)}100%{transform:scaleX(1)}}
+.v1,.v2{animation:fade 7s ease infinite}
+.v2{animation-delay:.15s}
+@keyframes fade{0%,12%{opacity:0}24%,90%{opacity:1}100%{opacity:1}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<rect width="1200" height="230" rx="28" fill="#0a1030"/>
+<text x="48" y="56" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="22" font-weight="700" fill="#f4efe0">Reports on the unmodded base game</text>
+<text x="48" y="82" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="14" fill="#9fb4d9">When vanilla alone makes thousands of warnings, the real mistakes in your mod get lost.</text>
+<text x="48" y="136" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="15" font-weight="600" fill="#9fb4d9">Tiger</text>
+<rect x="150" y="112" width="800" height="34" rx="9" fill="#1a2557"/>
+<rect class="b1" x="150" y="112" width="800" height="34" rx="9" fill="#7f93bd"/>
+<text class="v1" x="966" y="136" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="18" font-weight="700" fill="#9fb4d9">~144,000</text>
+<text x="48" y="190" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="15" font-weight="700" fill="#f4efe0">xTiger</text>
+<rect x="150" y="166" width="800" height="34" rx="9" fill="#1a2557"/>
+<rect class="b2" x="150" y="166" width="83" height="34" rx="9" fill="#6f9bf0"/>
+<text class="v2" x="249" y="190" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="18" font-weight="800" fill="#f4efe0">~15,000</text>
+</svg>

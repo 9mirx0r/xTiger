@@ -159,6 +159,7 @@ impl Trigger {
                 negated,
             );
             if let Some(scopes) = self.scope_override {
+                sc.forget_scope_value_kinds();
                 our_sc = ScopeContext::new_unrooted(scopes, key);
                 our_sc.set_strict_scopes(false);
             }
@@ -181,6 +182,10 @@ impl Trigger {
         data: &Everything,
     ) -> bool {
         self.cache.perform(key, args, tooltipped, negated, |our_sc| {
+            // The cached context of an overridden call does not show what its body saved.
+            if self.scope_override.is_some() {
+                sc.forget_scope_value_kinds();
+            }
             sc.expect_compatibility(our_sc, key, data);
         })
     }
@@ -219,6 +224,7 @@ impl Trigger {
                 negated,
             );
             if let Some(scopes) = self.scope_override {
+                sc.forget_scope_value_kinds();
                 our_sc = ScopeContext::new_unrooted(scopes, key);
                 our_sc.set_strict_scopes(false);
             }

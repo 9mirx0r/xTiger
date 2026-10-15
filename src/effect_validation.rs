@@ -9,7 +9,7 @@ use crate::item::Item;
 use crate::lowercase::Lowercase;
 use crate::report::{ErrorKey, Severity, err, warn};
 use crate::scopes::Scopes;
-use crate::script_value::validate_script_value;
+use crate::script_value::{is_boolean_save_value, validate_script_value};
 use crate::special_tokens::SpecialTokens;
 use crate::token::Token;
 use crate::tooltipped::Tooltipped;
@@ -225,7 +225,7 @@ pub fn validate_save_scope(
 /// A specific validator for the `save_scope_value` effect.
 pub fn validate_save_scope_value(
     key: &Token,
-    _block: &Block,
+    block: &Block,
     _data: &Everything,
     sc: &mut ScopeContext,
     mut vd: Validator,
@@ -234,9 +234,10 @@ pub fn validate_save_scope_value(
     let temp = if key.as_str().contains("_temporary_") { Temporary::Yes } else { Temporary::No };
     vd.req_field("name");
     vd.req_field("value");
+    // Only whether the value is a boolean is tracked, not its full scope type.
+    let is_boolean = is_boolean_save_value(block.get_field("value"), sc);
     if let Some(name) = vd.field_identifier_or_flag("name", sc) {
-        // TODO: examine `value` field to check its real scope type
-        sc.define_name_token(name.as_str(), Scopes::primitive(), name, temp);
+        sc.define_scope_value(name.as_str(), name, temp, is_boolean);
     }
     vd.field_script_value_or_flag("value", sc);
 }

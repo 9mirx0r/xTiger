@@ -1,0 +1,25 @@
+﻿namespace = num
+
+# Booleans where the game needs a number: it logs "Badly read script value" and ignores them.
+num.0001 = {
+	hidden = yes
+	immediate = {
+		add_gold = no
+		add_prestige = yes
+		add_piety = { value = yes }
+		if = { limit = { gold >= yes } add_gold = 1 }
+	}
+}
+
+# Numbers, script values and booleans in boolean places are all fine.
+num.0002 = {
+	hidden = yes
+	immediate = {
+		add_gold = 5
+		add_prestige = { value = 3 add = 2 }
+		if = { limit = { gold >= 0 } add_gold = 1 }
+		if = { limit = { is_adult = yes } add_gold = 1 }
+		save_temporary_scope_value_as = { name = flag value = yes }
+		if = { limit = { scope:flag = yes } add_gold = 1 }
+	}
+}

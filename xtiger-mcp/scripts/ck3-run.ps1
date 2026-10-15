@@ -3,6 +3,9 @@
 # The console key is scancode 0x29 (the key under Esc) on US and most European layouts.
 # Commands are typed as Unicode text by default (-Typing unicode), which works on any keyboard layout.
 # -Typing scancode is the fallback; it only types letters, digits, space, '.', '-' and '_'.
+# -Background never takes the focus: no console commands and no screenshot, the game starts minimized at
+# idle priority, and -Settle seconds after the game state is ready the logs are read and the game is closed.
+# The mod under test has to trigger what it wants to check itself (an on_action), since nothing is typed.
 param(
     [string[]]$Cmd = @(),
     [string]$CmdFile = "",
@@ -15,6 +18,8 @@ param(
     [string]$Report = "",
     [ValidateSet("unicode", "scancode")][string]$Typing = "unicode",
     [int]$KeepArchives = 10,
+    [switch]$Background,
+    [int]$Settle = 20,
     [string]$GameDir = $env:CK3_GAME_DIR,
     [string]$UserDir = $env:CK3_USER_DIR,
     [switch]$Keep
@@ -42,6 +47,8 @@ $exe  = Join-Path $GameDir "binaries\ck3.exe"
 $logs = Join-Path $UserDir "logs"
 if (-not (Test-Path $exe)) { throw "ck3.exe not found at $exe" }
 if (Get-Process ck3 -ErrorAction SilentlyContinue) { throw "CK3 is already running; close it first so the logs belong to this run." }
+if ($Background -and $Cmd) { throw "A background run types nothing, so it cannot send console commands. Let the mod trigger its events from an on_action instead." }
+if ($Background) { $Shot = ""; $ShotDir = "" }
 # Refuse untypeable commands before launching, instead of silently dropping characters.
 foreach ($c in $Cmd) {
     if ([string]::IsNullOrWhiteSpace($c) -or $c -match '[\x00-\x1f\x7f]') { throw "Console commands must be non-empty single lines without control characters." }
@@ -138,8 +145,14 @@ function Get-Confirmed {
 
 $out = @("=== run $runId ===", "game: $exe", "args: $($args2 -join ' ')", "typing: $Typing")
 $sent = @(); $failure = $null
-$p = Start-Process $exe -ArgumentList $args2 -WorkingDirectory (Split-Path $exe) -PassThru
-Write-Host "launched pid $($p.Id)"
+$p = if ($Background) {
+    Start-Process $exe -ArgumentList $args2 -WorkingDirectory (Split-Path $exe) -WindowStyle Minimized -PassThru
+} else {
+    Start-Process $exe -ArgumentList $args2 -WorkingDirectory (Split-Path $exe) -PassThru
+}
+Write-Host "launched pid $($p.Id)$(if ($Background) { ' in the background' })"
+# Idle priority: the game only uses what the user's own programs leave free while it loads.
+if ($Background) { try { $p.PriorityClass = [Diagnostics.ProcessPriorityClass]::Idle } catch { $out += "could not lower the game's priority: $($_.Exception.Message)" } }
 try {
     # The game writes this line to game.log once the bookmark has been turned into a running game.
     $ready = 'Completed generating game state from bookmark'
@@ -148,6 +161,7 @@ try {
         Start-Sleep 3
         if ($p.HasExited) { throw "game exited early (code $($p.ExitCode)), check $UserDir\crashes" }
         $p.Refresh()
+        if ($Background) { [CK3Input]::KeepMinimized($p.MainWindowHandle) }
         if (Select-String -Path (Join-Path $logs "error.log") -Pattern 'Unknown bookmark' -SimpleMatch -Quiet -ErrorAction SilentlyContinue) { throw "Unknown bookmark '$Bookmark'; use a bookmark key such as bm_867_carolingians." }
         if ($p.MainWindowHandle -ne 0 -and (Select-String -Path (Join-Path $logs "game.log") -Pattern $ready -SimpleMatch -Quiet -ErrorAction SilentlyContinue)) { break }
         if (((Get-Date) - $t0).TotalSeconds -gt $LoadTimeout) { throw "load timeout after $LoadTimeout s (no '$ready' in game.log)" }
@@ -155,7 +169,13 @@ try {
     $out += "loaded after $([int]((Get-Date) - $t0).TotalSeconds) s"
     # The loading screen stays up for a moment after the game state is ready.
     Start-Sleep 12
-    [CK3Input]::SetForegroundWindow($p.MainWindowHandle) | Out-Null; Start-Sleep 1
+    if ($Background) {
+        # Nothing is typed, so the game keeps running unseen while the mod's on_actions do their work.
+        for ($s = 0; $s -lt $Settle -and -not $p.HasExited; $s++) { [CK3Input]::KeepMinimized($p.MainWindowHandle); Start-Sleep 1 }
+        $out += "background run: waited $Settle s after loading, no input sent"
+    } else {
+        [CK3Input]::SetForegroundWindow($p.MainWindowHandle) | Out-Null; Start-Sleep 1
+    }
     # Open the console once. The game can still be streaming assets, and keys typed before the
     # console takes text are lost (a run once lost the first three letters of a command).
     if ($Cmd) { Send-Tap $p 0x29; Start-Sleep -Milliseconds 2000 }
@@ -242,7 +262,16 @@ $noise = 'Invalid achievement|Failed to read key reference'
 $errLog = Join-Path $logs "error.log"; $gameLog = Join-Path $logs "game.log"
 $out += "=== error.log (deduplicated) ==="
 if (Test-Path $errLog) {
-    $lines = @(Get-Content $errLog)
+    # A game that has run for a long time writes tens of megabytes. Only the end is read then, and
+    # the report says so; the file itself is untouched and ck3_logs reads all of it.
+    $maxLines = 100000
+    $size = (Get-Item $errLog).Length
+    if ($size -gt 16MB) {
+        $lines = @(Get-Content $errLog -Tail $maxLines)
+        $out += "error.log is $([int]($size / 1MB)) MB: only its last $maxLines lines are read here (read the rest with ck3_logs)"
+    } else {
+        $lines = @(Get-Content $errLog)
+    }
     $kept = @($lines | Where-Object { $_ -notmatch $noise })
     $out += "$($lines.Count) lines, $($lines.Count - $kept.Count) hidden as known vanilla noise ($noise)"
     $out += ($kept | ForEach-Object { $_ -replace '^\[[0-9:.]+\]','' } | Group-Object | Sort-Object Count -Descending | ForEach-Object { "$($_.Count)x $($_.Name)" })

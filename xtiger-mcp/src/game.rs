@@ -3,10 +3,11 @@
 
 use std::fmt::Write as _;
 use std::fs;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Mutex, TryLockError};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -67,6 +68,58 @@ fn drain(stream: Option<impl Read + Send + 'static>) -> JoinHandle<String> {
         }
         String::from_utf8_lossy(&bytes).into_owned()
     })
+}
+
+/// What a child printed so far, line by line.
+type Lines = Arc<Mutex<Vec<String>>>;
+
+/// Collect a child's output line by line on its own thread, so a full pipe never blocks the child
+/// and what it has printed so far can be read while it runs.
+fn follow(stream: Option<impl Read + Send + 'static>) -> (Lines, JoinHandle<()>) {
+    let lines = Lines::default();
+    let sink = Arc::clone(&lines);
+    let reader = thread::spawn(move || {
+        if let Some(stream) = stream {
+            for line in BufReader::new(stream).split(b'\n') {
+                let Ok(bytes) = line else { break };
+                let text =
+                    String::from_utf8_lossy(&bytes).trim_end_matches(['\r', '\n']).to_owned();
+                if let Ok(mut lines) = sink.lock() {
+                    lines.push(text);
+                }
+            }
+        }
+    });
+    (lines, reader)
+}
+
+/// Hand the lines that came after the first `done` to `progress`.
+fn forward(lines: &Lines, done: &mut usize, progress: &mut dyn FnMut(&str)) {
+    let new: Vec<String> =
+        lines.lock().map(|lines| lines[(*done).min(lines.len())..].to_vec()).unwrap_or_default();
+    for line in &new {
+        progress(line);
+    }
+    *done += new.len();
+}
+
+fn joined(lines: &Lines) -> String {
+    lines.lock().map(|lines| lines.join("\n")).unwrap_or_default()
+}
+
+/// How a script is watched while it runs.
+pub struct Control<'a> {
+    pub cancelled: &'a dyn Fn() -> bool,
+    /// Gets each line the script prints, as it prints it.
+    pub progress: &'a mut dyn FnMut(&str),
+    /// Called a few times a second for as long as the script runs.
+    pub tick: &'a mut dyn FnMut(),
+}
+
+impl std::fmt::Debug for Control<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Control").finish_non_exhaustive()
+    }
 }
 
 struct Outcome {
@@ -137,7 +190,23 @@ fn ck3_running() -> bool {
 
 /// One game run at a time in this server: a second one would take the first one's mod list for
 /// the user's own, and could not start the game anyway.
-static RUN_LOCK: Mutex<()> = Mutex::new(());
+static BUSY: AtomicBool = AtomicBool::new(false);
+
+struct InThisServer;
+
+impl InThisServer {
+    fn take() -> Option<Self> {
+        BUSY.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+            .then_some(Self)
+    }
+}
+
+impl Drop for InThisServer {
+    fn drop(&mut self) {
+        BUSY.store(false, Ordering::SeqCst);
+    }
+}
 
 /// The same rule across servers (Claude Code and the xTiger app each start their own): a file in
 /// the game's user folder, with the process id of its owner. It goes when the run ends.
@@ -194,7 +263,8 @@ fn take_run_lock(user_dir: &Path, alive: &dyn Fn(u32) -> bool) -> Result<RunLock
                 if busy {
                     let who = owner.map_or_else(String::new, |pid| format!(" (process {pid})"));
                     return Err(format!(
-                        "Another xTiger server{who} is running a game right now; wait for it to                          finish. If no run is going, delete {}.",
+                        "Another xTiger server{who} is running a game right now; wait for it to \
+                         finish. If no run is going, delete {}.",
                         path.display()
                     ));
                 }
@@ -241,7 +311,7 @@ fn powershell(
     script: &str,
     args: &[String],
     timeout: Duration,
-    cancelled: &dyn Fn() -> bool,
+    control: &mut Control,
 ) -> Result<Outcome, String> {
     if !cfg!(windows) {
         return Err(WINDOWS_ONLY.to_owned());
@@ -258,34 +328,37 @@ fn powershell(
     .stderr(Stdio::piped())
     .spawn()
     .map_err(|e| format!("cannot start PowerShell: {e}"))?;
-    let out = drain(child.stdout.take());
+    let (out, reader) = follow(child.stdout.take());
     let err = drain(child.stderr.take());
     let started = Instant::now();
+    let mut forwarded = 0;
     let code = loop {
         if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
             break status.code();
         }
-        if cancelled() || started.elapsed() > timeout {
+        forward(&out, &mut forwarded, control.progress);
+        (control.tick)();
+        let was_cancelled = (control.cancelled)();
+        if was_cancelled || started.elapsed() > timeout {
             kill_tree(&mut child);
-            let stopped = if cancelled() {
+            let stopped = if was_cancelled {
                 "Cancelled.".to_owned()
             } else {
                 format!("Stopped after {} seconds.", timeout.as_secs())
             };
-            let stdout = out.join().unwrap_or_default();
+            let _ = reader.join();
+            forward(&out, &mut forwarded, control.progress);
             return Ok(Outcome {
                 code: None,
-                stdout: format!("{}\n{stopped}", stdout.trim()),
+                stdout: format!("{}\n{stopped}", joined(&out).trim()),
                 stderr: String::new(),
             });
         }
         thread::sleep(Duration::from_millis(200));
     };
-    Ok(Outcome {
-        code,
-        stdout: out.join().unwrap_or_default(),
-        stderr: err.join().unwrap_or_default(),
-    })
+    let _ = reader.join();
+    forward(&out, &mut forwarded, control.progress);
+    Ok(Outcome { code, stdout: joined(&out), stderr: err.join().unwrap_or_default() })
 }
 
 fn status(outcome: &Outcome) -> String {
@@ -315,7 +388,12 @@ pub struct RunGame<'a> {
     pub mods: &'a [PathBuf],
     pub load_timeout: u64,
     pub typing: &'a str,
+    /// Run without the user's screen: nothing typed, no screenshot, the game minimized.
+    pub background: bool,
 }
+
+/// Seconds a background run waits after the game state is ready, for the mod's `on_action`s to run.
+const BACKGROUND_SETTLE_SECS: u64 = 20;
 
 const MAX_CONSOLE_UNITS: usize = 255;
 
@@ -337,6 +415,16 @@ fn validate_commands(commands: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// The title to play is handed to PowerShell and to the game's command line as it is, so it must be
+/// a plain key: a value such as `-Shot:C:\x` or `k_france -other` would set other parameters.
+fn validate_play(play: &str) -> Result<(), String> {
+    if !play.is_empty() && play.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        Ok(())
+    } else {
+        Err(format!("play must be a title key such as k_france or c_jaffa, not {play:?}."))
+    }
+}
+
 fn validate_bookmark(game: &Path, mods: &[PathBuf], bookmark: &str) -> Result<(), String> {
     let relative = "common/bookmarks/bookmarks";
     let exists = crate::overrides::has_definition(&game.join("game").join(relative), bookmark)
@@ -353,21 +441,58 @@ fn validate_bookmark(game: &Path, mods: &[PathBuf], bookmark: &str) -> Result<()
     }
 }
 
-/// Start CK3, load a game, type the commands, and report. Returns the report and the
-/// screenshot, if one was taken.
-pub fn run_game(
-    loc: &Locations,
-    run: &RunGame,
-    cancelled: &dyn Fn() -> bool,
-) -> Result<(String, Option<PathBuf>), String> {
+/// The two locks that keep game runs apart: one for this server, one for all of them.
+struct Locks {
+    _in_this_server: InThisServer,
+    _across_servers: RunLock,
+}
+
+/// A game run that has its locks and its work folder, ready to execute: on this thread, or on one
+/// of its own (see `jobs`).
+pub struct Started {
+    args: Vec<String>,
+    report: PathBuf,
+    shot: Option<PathBuf>,
+    timeout: Duration,
+    /// How many console commands the run was asked to send, and whether it types nothing.
+    commands: usize,
+    background: bool,
+    _locks: Locks,
+}
+
+impl std::fmt::Debug for Started {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Started").field("report", &self.report).finish_non_exhaustive()
+    }
+}
+
+/// Check a run and take the locks for it. Everything that can be refused is refused here, before
+/// any game starts.
+pub fn begin(loc: &Locations, run: &RunGame) -> Result<Started, String> {
     let game = loc.require_game()?;
     validate_commands(run.commands)?;
+    if run.background && !run.commands.is_empty() {
+        return Err("A background run types nothing, so it cannot send console commands. \
+                    Let the mod trigger its events from an on_action. To type commands, the user has to \
+                    switch Game tests to \"Take over the screen\" in the xTiger app's settings."
+            .to_owned());
+    }
+    validate_play(run.play)?;
     validate_bookmark(game, run.mods, run.bookmark)?;
     if !["unicode", "scancode"].contains(&run.typing) {
         return Err("typing must be unicode or scancode".to_owned());
     }
+    // Before the locks and the mod list recovery, which use Windows tools.
+    if !cfg!(windows) {
+        return Err(WINDOWS_ONLY.to_owned());
+    }
+    let in_this_server = InThisServer::take().ok_or(
+        "Another game run is still going in this server (a ck3_run, or a job: ck3_job lists them); \
+         wait for it to finish or cancel it.",
+    )?;
+    let across_servers = take_run_lock(&loc.user_dir, &pid_alive)?;
     let work = work_dir(loc, "run")?;
-    let shot = run.screenshot.then(|| work.join("screen.png"));
+    let shot = (run.screenshot && !run.background).then(|| work.join("screen.png"));
     let report = work.join("report.txt");
     let mut args: Vec<String> = [
         "-GameDir",
@@ -403,51 +528,136 @@ pub fn run_game(
     if run.keep_open {
         args.push("-Keep".to_owned());
     }
+    let mut settle = 0;
+    if run.background {
+        settle = BACKGROUND_SETTLE_SECS;
+        args.extend(["-Background".to_owned(), "-Settle".to_owned(), settle.to_string()]);
+    }
     let commands = u64::try_from(run.commands.len()).unwrap_or(u64::MAX);
-    let timeout = Duration::from_secs(run.load_timeout + 60 + 30 * commands);
-    // Before the locks and the mod list recovery, which use Windows tools.
-    if !cfg!(windows) {
-        return Err(WINDOWS_ONLY.to_owned());
+    let timeout = Duration::from_secs(run.load_timeout + 60 + settle + 30 * commands);
+    Ok(Started {
+        args,
+        report,
+        shot,
+        timeout,
+        commands: run.commands.len(),
+        background: run.background,
+        _locks: Locks { _in_this_server: in_this_server, _across_servers: across_servers },
+    })
+}
+
+/// The most lines of the report that are handed back.
+const MAX_REPORT_LINES: usize = 1500;
+
+/// The report as it is handed back: cut at [`MAX_REPORT_LINES`], saying so and where the whole file is.
+fn cap_report(text: &str, file: &Path) -> String {
+    let total = text.lines().count();
+    if total <= MAX_REPORT_LINES {
+        return text.to_owned();
     }
-    let _one_at_a_time = match RUN_LOCK.try_lock() {
-        Ok(guard) => guard,
-        Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
-        Err(TryLockError::WouldBlock) => {
-            return Err("Another ck3_run is still going; wait for it to finish.".to_owned());
-        }
+    let mut kept: Vec<&str> = text.lines().take(MAX_REPORT_LINES).collect();
+    let note = format!(
+        "... report cut: {MAX_REPORT_LINES} of {total} lines shown. The whole report is in {}",
+        file.display()
+    );
+    kept.push(&note);
+    kept.join("\n")
+}
+
+/// What the run itself checked, apart from what its commands did. A command the game logged only
+/// shows that the game accepted it; whether the mod behaved is for the logs to say.
+fn confirmation(report: &str, commands: usize, background: bool) -> String {
+    let find = |prefix: &str| {
+        report.lines().map(str::trim).find(|line| line.starts_with(prefix)).map(str::to_owned)
     };
-    let _across_servers = take_run_lock(&loc.user_dir, &pid_alive)?;
-    // A run that was killed earlier may have left the mod list changed; the script would take
-    // that list for the user's own. Not while a game is running: the list is its own then, and the
-    // script refuses to start anyway.
-    if !ck3_running() {
-        recover_dlc_load(&loc.user_dir);
-    }
-    let mut outcome = powershell(loc, "ck3-run.ps1", &args, timeout, cancelled)?;
-    if outcome.code.is_none() {
-        // The script was stopped together with the game, so it could not put the list back itself.
-        outcome.stdout.push_str("\nThe script and the game it started were stopped.");
-        if recover_dlc_load(&loc.user_dir) {
-            outcome.stdout.push_str(" Your mod list (dlc_load.json) was put back.");
+    let mut out = String::from("=== what this run confirms ===");
+    for (label, prefix) in [("boot", "loaded after"), ("mods", "mods loaded:")] {
+        if let Some(line) = find(prefix) {
+            let _ = write!(out, "\n{label}: {line}");
         }
     }
-    let mut text = status(&outcome);
-    let report_bytes = fs::read(&report).ok();
-    if let Some(bytes) = &report_bytes {
-        text.push_str("\n\n");
-        text.push_str(String::from_utf8_lossy(bytes).trim_start_matches('\u{feff}'));
+    if commands > 0
+        && let Some(line) = find("commands sent:")
+    {
+        let _ = write!(out, "\ncommands: {line}");
     }
-    let shot = shot.filter(|path| path.is_file());
-    // Nothing was tested when the script failed, was stopped, or a mod was not loaded: that is an
-    // error for the caller, not a result, but what the run did find stays in the message.
-    if let Some(lead) = failure_lead(outcome.code, report_bytes.is_some()) {
-        if let Some(shot) = &shot {
-            let _ = write!(text, "\nScreenshot: {}", shot.display());
+    out.push_str(if background {
+        "\nnot confirmed: whether the mod behaved as intended. Nothing was typed; what the mod \
+         tests has to come from its own on_actions and be read in the logs below or with ck3_logs."
+    } else {
+        "\nnot confirmed: whether the mod behaved as intended. A command the game ran was only \
+         accepted; its effect shows in the logs below or with ck3_logs."
+    });
+    out
+}
+
+impl Started {
+    /// Where the full report will be written.
+    pub fn report(&self) -> &Path {
+        &self.report
+    }
+
+    /// The most the run is given before it is stopped.
+    pub fn budget(&self) -> Duration {
+        self.timeout
+    }
+
+    /// Start CK3, load a game, type the commands, and report. Returns the report and the
+    /// screenshot, if one was taken.
+    pub fn execute(
+        self,
+        loc: &Locations,
+        control: &mut Control,
+    ) -> Result<(String, Option<PathBuf>), String> {
+        // A run that was killed earlier may have left the mod list changed; the script would take
+        // that list for the user's own. Not while a game is running: the list is its own then, and
+        // the script refuses to start anyway.
+        if !ck3_running() {
+            recover_dlc_load(&loc.user_dir);
         }
-        // The lead is a line of its own: the journal and the app show the first line.
-        return Err(format!("{lead}\n{text}"));
+        let mut outcome = powershell(loc, "ck3-run.ps1", &self.args, self.timeout, control)?;
+        if outcome.code.is_none() {
+            // The script was stopped together with the game, so it could not put the list back itself.
+            outcome.stdout.push_str("\nThe script and the game it started were stopped.");
+            if recover_dlc_load(&loc.user_dir) {
+                outcome.stdout.push_str(" Your mod list (dlc_load.json) was put back.");
+            }
+        }
+        let mut text = status(&outcome);
+        let report_bytes = fs::read(&self.report).ok();
+        if let Some(bytes) = &report_bytes {
+            let report = String::from_utf8_lossy(bytes);
+            let report = report.trim_start_matches('\u{feff}');
+            let sections = [
+                confirmation(report, self.commands, self.background),
+                cap_report(report.trim(), &self.report),
+            ];
+            for section in sections {
+                text.push_str("\n\n");
+                text.push_str(&section);
+            }
+        }
+        let shot = self.shot.filter(|path| path.is_file());
+        // Nothing was tested when the script failed, was stopped, or a mod was not loaded: that is
+        // an error for the caller, not a result, but what the run did find stays in the message.
+        if let Some(lead) = failure_lead(outcome.code, report_bytes.is_some()) {
+            if let Some(shot) = &shot {
+                let _ = write!(text, "\nScreenshot: {}", shot.display());
+            }
+            // The lead is a line of its own: the journal and the app show the first line.
+            return Err(format!("{lead}\n{text}"));
+        }
+        Ok((text, shot))
     }
-    Ok((text, shot))
+}
+
+/// Start CK3, load a game, type the commands, and report, all before returning.
+pub fn run_game(
+    loc: &Locations,
+    run: &RunGame,
+    control: &mut Control,
+) -> Result<(String, Option<PathBuf>), String> {
+    begin(loc, run)?.execute(loc, control)
 }
 
 /// Send keys and text to the open CK3 window.
@@ -469,7 +679,8 @@ pub fn send_keys(
     if let Some(shot) = &shot {
         args.extend(["-Shot".to_owned(), shot.display().to_string()]);
     }
-    let outcome = powershell(loc, "ck3-keys.ps1", &args, Duration::from_secs(120), cancelled)?;
+    let mut control = Control { cancelled, progress: &mut |_| {}, tick: &mut || {} };
+    let outcome = powershell(loc, "ck3-keys.ps1", &args, Duration::from_secs(120), &mut control)?;
     Ok((status(&outcome), shot.filter(|path| path.is_file())))
 }
 
@@ -695,6 +906,16 @@ mod tests {
     }
 
     #[test]
+    fn play_preflight_accepts_only_a_plain_title_key() {
+        for play in ["k_france", "c_jaffa", "e_hre", "d_A1"] {
+            assert!(validate_play(play).is_ok(), "{play:?}");
+        }
+        for play in ["", "-Keep", "-Shot:C:\\x.png", "k_france -mod=x", "k_france\"", "k;france"] {
+            assert!(validate_play(play).is_err(), "{play:?}");
+        }
+    }
+
+    #[test]
     fn bookmark_preflight_checks_exact_keys_in_game_and_mods() {
         let tmp = TempDir::new();
         let game = tmp.join("install");
@@ -762,5 +983,131 @@ mod tests {
         // A lock with no readable owner was only just created by someone else.
         fs::write(tmp.join(LOCK_FILE), "").unwrap();
         assert!(take_run_lock(&tmp, &|_| false).is_err());
+    }
+
+    #[test]
+    fn a_long_report_is_cut_and_says_where_the_whole_one_is() {
+        let file = Path::new("C:/state/report.txt");
+        let short = "one\ntwo";
+        assert_eq!(cap_report(short, file), short);
+        let long = (0..MAX_REPORT_LINES + 40).fold(String::new(), |mut text, n| {
+            let _ = writeln!(text, "line {n}");
+            text
+        });
+        let cut = cap_report(&long, file);
+        assert_eq!(cut.lines().count(), MAX_REPORT_LINES + 1);
+        assert!(cut.contains(&format!("line {}", MAX_REPORT_LINES - 1)));
+        assert!(!cut.contains(&format!("line {MAX_REPORT_LINES}\n")));
+        let note = cut.lines().last().unwrap();
+        assert!(
+            note.contains(&format!("{MAX_REPORT_LINES} of {}", MAX_REPORT_LINES + 40)),
+            "{note}"
+        );
+        assert!(note.contains("report.txt"), "{note}");
+    }
+
+    #[test]
+    fn the_confirmation_keeps_what_was_checked_apart_from_how_the_mod_behaved() {
+        let report =
+            "loaded after 41 s\n  mods loaded: my_mod, other\ncommands sent: 2 of 2\nnoise\n";
+        let typed = confirmation(report, 2, false);
+        assert!(typed.starts_with("=== what this run confirms ==="), "{typed}");
+        for line in [
+            "boot: loaded after 41 s",
+            "mods: mods loaded: my_mod, other",
+            "commands: commands sent: 2 of 2",
+        ] {
+            assert!(typed.contains(line), "{typed}");
+        }
+        assert!(typed.contains("not confirmed: whether the mod behaved"), "{typed}");
+        assert!(!typed.contains("noise"));
+        // A background run types nothing, so it has no commands line to show.
+        let quiet = confirmation(report, 0, true);
+        assert!(!quiet.contains("commands:"), "{quiet}");
+        assert!(quiet.contains("Nothing was typed"), "{quiet}");
+    }
+
+    #[test]
+    fn output_is_followed_line_by_line_and_forwarded_once() {
+        let data: &[u8] = b"first\r\nsecond\nlast without a newline";
+        let (lines, reader) = follow(Some(data));
+        reader.join().unwrap();
+        assert_eq!(joined(&lines), "first\nsecond\nlast without a newline");
+        let mut seen = Vec::new();
+        let mut done = 0;
+        forward(&lines, &mut done, &mut |line| seen.push(line.to_owned()));
+        forward(&lines, &mut done, &mut |line| seen.push(line.to_owned()));
+        assert_eq!(seen, ["first", "second", "last without a newline"]);
+        assert_eq!(done, 3);
+        let (nothing, reader) = follow(None::<&[u8]>);
+        reader.join().unwrap();
+        assert_eq!(joined(&nothing), "");
+    }
+
+    #[test]
+    fn only_one_run_at_a_time_in_this_server_and_the_lock_moves_between_threads() {
+        let first = InThisServer::take().expect("free");
+        assert!(InThisServer::take().is_none());
+        // A job holds its lock on a thread of its own.
+        let handle = thread::spawn(move || drop(first));
+        handle.join().unwrap();
+        let again = InThisServer::take();
+        assert!(again.is_some());
+        drop(again);
+    }
+
+    #[cfg(windows)]
+    fn locations_in(tmp: &TempDir) -> Locations {
+        use crate::locate::{AppSettings, Sources};
+        let mut env = std::collections::HashMap::new();
+        env.insert("CK3_USER_DIR".to_owned(), tmp.join("user").display().to_string());
+        env.insert("XTIGER_STATE_DIR".to_owned(), tmp.join("state").display().to_string());
+        Locations::from_sources(&Sources {
+            env,
+            exe_dir: None,
+            app_data: None,
+            app_settings: AppSettings::default(),
+            installed_app: None,
+            home: None,
+            user_dir_candidates: vec![],
+            steam: Box::new(|| None),
+            on_path: Box::new(|_| None),
+        })
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_script_is_followed_while_it_runs_and_can_be_cancelled() {
+        let tmp = TempDir::new();
+        let loc = locations_in(&tmp);
+        let dir = scripts_dir(&loc).unwrap();
+        fs::write(
+            dir.join("test-lines.ps1"),
+            "Write-Output 'one'; Start-Sleep -Milliseconds 400; Write-Output 'two'; Start-Sleep -Milliseconds 400; Write-Output 'three'",
+        )
+        .unwrap();
+        fs::write(dir.join("test-wait.ps1"), "Write-Output 'waiting'; Start-Sleep -Seconds 60")
+            .unwrap();
+        let mut seen = Vec::new();
+        let mut ticks = 0;
+        let outcome = {
+            let mut progress = |line: &str| seen.push(line.to_owned());
+            let mut tick = || ticks += 1;
+            let mut control =
+                Control { cancelled: &|| false, progress: &mut progress, tick: &mut tick };
+            powershell(&loc, "test-lines.ps1", &[], Duration::from_secs(60), &mut control).unwrap()
+        };
+        assert_eq!(outcome.code, Some(0));
+        assert_eq!(seen, ["one", "two", "three"]);
+        assert!(ticks >= 1);
+        // Cancelled a moment after the script began: it is stopped, and what it said stays.
+        let begun = Instant::now();
+        let flag = || begun.elapsed() > Duration::from_secs(2);
+        let mut control = Control { cancelled: &flag, progress: &mut |_| {}, tick: &mut || {} };
+        let outcome =
+            powershell(&loc, "test-wait.ps1", &[], Duration::from_secs(60), &mut control).unwrap();
+        assert_eq!(outcome.code, None);
+        assert!(outcome.stdout.contains("waiting") && outcome.stdout.contains("Cancelled."));
+        assert!(begun.elapsed() < Duration::from_secs(15));
     }
 }

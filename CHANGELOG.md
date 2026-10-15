@@ -1,5 +1,152 @@
 # Changelog
 
+## xTiger 1.6.0 alpha
+
+A big step for the app and the assistants: a new Home screen, a results summary, following a mod's
+update, notes on reports, game tests that no longer take over your screen, and a durable project
+record for the assistants. It also fixes the missing trait-icon report from
+[issue #4](https://github.com/9mirx0r/xTiger/issues/4) and adds the first checks for event
+overrides and for booleans used as numbers.
+
+### The validator
+
+- Trait `tracks` now check that the level-track icon exists. A missing
+  `gfx/interface/icons/trait_level_tracks/<track>.dds` is reported as a warning, as requested in
+  [issue #4](https://github.com/9mirx0r/xTiger/issues/4). The vanilla game itself lacks 12 of these
+  icons, so they appear only with `--show-vanilla`.
+- Events that override another event with `id_override_priority` are now understood. The
+  definition with the highest priority is the one validated, whichever file comes first, and
+  `id_override_priority` is no longer an unknown field. Two definitions of one event with the
+  same priority are reported as an error, as the game does, instead of the old "event is
+  redefined" warning that also fired for deliberate overrides. Checked against the game itself.
+- An event definition that loses against another definition of the same id is now checked for
+  misspelled field names and a non-numeric `id_override_priority`, because the game still parses
+  it and logs an error (for example for `id_overide_priority`). Its content is still not
+  validated, since it never runs. Definitions from the base game are skipped.
+- A literal `yes` or `no` where a number is required is now an error: effects such as `add_gold`
+  and `add_prestige` (also as `{ value = yes }`) and numeric trigger comparisons such as
+  `gold >= yes`. The game logs "Badly read script value" and ignores them. Booleans in boolean
+  places are untouched. Checked against the game itself.
+- A scope value saved as a boolean (`save_scope_value_as` or `save_temporary_scope_value_as` with
+  `value = yes` or `no`, or a copy of such a value) and then used as a number is now an error, in
+  the same places: `add_gold = scope:x`, `{ value = scope:x }`, `gold >= scope:x`, `scope:x >= 1`
+  and `scope:x != 0`. Using it as a boolean (`scope:x = yes`) is fine. The check is deliberately
+  cautious: it applies within one event or effect block, and stays silent when the same name is
+  also saved as something else, or comes from a scripted effect, a script value or a triggering
+  event.
+
+### The app
+
+- A new Home screen with the CK3 logo and a "Coming soon" strip for Stellaris, and a slow,
+  smooth ASCII water background.
+- The AI assistants screen shows each assistant with its logo and a small animation, tells chat
+  apps, coding agents and editors apart, and can now connect and disconnect Codex
+  (`config.toml`) as well.
+- The results screen opens with a summary: a stacked severity bar that filters on click, counts
+  of fixed and new reports since the last run, and the three files with the most reports. The
+  validation progress bar fills up and turns green before the results appear.
+- Dark theme fixes and a redesigned Settings screen.
+- "Follow this update" on the results screen. Once a mod is followed, a strip under the summary
+  shows how its update stands: validated, static check, game test and review, with what still
+  blocks it. Details lists the blockers and how many reports are reviewed or still open. It reads
+  the same project record the assistants use through `xtiger_project`.
+- A note on any report: say why it is fine (on purpose, checked in the game, only formatting) or
+  that it is still a defect, for one report or for all of its kind in the file. The note is kept
+  with the update, shows as a NOTE mark in the list, and never hides the report from a list or a
+  count.
+- A note written for code that has since changed now says so on its own report: the list shows
+  "Needs a new look" instead of NOTE, and the report offers "Still true, keep the note" to save
+  the note again for the code as it is. The project record lists which reports those are
+  (`needs_look`).
+- A new Settings choice, "Game tests", for when an assistant tries a mod in the game. "In the
+  background" (the default) starts the game minimized at low priority and never takes the focus,
+  so you can keep playing something else; the mod starts its own events and the answer comes from
+  the game's logs. "Take over the screen" brings the game to the front and types console commands
+  into it, as before.
+- `xtiger_overrides` says, for each event that overrides a game event, which priority wins.
+- `xtiger_overrides` takes `base`, a copy of the game version the mod was written for. Each
+  difference then says who made it, the mod or the game since, and a `rebase` verdict (keep_mod,
+  take_game, combine, review) suggests what to do. Nothing is applied, and without a `base` the
+  report says it cannot tell the two apart.
+- New tool `xtiger_project`: a durable record for updating one mod. It keeps an explicit
+  baseline (a run, and the mod's definitions when the project began) when the work moves to a new
+  folder, can work on a copy so the original is never touched, pins runs so they survive beyond the
+  newest 20, and exports its evidence. Every saved run now records a hash of the mod's files, so a
+  result made before an edit is shown as stale.
+- The project ledger lists each definition as preserved, changed, removed or added, with the lines
+  and calls lost. Removing a block can lower the error count without fixing anything: a removed
+  definition, or one that stopped naming another, needs an `intended` or `restore` decision with a
+  note, bound to that exact difference. It compares text, not behaviour.
+- The ledger now also compares localization (`localization/<language>/` keys and their text,
+  `replace/` folders included), `gui/*.gui` (templates, `types` entries and named top-level
+  widgets) and `gfx/*.gfx` (named entries such as sprites). Each entry has a `kind` (`script`,
+  `localization`, `gui`, `gfx`) and the summary counts by kind. A removed localization key that a
+  definition of common/, events/ or history/ still names lists it in `still_named_by` and needs a
+  decision; other removed keys are listed but do not hold the review. Reordered keys, spacing and
+  comments are not differences. Projects begun before this keep their old baseline, which only
+  covers script, so the new kinds are skipped there. Images, models, `.asset` files and unnamed gui
+  widgets are still not compared.
+- Every validation now carries a `status` object with the stages process, static, runtime and
+  review. Validation never starts the game or reviews anything, so those two say `not_run`.
+  `xtiger_project` status adds an `update` object (`update_complete` and the list of what blocks
+  it): a clean static check is never reported as a tested update, a game run older than the last
+  edit does not count, and open decisions or unreviewed diagnostics keep it open.
+- `xtiger_project` action `annotate` writes a note on diagnostics of the latest run (intentional
+  override, test assertion, unresolved defect or advisory formatting). The diagnostics are not
+  hidden or removed from any count; status groups them as reviewed by kind, unreviewed, or needing
+  a new look because the definition they are in changed after the note was made.
+- `xtiger_game_gap` now gives every `error.log` entry exactly one state, so `states` adds up to
+  `log_entries`: `matched` (Tiger reported at that place about the same thing), `same_location_other_cause`,
+  `same_file_other_lines`, `no_tiger_report` (usually the validator is blind to that file),
+  `unattributed` (names no file of the mod, with the reason) and `unsupported_format` (a path it
+  cannot place). The report also says which saved run it used and whether that run still fits the
+  files on disk (`run.files`: current, stale or unknown). Cause matching is heuristic: it compares
+  the place and the wording, not what the game meant.
+- `xtiger_game_gap` tolerates a few lines of difference: the game often names the line where the
+  enclosing statement or block opens, not the line Tiger blames. An entry whose file and cause
+  agree with a Tiger report within 3 lines is `matched`; `matched_near_line` counts those and
+  `near_line_examples` shows a few (`path:game line (Tiger: line N)`). The cause check is not
+  loosened, and a tip or untidy report never matches.
+- The update status no longer lumps decided and undecided definitions together: definitions
+  without a decision and definitions decided to be restored but still missing from the mod are
+  now two separate blocking messages.
+- New tools `ck3_run_start` and `ck3_job` for play-tests that take longer than an assistant is
+  willing to wait. `ck3_run_start` checks the run, answers at once with a job id and keeps the game
+  running inside the xTiger server, so a client that gives up after five minutes has not stopped
+  it. `ck3_job` gives the state (running, finished, failed, cancelled, interrupted), the phase, the
+  latest progress line, the elapsed time and how many commands were typed and logged; `status`
+  can wait up to 30 seconds for the end, `result` returns the report and the screenshot, `cancel`
+  stops the game and puts the mod list back, and `list` shows the jobs on record. Jobs are kept on
+  disk, a job whose server stopped is shown as interrupted, and each one remembers a hash of the
+  mod's files from when it started and says whether they still match. A finished job counts as a
+  game run for the update status, like `ck3_run`. `ck3_run` itself is unchanged for short runs,
+  and a client timeout is not a game failure.
+- Game runs report more honestly: the report opens with what the run confirmed (boot time, mods
+  loaded, commands the game logged) and says that whether the mod behaved is for the logs to
+  show. It is cut at 1500 lines with a note that says where the whole report is, and the script
+  reads at most the last 100000 lines of a very large `error.log`, saying so.
+- Fixes found by a final audit: the server stops the games it started when it exits, `ck3_run`
+  checks that `play` is a valid list before it starts anything, a project copy is made beside the
+  mod instead of inside it, the project export uses the runs that were really pinned, and the
+  animated background no longer leaks observers when its screen goes away.
+- Connecting Codex no longer writes a second `xtiger` entry when its `config.toml` already has
+  one in a form xTiger does not edit (dotted or inline tables). It says so and leaves the file
+  alone instead.
+- The segmented buttons in Settings (such as Game tests) no longer wrap their text onto a second
+  line.
+
+### Testing
+
+- Checked against 13 real mods with no regressions against 1.5.9: the new reports are the real
+  ones (booleans used as numbers, the missing trait icons that the base game itself lacks, and a
+  tie between two overriding events that is now an error).
+
+### Thanks
+
+Thank you to [shalola_author](https://github.com/shalola-author) for finding and
+[reporting the missing trait track icon](https://github.com/9mirx0r/xTiger/issues/4). We
+reproduced it, added the check and fixed it in this release.
+
 ## xTiger 1.5.9 alpha
 
 Fixes all three doctrine and tenet validation problems reported in

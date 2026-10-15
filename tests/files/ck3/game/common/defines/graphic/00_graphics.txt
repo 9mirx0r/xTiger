@@ -1,5 +1,6 @@
 NGameIcons = {
 	TRAIT_ICON_PATH = "gfx/interface/icons/traits"
+	TRAIT_LEVEL_TRACK_ICON_PATH = "gfx/interface/icons/trait_level_tracks"
 	STATICMODIFIER_ICON_PATH = "gfx/interface/icons/modifiers"
 	REGIMENTYPE_ICON_PATH = "gfx/interface/icons/regimenttypes"
 	REGIMENTYPE_HORIZONTAL_IMAGE_PATH = "gfx/interface/illustrations/men_at_arms_big"

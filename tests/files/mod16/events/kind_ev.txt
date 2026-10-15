@@ -1,0 +1,133 @@
+﻿namespace = kind
+
+# Booleans saved as scope values and then used where the game needs a number.
+kind.0001 = {
+	hidden = yes
+	immediate = {
+		save_temporary_scope_value_as = { name = flag value = yes }
+		add_gold = scope:flag
+		add_prestige = { value = scope:flag }
+		if = { limit = { gold >= scope:flag } add_gold = 1 }
+		if = { limit = { scope:flag >= 1 } add_gold = 1 }
+		if = { limit = { scope:flag != 0 } add_gold = 1 }
+		save_scope_value_as = { name = persist value = no }
+		add_piety = scope:persist
+		# The kind follows a copy of the value.
+		save_temporary_scope_value_as = { name = copy value = scope:flag }
+		add_gold = scope:copy
+	}
+}
+
+# Booleans used as booleans, and numbers used as numbers.
+kind.0002 = {
+	hidden = yes
+	immediate = {
+		save_temporary_scope_value_as = { name = flag value = yes }
+		if = { limit = { scope:flag = yes } add_gold = 1 }
+		if = { limit = { scope:flag = no } add_gold = 1 }
+		if = { limit = { scope:flag != yes } add_gold = 1 }
+		save_temporary_scope_value_as = { name = amount value = 5 }
+		add_gold = scope:amount
+		add_prestige = { value = scope:amount }
+		if = { limit = { scope:amount >= 1 scope:amount != 0 gold >= scope:amount } add_gold = 1 }
+	}
+}
+
+# A name saved again as a number is not a boolean any more.
+kind.0003 = {
+	hidden = yes
+	immediate = {
+		save_temporary_scope_value_as = { name = again value = yes }
+		save_temporary_scope_value_as = { name = again value = 3 }
+		add_gold = scope:again
+		if = { limit = { scope:again >= 1 } add_gold = 1 }
+	}
+}
+
+# The kind is only certain when every save agrees, so branches that disagree stay silent.
+kind.0004 = {
+	hidden = yes
+	immediate = {
+		if = {
+			limit = { is_adult = yes }
+			save_scope_value_as = { name = mixed_a value = yes }
+		}
+		else = {
+			save_scope_value_as = { name = mixed_a value = 7 }
+		}
+		add_gold = scope:mixed_a
+		if = {
+			limit = { is_adult = yes }
+			save_scope_value_as = { name = mixed_b value = 7 }
+		}
+		else = {
+			save_scope_value_as = { name = mixed_b value = no }
+		}
+		add_gold = scope:mixed_b
+		if = { limit = { scope:mixed_b >= 1 } add_gold = 1 }
+	}
+}
+
+# An effect saves the name again as a number, so the boolean is gone after the call.
+kind.0005 = {
+	hidden = yes
+	immediate = {
+		save_temporary_scope_value_as = { name = flag value = yes }
+		kind_resave_number = yes
+		add_gold = scope:flag
+	}
+}
+
+# An overridden effect saves the name again as a number. The override hides its saves, so the
+# boolean is forgotten after the call.
+kind.0006 = {
+	hidden = yes
+	immediate = {
+		save_temporary_scope_value_as = { name = flag value = yes }
+		kind_override_resave = yes
+		add_gold = scope:flag
+	}
+}
+
+# The effect is called twice. The second call reuses the cached result of the overridden effect
+# inside it, which must forget the boolean just as the first call does.
+kind.0007 = {
+	hidden = yes
+	immediate = {
+		kind_wrapper = yes
+		kind_wrapper = yes
+	}
+}
+
+# An effect that saves another name leaves the boolean alone, so this use is still reported.
+kind.0008 = {
+	hidden = yes
+	immediate = {
+		save_temporary_scope_value_as = { name = flag value = yes }
+		kind_other_name = yes
+		add_gold = scope:flag
+	}
+}
+
+# An overridden trigger saves the name again as a number. The override hides its saves, so the
+# boolean is forgotten after the call.
+kind.0009 = {
+	hidden = yes
+	immediate = {
+		save_temporary_scope_value_as = { name = flag value = yes }
+		if = {
+			limit = { kind_override_check = yes }
+			add_gold = scope:flag
+		}
+	}
+}
+
+# The effect is called twice, so the second call reuses the cached result of the trigger inside it,
+# which must forget the boolean just as the first call does.
+kind.0010 = {
+	hidden = yes
+	immediate = {
+		kind_trigger_wrapper = yes
+		kind_trigger_wrapper = yes
+	}
+}

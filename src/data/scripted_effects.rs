@@ -169,6 +169,7 @@ impl Effect {
                 &mut our_st,
             );
             if let Some(scopes) = self.scope_override {
+                sc.forget_scope_value_kinds();
                 our_sc = ScopeContext::new_unrooted(scopes, key);
                 our_sc.set_strict_scopes(false);
             }
@@ -195,6 +196,10 @@ impl Effect {
         has_tooltip: &mut bool,
     ) -> bool {
         self.cache.perform(key, args, tooltipped, false, |(our_sc, our_st, ht)| {
+            // The cached context of an overridden call does not show what its body saved.
+            if self.scope_override.is_some() {
+                sc.forget_scope_value_kinds();
+            }
             sc.expect_compatibility(our_sc, key, data);
             special_tokens.merge(our_st);
             *has_tooltip |= ht;
@@ -243,6 +248,7 @@ impl Effect {
                 &mut our_st,
             );
             if let Some(scopes) = self.scope_override {
+                sc.forget_scope_value_kinds();
                 our_sc = ScopeContext::new_unrooted(scopes, key);
                 our_sc.set_strict_scopes(false);
             }

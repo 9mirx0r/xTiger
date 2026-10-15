@@ -8,6 +8,7 @@
 //! difference is either something the mod meant to change or something the game changed since.
 
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -18,7 +19,7 @@ use serde::Serialize;
 use crate::vanilla::depth_change;
 
 /// The folders of a mod that hold script the game merges by name or by path.
-const FOLDERS: [&str; 3] = ["common", "events", "history"];
+pub(crate) const FOLDERS: [&str; 3] = ["common", "events", "history"];
 /// Above this many cells the line diff falls back to counting lines.
 const MAX_CELLS: usize = 4_000_000;
 
@@ -33,6 +34,9 @@ pub struct Request<'a> {
     pub diff_lines: usize,
     /// The most files, definitions and names listed in each part of the report.
     pub limit: usize,
+    /// The game version the mod was written for, as a CK3 install folder (the one that holds
+    /// `game/`). With it, each difference is told apart as the mod's change or the game's.
+    pub base: Option<&'a Path>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -46,6 +50,24 @@ pub struct BlockDiff {
     pub added: usize,
     /// `- ` lines are only in the game, `+ ` lines only in the mod.
     pub diff: Vec<String>,
+    /// Who changed what since the old game version. Only with a `base`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rebase: Option<Rebase>,
+}
+
+/// How a mod's copy of a definition relates to the old game version it was made from (`base`)
+/// and to the game now.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct Rebase {
+    /// `keep_mod`: only the mod changed it. `take_game`: only the game changed it, so the mod
+    /// holds an old copy. `combine`: both changed it in different places. `review`: both changed
+    /// the same place. `no_old_definition`: the old game version did not have it.
+    /// Never applied by xTiger: each one is a suggestion for the person or assistant to check.
+    pub verdict: &'static str,
+    /// The changes the mod made to the old game's definition, as `line N: - old / + new`.
+    pub mod_changes: Vec<String>,
+    /// The changes the game made since, in the same form.
+    pub game_changes: Vec<String>,
 }
 
 /// A mod file with the path of a game file: the mod's version replaces the game's whole file.
@@ -66,6 +88,9 @@ pub struct KeyOverride {
     pub file: String,
     pub line: usize,
     pub overrides: String,
+    /// For events: which definition the game uses, by `id_override_priority`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<String>,
     #[serde(flatten)]
     pub diff: BlockDiff,
 }
@@ -81,6 +106,8 @@ pub struct Report {
     pub same_key_definitions: usize,
     pub same_key_identical: usize,
     pub same_key: Vec<KeyOverride>,
+    /// The old game folder the differences were measured against, or `unavailable`.
+    pub baseline: String,
     pub notes: Vec<&'static str>,
 }
 
@@ -89,19 +116,43 @@ pub struct Report {
 const MERGED_FOLDERS: [&str; 4] =
     ["common/on_action", "common/defines", "history/titles", "history/provinces"];
 
-const NOTES: [&str; 4] = [
+const NOTES: [&str; 5] = [
     "Only the game installed now is compared: a difference is either the mod's own change or a change the game made after the mod was written. Near copies (high similarity, not 100) are the likeliest to be stale.",
     "In a same-path file the mod's version replaces the whole game file, so every name in missing_from_mod is gone from the game.",
     "common/on_action, common/defines, history/titles and history/provinces merge with the game's files, so only same-path files are compared there.",
     "`- ` diff lines are only in the game, `+ ` lines only in the mod. Comments and spacing are ignored.",
+    "With `base` (the game version the mod was written for) each difference has a `rebase` verdict: keep_mod, take_game, combine or review. They are suggestions; nothing is applied, and a definition the old game did not have is no_old_definition. Without `base` nothing says which side made a difference.",
 ];
+
+/// The `id_override_priority` of an event definition, 0 when it has none.
+fn event_priority(def: &Def) -> i64 {
+    def.body
+        .iter()
+        .find_map(|line| line.split_once("id_override_priority = ").map(|(_, rest)| rest))
+        .and_then(|rest| rest.split_whitespace().next()?.parse().ok())
+        .unwrap_or(0)
+}
+
+/// Which of two definitions of an event the game uses.
+fn priority_outcome(modded: &Def, game: &Def) -> String {
+    let (m, g) = (event_priority(modded), event_priority(game));
+    match m.cmp(&g) {
+        std::cmp::Ordering::Greater => format!("mod {m} beats game {g}: the mod's event is used"),
+        std::cmp::Ordering::Less => {
+            format!("game {g} beats mod {m}: the game's event is used and the mod's is ignored")
+        }
+        std::cmp::Ordering::Equal => format!(
+            "both {m}: the game logs an error and uses the mod's event; give the mod's a higher id_override_priority"
+        ),
+    }
+}
 
 /// One top-level definition: `key = { ... }`, with its lines stripped of comments and spacing.
 #[derive(Debug, Clone)]
-struct Def {
-    key: String,
-    line: usize,
-    body: Vec<String>,
+pub(crate) struct Def {
+    pub(crate) key: String,
+    pub(crate) line: usize,
+    pub(crate) body: Vec<String>,
 }
 
 /// The line without its comment, with the spacing between words made single.
@@ -123,7 +174,7 @@ fn code_part(line: &str) -> String {
 
 /// The top-level definitions of a script file. Values without a block (`namespace = x`,
 /// `@variable = 1`) are not definitions.
-fn definitions(text: &str) -> Vec<Def> {
+pub(crate) fn definitions(text: &str) -> Vec<Def> {
     let mut defs = Vec::new();
     let mut current: Option<(Def, i32, bool)> = None;
     for (i, raw) in text.trim_start_matches('\u{feff}').lines().enumerate() {
@@ -196,7 +247,7 @@ pub(crate) fn has_definition(dir: &Path, key: &str) -> bool {
 }
 
 /// The `.txt` files under `dir`, as `(path relative to base with forward slashes, full path)`.
-fn walk(dir: &Path, base: &Path) -> Vec<(String, PathBuf)> {
+pub(crate) fn walk(dir: &Path, base: &Path) -> Vec<(String, PathBuf)> {
     let mut found = Vec::new();
     let mut todo = vec![dir.to_path_buf()];
     while let Some(dir) = todo.pop() {
@@ -276,6 +327,107 @@ fn line_diff(old: &[String], new: &[String]) -> (usize, Vec<(char, String)>) {
     (common, diff)
 }
 
+/// A changed stretch of the old lines: `old[start..end]` became `new`.
+#[derive(Debug, PartialEq, Eq)]
+struct Hunk {
+    start: usize,
+    end: usize,
+    new: Vec<String>,
+}
+
+impl Hunk {
+    fn touches(&self, other: &Hunk) -> bool {
+        self.start <= other.end && other.start <= self.end
+    }
+
+    fn describe(&self, old: &[String]) -> String {
+        let mut text = format!("line {}:", self.start + 1);
+        for line in &old[self.start..self.end] {
+            let _ = write!(text, " - {line}");
+        }
+        for line in &self.new {
+            let _ = write!(text, " + {line}");
+        }
+        text
+    }
+}
+
+/// Where `new` differs from `old`, as stretches of `old`. Too large to compare line by line:
+/// the whole of it.
+fn hunks(old: &[String], new: &[String]) -> Vec<Hunk> {
+    let (n, m) = (old.len(), new.len());
+    if n.saturating_mul(m) > MAX_CELLS {
+        return if old == new {
+            Vec::new()
+        } else {
+            vec![Hunk { start: 0, end: n, new: new.to_vec() }]
+        };
+    }
+    let mut table = vec![0_u32; (n + 1) * (m + 1)];
+    let at = |i: usize, j: usize| i * (m + 1) + j;
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            table[at(i, j)] = if old[i] == new[j] {
+                table[at(i + 1, j + 1)] + 1
+            } else {
+                table[at(i + 1, j)].max(table[at(i, j + 1)])
+            };
+        }
+    }
+    let (mut i, mut j) = (0, 0);
+    let mut found = Vec::new();
+    let mut open: Option<Hunk> = None;
+    while i < n || j < m {
+        if i < n && j < m && old[i] == new[j] {
+            found.extend(open.take());
+            i += 1;
+            j += 1;
+            continue;
+        }
+        let hunk = open.get_or_insert(Hunk { start: i, end: i, new: Vec::new() });
+        if j >= m || (i < n && table[at(i + 1, j)] >= table[at(i, j + 1)]) {
+            i += 1;
+            hunk.end = i;
+        } else {
+            hunk.new.push(new[j].clone());
+            j += 1;
+        }
+    }
+    found.extend(open);
+    found
+}
+
+/// Who changed a definition since the old game version `base`: the mod (`new`), the game now
+/// (`old`), or both.
+fn rebase(base: Option<&Def>, old: &Def, new: &Def, shown: usize) -> Rebase {
+    let Some(base) = base else {
+        return Rebase {
+            verdict: "no_old_definition",
+            mod_changes: Vec::new(),
+            game_changes: Vec::new(),
+        };
+    };
+    let (mine, theirs) = (hunks(&base.body, &new.body), hunks(&base.body, &old.body));
+    let list = |found: &[Hunk]| {
+        let mut lines: Vec<String> =
+            found.iter().take(shown).map(|h| h.describe(&base.body)).collect();
+        if found.len() > shown {
+            lines.push(format!("… ({} more changes)", found.len() - shown));
+        }
+        lines
+    };
+    let verdict = if mine.is_empty() {
+        "take_game"
+    } else if theirs.is_empty() {
+        "keep_mod"
+    } else if mine.iter().any(|a| theirs.iter().any(|b| a.touches(b))) {
+        "review"
+    } else {
+        "combine"
+    };
+    Rebase { verdict, mod_changes: list(&mine), game_changes: list(&theirs) }
+}
+
 /// How the mod's definition `new` differs from the game's definition `old`.
 fn compare(key: &str, old: &Def, new: &Def, shown: usize) -> BlockDiff {
     let (common, diff) = line_diff(&old.body, &new.body);
@@ -288,7 +440,7 @@ fn compare(key: &str, old: &Def, new: &Def, shown: usize) -> BlockDiff {
     if diff.len() > shown {
         lines.push(format!("… ({} more changed lines)", diff.len() - shown));
     }
-    BlockDiff { key: key.to_owned(), similarity, removed, added, diff: lines }
+    BlockDiff { key: key.to_owned(), similarity, removed, added, diff: lines, rebase: None }
 }
 
 /// The last definition of each name, in the order the names first appear.
@@ -305,7 +457,7 @@ fn last_of_each(defs: &[Def]) -> Vec<&Def> {
 }
 
 /// The folder whose definitions share one namespace: `common/decisions`, `events`.
-fn category(rel: &str) -> String {
+pub(crate) fn category(rel: &str) -> String {
     let dir = rel.rsplit_once('/').map_or("", |(dir, _)| dir);
     dir.split('/').take(2).collect::<Vec<_>>().join("/")
 }
@@ -322,6 +474,16 @@ pub fn compare_with_game(req: &Request) -> Result<Report, String> {
     if !req.mod_dir.is_dir() {
         return Err(format!("The mod folder {} does not exist.", req.mod_dir.display()));
     }
+    let base_game = match req.base {
+        Some(base) if base.join("game").is_dir() => Some(base.join("game")),
+        Some(base) => {
+            return Err(format!(
+                "The old game folder {} has no game/ folder. Give the folder that holds game/.",
+                base.display()
+            ));
+        }
+        None => None,
+    };
     let filter = req.path.trim().replace('\\', "/");
     let mod_files: Vec<(String, PathBuf)> = FOLDERS
         .iter()
@@ -337,6 +499,7 @@ pub fn compare_with_game(req: &Request) -> Result<Report, String> {
     let mut same_key_identical = 0;
     // The game's definitions by folder, read when the first mod file of that folder needs them.
     let mut index: HashMap<String, HashMap<String, (String, Def)>> = HashMap::new();
+    let mut base_index: HashMap<String, HashMap<String, Def>> = HashMap::new();
 
     for (rel, path) in &mod_files {
         let mod_defs = read_defs(path);
@@ -347,6 +510,12 @@ pub fn compare_with_game(req: &Request) -> Result<Report, String> {
             let game_last = last_of_each(&game_defs);
             let game_by_key: HashMap<&str, &Def> =
                 game_last.iter().map(|def| (def.key.as_str(), *def)).collect();
+            let base_defs = base_game.as_ref().map(|base| read_defs(&base.join(rel)));
+            let base_by_key: HashMap<&str, &Def> = base_defs
+                .iter()
+                .flat_map(|defs| last_of_each(defs))
+                .map(|def| (def.key.as_str(), def))
+                .collect();
             let mod_last = last_of_each(&mod_defs);
             let mod_keys: HashSet<&str> = mod_last.iter().map(|def| def.key.as_str()).collect();
             let mut file = FileOverride {
@@ -363,7 +532,12 @@ pub fn compare_with_game(req: &Request) -> Result<Report, String> {
                     Some(old) if old.body == def.body => file.identical_blocks += 1,
                     Some(old) => {
                         file.changed_blocks += 1;
-                        file.changed.push(compare(&def.key, old, def, req.diff_lines));
+                        let mut diff = compare(&def.key, old, def, req.diff_lines);
+                        if base_game.is_some() {
+                            let old_def = base_by_key.get(def.key.as_str()).copied();
+                            diff.rebase = Some(rebase(old_def, old, def, req.diff_lines));
+                        }
+                        file.changed.push(diff);
                     }
                 }
             }
@@ -395,6 +569,17 @@ pub fn compare_with_game(req: &Request) -> Result<Report, String> {
             }
             by_key
         });
+        let base_by_key = base_game.as_ref().map(|base| {
+            base_index.entry(folder.clone()).or_insert_with(|| {
+                let mut by_key = HashMap::new();
+                for (_, path) in walk(&base.join(&folder), base) {
+                    for def in read_defs(&path) {
+                        by_key.insert(def.key.clone(), def);
+                    }
+                }
+                by_key
+            })
+        });
         for def in last_of_each(&mod_defs) {
             let Some((game_rel, old)) = by_key.get(&def.key) else { continue };
             same_key_definitions += 1;
@@ -402,11 +587,16 @@ pub fn compare_with_game(req: &Request) -> Result<Report, String> {
                 same_key_identical += 1;
                 continue;
             }
+            let mut diff = compare(&def.key, old, def, req.diff_lines);
+            if let Some(base_by_key) = &base_by_key {
+                diff.rebase = Some(rebase(base_by_key.get(&def.key), old, def, req.diff_lines));
+            }
             same_key.push(KeyOverride {
                 file: rel.clone(),
                 line: def.line,
                 overrides: game_rel.clone(),
-                diff: compare(&def.key, old, def, req.diff_lines),
+                priority: (folder == "events").then(|| priority_outcome(def, old)),
+                diff,
             });
         }
     }
@@ -434,6 +624,7 @@ pub fn compare_with_game(req: &Request) -> Result<Report, String> {
         same_key_definitions,
         same_key_identical,
         same_key,
+        baseline: req.base.map_or_else(|| "unavailable".to_owned(), |b| b.display().to_string()),
         notes: NOTES.to_vec(),
     })
 }
@@ -505,6 +696,7 @@ mod tests {
             path: "",
             diff_lines: 10,
             limit: 10,
+            base: None,
         })
         .unwrap();
         assert_eq!(report.mod_files_checked, 3);
@@ -532,6 +724,7 @@ mod tests {
             path: "mine",
             diff_lines: 10,
             limit: 10,
+            base: None,
         })
         .unwrap();
         assert_eq!(only.mod_files_checked, 1);
@@ -539,10 +732,154 @@ mod tests {
     }
 
     #[test]
+    fn event_overrides_say_which_priority_wins() {
+        let tmp = TempDir::new();
+        let game = tmp.join("game");
+        let modded = tmp.join("mod");
+        write(
+            &game,
+            "game/events/00_a.txt",
+            "namespace = t
+t.1 = { hidden = yes }
+t.2 = { hidden = yes }
+t.3 = {
+	id_override_priority = 5
+}
+",
+        );
+        write(
+            &modded,
+            "events/mine.txt",
+            "namespace = t
+t.1 = { id_override_priority = 2 }
+t.2 = { hidden = no }
+t.3 = {
+	id_override_priority = 1
+}
+",
+        );
+        let report = compare_with_game(&Request {
+            install: &game,
+            mod_dir: &modded,
+            path: "",
+            diff_lines: 5,
+            limit: 10,
+            base: None,
+        })
+        .unwrap();
+        let outcome = |key: &str| {
+            report.same_key.iter().find(|o| o.diff.key == key).and_then(|o| o.priority.clone())
+        };
+        assert_eq!(outcome("t.1").unwrap(), "mod 2 beats game 0: the mod's event is used");
+        assert!(outcome("t.2").unwrap().starts_with("both 0: the game logs an error"));
+        assert!(outcome("t.3").unwrap().starts_with("game 5 beats mod 1"));
+    }
+
+    #[test]
+    fn three_way_tells_the_mods_change_from_the_games() {
+        let tmp = TempDir::new();
+        let old_game = tmp.join("old");
+        let game = tmp.join("game");
+        let modded = tmp.join("mod");
+        let event = |lines: &[&str]| {
+            format!(
+                "t.1 = {{
+{}
+}}
+",
+                lines.join(
+                    "
+"
+                )
+            )
+        };
+        let put = |root: &Path, name: &str, lines: &[&str]| {
+            write(root, &format!("game/common/decisions/{name}.txt"), &event(lines));
+        };
+        // The mod added a reward; the game then added a guard far from it: combine.
+        put(&old_game, "a", &["trigger = { a = 1 }", "x = 1", "x = 2", "x = 3", "reward = 1"]);
+        put(&game, "a", &["trigger = { a = 1 dlc = 1 }", "x = 1", "x = 2", "x = 3", "reward = 1"]);
+        write(
+            &modded,
+            "common/decisions/a.txt",
+            &event(&["trigger = { a = 1 }", "x = 1", "x = 2", "x = 3", "reward = 1", "extra = 1"]),
+        );
+        // Both changed the same condition: review.
+        put(&old_game, "b", &["limit = { a = 1 }"]);
+        put(&game, "b", &["limit = { a = 2 }"]);
+        write(&modded, "common/decisions/b.txt", &event(&["limit = { a = 3 }"]));
+        // Only the game changed it: the mod holds an old copy.
+        put(&old_game, "c", &["v = 1"]);
+        put(&game, "c", &["v = 2"]);
+        write(&modded, "common/decisions/c.txt", &event(&["v = 1"]));
+        // Only the mod changed it.
+        put(&old_game, "d", &["v = 1"]);
+        put(&game, "d", &["v = 1"]);
+        write(&modded, "common/decisions/d.txt", &event(&["v = 9"]));
+        let install = tmp.join("cur");
+        fs::create_dir_all(&install).unwrap();
+        for name in ["a", "b", "c", "d"] {
+            let text =
+                fs::read_to_string(game.join(format!("game/common/decisions/{name}.txt"))).unwrap();
+            write(&install, &format!("game/common/decisions/{name}.txt"), &text);
+        }
+        let go = |base: Option<&Path>| {
+            compare_with_game(&Request {
+                install: &install,
+                mod_dir: &modded,
+                path: "",
+                diff_lines: 10,
+                limit: 10,
+                base,
+            })
+            .unwrap()
+        };
+        let with = go(Some(&old_game));
+        let verdict = |name: &str| {
+            let file = with.same_path.iter().find(|f| f.file.ends_with(&format!("/{name}.txt")));
+            file.unwrap().changed[0].rebase.as_ref().unwrap().verdict
+        };
+        assert_eq!(verdict("a"), "combine");
+        assert_eq!(verdict("b"), "review");
+        assert_eq!(verdict("c"), "take_game");
+        assert_eq!(verdict("d"), "keep_mod");
+        let combined = with.same_path.iter().find(|f| f.file.ends_with("/a.txt")).unwrap();
+        let rebase = combined.changed[0].rebase.as_ref().unwrap();
+        assert_eq!(rebase.mod_changes.len(), 1);
+        assert!(rebase.mod_changes[0].contains("+ extra = 1"), "{rebase:?}");
+        assert!(rebase.game_changes[0].contains("dlc = 1"), "{rebase:?}");
+        assert_eq!(with.baseline, old_game.display().to_string());
+        // Without the old game nothing says who changed what.
+        let without = go(None);
+        assert_eq!(without.baseline, "unavailable");
+        assert!(without.same_path.iter().all(|f| f.changed.iter().all(|c| c.rebase.is_none())));
+        // An old game folder without game/ is an error, not a silent skip.
+        assert!(
+            compare_with_game(&Request {
+                install: &install,
+                mod_dir: &modded,
+                path: "",
+                diff_lines: 5,
+                limit: 5,
+                base: Some(&tmp.join("nope")),
+            })
+            .unwrap_err()
+            .contains("no game/ folder")
+        );
+    }
+
+    #[test]
     fn missing_folders_are_errors() {
         let tmp = TempDir::new();
         let request = |install: &Path, mod_dir: &Path| {
-            compare_with_game(&Request { install, mod_dir, path: "", diff_lines: 5, limit: 5 })
+            compare_with_game(&Request {
+                install,
+                mod_dir,
+                path: "",
+                diff_lines: 5,
+                limit: 5,
+                base: None,
+            })
         };
         assert!(request(&tmp, &tmp).unwrap_err().contains("no game/ folder"));
         fs::create_dir_all(tmp.join("game")).unwrap();

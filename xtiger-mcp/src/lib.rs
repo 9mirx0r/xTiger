@@ -6,19 +6,23 @@
 pub mod docs;
 pub mod game;
 pub mod gap;
+pub mod jobs;
 pub mod journal;
+pub mod ledger;
 pub mod locate;
 pub mod migrate;
 pub mod migrate_apply;
 pub mod mods;
 pub mod overrides;
 pub mod playsets;
+pub mod projects;
 pub mod requests;
 pub mod runs;
 pub mod server;
 pub mod sessions;
 pub mod setup;
 pub mod tools;
+pub mod triage;
 pub mod vanilla;
 
 #[cfg(test)]

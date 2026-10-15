@@ -86,6 +86,7 @@ const aiClients = [
   { id: 'claude-code', name: 'Claude Code', state: 'connected', file: `${HOME}\\.claude.json`, otherCommand: null, after: 'Start a new Claude Code session.', snippet: aiSnippet },
   { id: 'cursor', name: 'Cursor', state: 'elsewhere', file: `${HOME}\\.cursor\\mcp.json`, otherCommand: 'D:\\Tools\\xTiger 0.9\\xtiger-mcp.exe', after: 'Cursor picks it up by itself; check Settings > MCP.', snippet: aiSnippet },
   { id: 'vscode', name: 'VS Code', state: 'unreadable', file: `${HOME}\\AppData\\Roaming\\Code\\User\\mcp.json`, otherCommand: null, after: 'In VS Code, run "MCP: List Servers" and start xtiger, or reload the window.', snippet: aiSnippet },
+  { id: 'codex', name: 'Codex', state: 'available', file: `${HOME}\\.codex\\config.toml`, otherCommand: null, after: 'Start a new Codex session; it reads its settings when it opens.', snippet: aiSnippet },
   { id: 'windsurf', name: 'Windsurf', state: 'missing', file: null, otherCommand: null, after: "Press refresh in Windsurf's MCP panel.", snippet: aiSnippet },
 ];
 const setAi = (id, state) => {
@@ -294,8 +295,121 @@ function aiActivity({ stamp, requestsStamp }) {
   };
 }
 
+
+/* The update project of the first mod, for the update status and the notes on reports. `?tracked`
+ * starts with one, `?stale` makes its latest run out of date and leaves two of its notes written
+ * for code that has changed since (they need a new look). It behaves like the real records:
+ * a note never removes a report. */
+let sampleProject = params.has('tracked') ? { annotations: [] } : null;
+const followedClean = new Set();
+const lookAgain = new Set();
+let seededNotes = false;
+
+/* A note's id is the report's key, its first place and its normalised message: the fake has no
+ * definitions, so the place stands for the definition that the real identity also holds. */
+const normalized = (text) => String(text ?? '').split(/\s+/).join(' ').trim();
+const noteId = (report) => `${report.key}-${report.locations[0].path}-${report.locations[0].linenr}-${normalized(report.message)}`;
+
+function seedNotes() {
+  seededNotes = true;
+  if (!params.has('stale')) return;
+  const kinds = ['intentional_override', 'unresolved_defect', 'advisory_formatting'];
+  const words = ['Replaces the game event on purpose.', 'Real bug, the trait is still missing.', 'Style only, left as it is.'];
+  reports.slice(0, 3).forEach((report, index) => {
+    const { key, locations } = report;
+    const message = normalized(report.message);
+    const path = locations[0].path;
+    const id = noteId(report);
+    sampleProject.annotations.push({ id, kind: kinds[index], note: words[index], by: 'Claude', key, message, path, at: Date.now() - 86_400_000 });
+    if (index < 2) lookAgain.add(id);
+  });
+}
+
+function projectStatus(noReports = false) {
+  if (!sampleProject && !noReports) return null;
+  if (noReports) {
+    return {
+      project: { id: 'clean-1', name: 'Clean mod', mod_file: mods[1].modFile, created_at: Date.now(), annotations: [] },
+      game_version_now: '1.20.0.4', game_changed: false, mod_changed: false,
+      latest_run: { run_id: 'sample-clean', finished_at: Date.now() - 60_000, reports: 0, errors: 0, files: 'current' },
+      triage: { diagnostics: 0, reviewed: {}, needs_review: 0, unreviewed: 0, notes_without_diagnostic: 0, examples: [] },
+      update: {
+        process: 'completed', static: 'clean', runtime: 'not_run', review: 'done', update_complete: false,
+        blocking: ['The game has not been run with this mod (ck3_run).'],
+      },
+      notes: [],
+    };
+  }
+  if (!seededNotes) seedNotes();
+  const notes = sampleProject.annotations;
+  const noteFor = (report) => notes.find((note) => note.id === noteId(report)) ?? null;
+  const reviewed = {};
+  const noted = [];
+  let unreviewed = 0;
+  const needsLook = [];
+  const examples = [];
+  for (const report of reports) {
+    const note = noteFor(report);
+    const first = report.locations[0];
+    const spot = `${first.path}:${first.linenr} ${report.key}`;
+    if (note) {
+      const applies = !lookAgain.has(note.id);
+      noted.push({ key: report.key, path: first.path, line: first.linenr, message: normalized(report.message), id: note.id, applies });
+      if (applies) reviewed[note.kind] = (reviewed[note.kind] ?? 0) + 1;
+      else {
+        needsLook.push({ key: report.key, path: first.path, line: first.linenr });
+        if (examples.length < 5) examples.push(spot);
+      }
+    } else {
+      unreviewed += 1;
+      if (examples.length < 5) examples.push(spot);
+    }
+  }
+  const open = needsLook.length + unreviewed + (reviewed.unresolved_defect ?? 0);
+  const errors = reports.filter((report) => report.severity === 'error' || report.severity === 'fatal').length;
+  const stale = params.has('stale');
+  const blocking = [];
+  if (stale) blocking.push('The latest run is for other files than the ones on disk: validate again.');
+  else if (errors) blocking.push(`The latest run has ${errors} errors.`);
+  blocking.push('The game has not been run with this mod (ck3_run).');
+  if (open) blocking.push(`${open} diagnostics are unreviewed, need a new look or are marked as defects.`);
+  return {
+    project: { id: 'silk-road-events-1', name: 'Silk Road Events', mod_file: mods[0].modFile, created_at: Date.now() - 3_600_000, annotations: notes },
+    game_version_now: '1.20.0.4', game_changed: false, mod_changed: false,
+    latest_run: { run_id: 'sample-silk', finished_at: Date.now() - 60_000, reports: reports.length, errors, files: stale ? 'stale' : 'current' },
+    triage: { diagnostics: reports.length, reviewed, needs_review: needsLook.length, needs_look: needsLook, noted, unreviewed, notes_without_diagnostic: 0, examples },
+    update: {
+      process: 'completed', static: stale ? 'stale' : errors ? 'errors' : 'clean', runtime: 'not_run',
+      review: open ? 'pending' : 'done', update_complete: false, blocking,
+    },
+    notes: [],
+  };
+}
+
+function projectAnnotate({ key, path, line, kind, note, message = null }) {
+  if (!sampleProject) throw new Error('This mod has no update to follow yet. Start following it first.');
+  if (!note.trim()) throw new Error('Say why in `note`: it is kept with the project.');
+  // With a message, only that one diagnostic gets the note, even when another shares its line.
+  const picked = message == null
+    ? reports.filter((report) => report.key === key
+      && report.locations.some((place) => place.path.includes(path) && (line === 0 || place.linenr === line)))
+    : reports.filter((report) => report.key === key && normalized(report.message) === normalized(message)
+      && report.locations[0].path === path && report.locations[0].linenr === line);
+  if (picked.length === 0) throw new Error(message == null
+    ? 'No diagnostic of the latest run matches that key, path and line.'
+    : 'No diagnostic with that message is at that place. Validate the mod again.');
+  if (picked.length > 25) throw new Error(`${picked.length} diagnostics match: narrow it with path or line (at most 25 at a time).`);
+  for (const report of picked) {
+    const id = noteId(report);
+    sampleProject.annotations = sampleProject.annotations.filter((entry) => entry.id !== id);
+    lookAgain.delete(id);
+    sampleProject.annotations.push({ id, kind, note: note.trim(), by: 'xTiger app', key: report.key, message: normalized(report.message), path: report.locations[0].path, at: Date.now() });
+  }
+  return { annotated: picked.length, kind, status: projectStatus() };
+}
+
 const commands = {
-  get_setup: () => ({ game: { path: GAME, version: '1.20.0.4' }, paradox: DOCS, hasVscode: true, openInEditor: true, theme: 'system', checkUpdates: true, lastMod: params.has('welcome') ? null : mods[0].modFile }),
+  get_setup: () => ({ game: { path: GAME, version: '1.20.0.4' }, paradox: DOCS, hasVscode: true, openInEditor: true, theme: 'system', checkUpdates: true, asciiBackground: !params.has('noascii'), startOnHome: !params.has('nohome'), gameTestsBackground: true, lastMod: params.has('welcome') ? null : mods[0].modFile }),
   list_mods: () => mods,
   mod_picture: () => null,
   last_duration: ({ modFile }) => (modFile === mods[0].modFile ? 6000 : null),
@@ -320,6 +434,20 @@ const commands = {
     requestsVersion += 1;
   },
   update_brief: updateBrief,
+  // Only the first mod has a project, as in the real records; any other mod follows with no reports.
+  project_status: ({ modFile }) => {
+    if (modFile === mods[0].modFile) return projectStatus();
+    return followedClean.has(modFile) ? projectStatus(true) : null;
+  },
+  project_track: ({ modFile }) => {
+    if (modFile !== mods[0].modFile) {
+      followedClean.add(modFile);
+      return projectStatus(true);
+    }
+    sampleProject ??= { annotations: [] };
+    return projectStatus();
+  },
+  project_annotate: projectAnnotate,
   ai_run: ({ runId }) => {
     const run = aiRuns[runId];
     if (!run) throw new Error('That run is no longer saved: only the newest 20 are kept.');

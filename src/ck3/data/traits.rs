@@ -363,4 +363,6 @@ fn validate_trait_track(key: &Token, block: &Block, data: &Everything, warn_key:
     data.verify_exists_implied(Item::Localization, &loca, warn_key);
     let loca = format!("trait_track_{key}_desc");
     data.verify_exists_implied(Item::Localization, &loca, warn_key);
+
+    data.verify_icon("NGameIcons|TRAIT_LEVEL_TRACK_ICON_PATH", key, ".dds");
 }

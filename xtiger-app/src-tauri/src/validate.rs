@@ -17,7 +17,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 use xtiger_mcp::runs::{self, NewRun};
-use xtiger_mcp::{mods, setup};
+use xtiger_mcp::{mods, projects, setup};
 
 /// The name the app's own checks are saved under.
 pub const BY: &str = "xTiger app";
@@ -137,6 +137,9 @@ impl Runner {
 
         let started = Instant::now();
         self.cancelled.store(false, Ordering::SeqCst);
+        // Taken before the validator starts, so an edit made while it works shows as stale.
+        let snapshot =
+            mods::describe(args.mod_file).and_then(|info| projects::manifest_hash(&info.dir));
         let mut child = command.spawn().map_err(|e| format!("cannot start the validator: {e}"))?;
         let mut stdout = child.stdout.take().ok_or("no output from the validator")?;
         let stderr = child.stderr.take().ok_or("no output from the validator")?;
@@ -204,6 +207,7 @@ impl Runner {
             exit_code: status.code(),
             seconds: (started.elapsed().as_secs_f64() * 10.0).round() / 10.0,
             loaded_mods,
+            snapshot,
         };
         let (previous_count, new_count) = record(app, args, run, &mut reports);
         Ok(RunResult { reports, duration_ms, previous_count, new_count })

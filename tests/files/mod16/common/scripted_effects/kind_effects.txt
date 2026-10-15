@@ -1,0 +1,40 @@
+﻿# Saves the name again as a number, so a boolean saved before the call is a number afterwards.
+kind_resave_number = {
+	save_temporary_scope_value_as = { name = flag value = 3 }
+}
+
+# Saves the name again as a number. The config overrides this effect, so the caller does not know
+# its saves.
+kind_override_resave = {
+	save_temporary_scope_value_as = { name = flag value = 3 }
+}
+
+# Saves another name as a number, which leaves the boolean `flag` alone.
+kind_other_name = {
+	save_temporary_scope_value_as = { name = other value = 2 }
+}
+
+# Saves a boolean, and then the overridden effect saves it again as a number.
+kind_wrapper = {
+	save_temporary_scope_value_as = { name = flag value = yes }
+	kind_override_resave = yes
+	add_gold = scope:flag
+}
+
+# The config overrides this effect, but its body is still checked: the normal effect called here
+# saves the name as a number, so the number use after it must not be reported.
+kind_override_outer = {
+	save_temporary_scope_value_as = { name = flag value = yes }
+	kind_resave_number = yes
+	add_gold = scope:flag
+}
+
+# Saves a boolean, then the overridden trigger saves the name again as a number. The effect is
+# called twice, so the second call reuses the cached result of the trigger inside it.
+kind_trigger_wrapper = {
+	save_temporary_scope_value_as = { name = flag value = yes }
+	if = {
+		limit = { kind_override_check = yes }
+		add_gold = scope:flag
+	}
+}

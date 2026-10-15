@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Mutex;
@@ -24,6 +25,9 @@ use crate::token::Token;
 #[allow(clippy::struct_field_names)]
 pub struct Events {
     events: TigerHashMap<(&'static str, u16), Event>,
+    /// Definitions that lost against another definition of the same id. The game still parses
+    /// them, so their field names are checked, but they are otherwise dead code.
+    shadowed: Vec<Event>,
     namespaces: TigerHashSet<Token>,
     triggers: TigerHashMap<(PathTableIndex, &'static str), Trigger>,
     effects: TigerHashMap<(PathTableIndex, &'static str), Effect>,
@@ -36,14 +40,28 @@ impl Events {
         if let Some((key_a, key_b)) = key.as_str().split_once('.')
             && let Ok(id) = u16::from_str(key_b)
         {
-            if let Some(other) = self.get_event(key.as_str()) {
-                #[allow(clippy::redundant_else)]
-                {
-                    // In the other games, overriding events is always an error.
-                    dup_error(&key, &other.key, "event");
+            let event = Event::new(key, block);
+            if let Some(other) = self.events.get(&(key_a, id)) {
+                // The game keeps the definition with the highest `id_override_priority`. When two
+                // share the highest, it logs an error and keeps one of them: the one from the
+                // later source (the mod over the game), and in the same source the one it reads
+                // first.
+                let keep_new = match event.priority.cmp(&other.priority) {
+                    Ordering::Greater => true,
+                    Ordering::Less => false,
+                    Ordering::Equal => {
+                        priority_tie_error(&other.key, &event.key, event.priority);
+                        event.key.loc.kind > other.key.loc.kind
+                    }
+                };
+                if !keep_new {
+                    self.shadowed.push(event);
+                    return;
                 }
             }
-            self.events.insert((key_a, id), Event::new(key, block));
+            if let Some(loser) = self.events.insert((key_a, id), event) {
+                self.shadowed.push(loser);
+            }
             return;
         }
         let msg = "Event names should be in the form NAMESPACE.NUMBER";
@@ -126,6 +144,13 @@ impl Events {
         self.events.par_iter().for_each(|(_, item)| {
             item.validate(data);
         });
+
+        // Vanilla definitions that a mod overrides are not the mod's business.
+        self.shadowed.par_iter().filter(|item| !item.key.loc.kind.counts_as_vanilla()).for_each(
+            |item| {
+                crate::ck3::events::validate_shadowed_event(item, data);
+            },
+        );
     }
 
     pub fn validate_call(&self, key: &Token, _data: &Everything, sc: &mut ScopeContext) {
@@ -225,10 +250,25 @@ impl FileHandler<Block> for Events {
     }
 }
 
+/// Two definitions of one event id with the same `id_override_priority`: the game logs an error.
+fn priority_tie_error(first: &Token, second: &Token, priority: i64) {
+    let msg =
+        format!("event {first} is defined twice with the same id_override_priority ({priority})");
+    let info = "the game reports an error and keeps only one of them; give the definition that should win a higher `id_override_priority`";
+    err(ErrorKey::DuplicateItem)
+        .msg(msg)
+        .info(info)
+        .loc(second)
+        .loc_msg(first, "the other definition is here")
+        .push();
+}
+
 #[derive(Debug)]
 pub struct Event {
     pub key: Token,
     pub block: Block,
+    /// `id_override_priority`: the definition with the highest one is the one the game uses.
+    priority: i64,
     expects_scope: Scopes,
     expects_from_token: Token,
     visited: Mutex<TigerHashSet<Signature>>,
@@ -238,7 +278,8 @@ impl Event {
     pub fn new(key: Token, block: Block) -> Self {
         let (expects_scope, expects_from_token) = crate::ck3::events::get_event_scope(&key, &block);
         let visited = Mutex::new(TigerHashSet::default());
-        Self { key, block, expects_scope, expects_from_token, visited }
+        let priority = block.get_field_integer("id_override_priority").unwrap_or(0);
+        Self { key, block, priority, expects_scope, expects_from_token, visited }
     }
 
     pub fn validate(&self, data: &Everything) {

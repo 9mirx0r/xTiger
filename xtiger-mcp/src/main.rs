@@ -15,6 +15,9 @@ fn main() -> ExitCode {
         None => {
             let detect: server::Detect = Arc::new(Locations::detect);
             server::serve(BufReader::new(io::stdin()), Box::new(io::stdout()), &detect);
+            // The client is gone: stop the jobs started with `ck3_run_start` too, so no game is
+            // left running without a server to report it.
+            xtiger_mcp::jobs::stop_all();
             ExitCode::SUCCESS
         }
         Some("--version" | "-V") => {

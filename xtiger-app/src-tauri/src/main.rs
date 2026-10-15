@@ -7,6 +7,7 @@ mod clients;
 mod editor;
 mod mods;
 mod settings;
+mod tracking;
 mod update;
 mod validate;
 
@@ -51,6 +52,9 @@ struct Setup {
     theme: String,
     last_mod: Option<PathBuf>,
     check_updates: bool,
+    ascii_background: bool,
+    start_on_home: bool,
+    game_tests_background: bool,
 }
 
 /// What the app knows about the game and the user's folders. Missing folders are searched for,
@@ -78,6 +82,9 @@ fn get_setup(app: AppHandle, state: State<AppState>) -> Setup {
         theme: settings.theme.clone(),
         last_mod: settings.last_mod.clone(),
         check_updates: settings.check_updates,
+        ascii_background: settings.ascii_background,
+        start_on_home: settings.start_on_home,
+        game_tests_background: settings.game_tests_background,
     }
 }
 
@@ -165,8 +172,20 @@ fn set_preferences(
     open_in_editor: Option<bool>,
     theme: Option<String>,
     check_updates: Option<bool>,
+    ascii_background: Option<bool>,
+    start_on_home: Option<bool>,
+    game_tests_background: Option<bool>,
 ) -> Result<(), String> {
     state.update(&app, |settings| {
+        if let Some(game_tests_background) = game_tests_background {
+            settings.game_tests_background = game_tests_background;
+        }
+        if let Some(ascii_background) = ascii_background {
+            settings.ascii_background = ascii_background;
+        }
+        if let Some(start_on_home) = start_on_home {
+            settings.start_on_home = start_on_home;
+        }
         if let Some(check_updates) = check_updates {
             settings.check_updates = check_updates;
         }
@@ -552,6 +571,9 @@ fn main() {
             disconnect_ai,
             ai_activity,
             ai_run,
+            tracking::project_status,
+            tracking::project_track,
+            tracking::project_annotate,
             ai_session,
             ask_ai,
             remove_request,

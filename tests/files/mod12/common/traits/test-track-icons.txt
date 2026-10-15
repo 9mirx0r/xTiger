@@ -1,0 +1,38 @@
+test_tracks_trait = {
+	category = lifestyle
+	tracks = {
+		test_track_valid = {
+			20 = { monthly_prestige = 0.1 }
+			50 = { monthly_prestige = 0.2 }
+			90 = { monthly_prestige = 0.3 }
+		}
+		test_track_missing = {
+			30 = { monthly_prestige = 0.1 }
+			55 = { monthly_prestige = 0.2 }
+		}
+		test_track_typo = {
+			20 = { monthly_prestige = 0.1 }
+		}
+	}
+}
+
+test_single_valid = {
+	category = lifestyle
+	track = {
+		20 = { monthly_prestige = 0.1 }
+	}
+}
+
+test_single_missing = {
+	category = lifestyle
+	track = {
+		20 = { monthly_prestige = 0.1 }
+	}
+}
+
+test_single_typo = {
+	category = lifestyle
+	track = {
+		20 = { monthly_prestige = 0.1 }
+	}
+}

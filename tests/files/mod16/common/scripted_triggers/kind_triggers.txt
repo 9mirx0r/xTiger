@@ -1,0 +1,5 @@
+﻿# Saves the name again as a number. The config overrides this trigger, so the caller does not know
+# its saves.
+kind_override_check = {
+	save_temporary_scope_value_as = { name = flag value = 3 }
+}

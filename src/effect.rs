@@ -9,7 +9,7 @@ use crate::item::Item;
 use crate::lowercase::Lowercase;
 use crate::report::{ErrorKey, Severity, err, fatal, tips, warn};
 use crate::scopes::{Scopes, scope_iterator};
-use crate::script_value::validate_script_value;
+use crate::script_value::validate_numeric_script_value;
 use crate::special_tokens::SpecialTokens;
 use crate::token::Token;
 use crate::tooltipped::Tooltipped;
@@ -233,7 +233,7 @@ pub fn validate_effect_field(
                         warn(ErrorKey::Range).msg(msg).loc(token).push();
                     }
                 }
-                validate_script_value(bv, data, sc);
+                validate_numeric_script_value(bv, data, sc);
             }
             Effect::Scope(outscopes) => {
                 if let Some(token) = bv.expect_value() {

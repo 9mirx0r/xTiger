@@ -72,6 +72,8 @@ pub fn validate_event(event: &Event, data: &Everything, sc: &mut ScopeContext) {
     vd.field_item("content_source", Item::Dlc);
 
     vd.field_bool("hidden");
+    // The definition with the highest priority replaces the others with the same id.
+    vd.field_integer("id_override_priority");
     vd.field_bool("major");
     vd.field_trigger("major_trigger", Tooltipped::No, sc);
 
@@ -165,6 +167,60 @@ pub fn validate_event(event: &Event, data: &Everything, sc: &mut ScopeContext) {
     // TODO: validate widget
     vd.field("widget");
     vd.field_block("widgets");
+}
+
+/// Every field `validate_event` accepts in an event definition.
+const EVENT_FIELDS: &[&str] = &[
+    "type",
+    "window",
+    "scope",
+    "content_source",
+    "hidden",
+    "major",
+    "major_trigger",
+    "trigger",
+    "on_trigger_fail",
+    "weight_multiplier",
+    "immediate",
+    "title",
+    "desc",
+    "opening",
+    "sender",
+    "left_portrait",
+    "right_portrait",
+    "center_portrait",
+    "lower_left_portrait",
+    "lower_center_portrait",
+    "lower_right_portrait",
+    "artifact",
+    "court_scene",
+    "queue_icon",
+    "queue_name",
+    "theme",
+    "override_background",
+    "override_icon",
+    "override_header_background",
+    "override_sound",
+    "override_transition",
+    "override_effect_2d",
+    "option",
+    "after",
+    "cooldown",
+    "soundeffect",
+    "orphan",
+    "widget",
+    "widgets",
+];
+
+/// An event definition that lost against another definition of the same id (see
+/// `id_override_priority`) is dead code, so only its structure is checked. The game still parses
+/// it and logs an error for a misspelled field name, such as `id_overide_priority`.
+pub fn validate_shadowed_event(event: &Event, data: &Everything) {
+    let mut vd = Validator::new(&event.block, data);
+    vd.field_integer("id_override_priority");
+    for name in EVENT_FIELDS {
+        vd.multi_field(name);
+    }
 }
 
 fn validate_event_option(

@@ -21,6 +21,7 @@ use serde_json::Value;
 
 use crate::locate::Locations;
 use crate::mods;
+use crate::projects;
 use crate::setup::{self, Loaded, Unresolved};
 
 /// How many saved runs are kept.
@@ -362,6 +363,10 @@ pub struct RunMeta {
     /// other mods cannot be compared fairly with one that did not.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub loaded_mods: Vec<String>,
+    /// A hash of the mod's script and descriptor files when the check started. A run whose hash
+    /// differs from the mod's now was made for other bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -591,6 +596,7 @@ pub struct NewRun {
     pub exit_code: Option<i32>,
     pub seconds: f64,
     pub loaded_mods: Vec<String>,
+    pub snapshot: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -630,6 +636,7 @@ pub fn save_run(dir: &Path, run: NewRun, reports: &[Value]) -> Result<RunMeta, S
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(0)),
         loaded_mods: run.loaded_mods,
+        snapshot: run.snapshot,
     };
     let file = dir.join(format!("{}.json", meta.run_id));
     let json =
@@ -642,10 +649,52 @@ pub fn save_run(dir: &Path, run: NewRun, reports: &[Value]) -> Result<RunMeta, S
         let _ = fs::remove_file(&temp);
         format!("cannot write {}: {e}", file.display())
     })?;
-    for old in run_files(dir).into_iter().skip(KEEP_RUNS) {
+    // Pinned runs are milestone evidence: they stay, and do not count among the newest.
+    let pinned = pins(dir);
+    let unpinned = run_files(dir).into_iter().filter(|path| {
+        path.file_stem().and_then(|stem| stem.to_str()).is_none_or(|id| !pinned.contains(id))
+    });
+    for old in unpinned.skip(KEEP_RUNS) {
         let _ = fs::remove_file(old);
     }
     Ok(meta)
+}
+
+/// The ids of the runs kept beyond the newest `KEEP_RUNS`.
+pub fn pins(dir: &Path) -> std::collections::BTreeSet<String> {
+    fs::read_to_string(dir.join("pins.txt"))
+        .map(|text| {
+            text.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned).collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Keep (or stop keeping) a saved run. Only a run that is still saved can be pinned.
+///
+/// # Errors
+/// If the run is not saved or the list cannot be written.
+pub fn set_pin(dir: &Path, run_id: &str, pinned: bool) -> Result<(), String> {
+    let mut all = pins(dir);
+    if pinned {
+        if saved_run(dir, run_id).is_none() {
+            return Err(format!("There is no saved run {run_id}."));
+        }
+        all.insert(run_id.to_owned());
+    } else {
+        all.remove(run_id);
+    }
+    let mut text = all.iter().map(String::as_str).collect::<Vec<_>>().join("\n");
+    text.push('\n');
+    fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    fs::write(dir.join("pins.txt"), text).map_err(|e| format!("cannot write the pins: {e}"))
+}
+
+/// The summary and reports of a saved run, if it is still saved.
+pub fn run_by_id(dir: &Path, run_id: &str) -> Option<(RunMeta, Vec<Value>)> {
+    let valid =
+        !run_id.is_empty() && run_id.chars().all(|c| c.is_ascii_alphanumeric() || "-_".contains(c));
+    let run = valid.then(|| read_run(&dir.join(format!("{run_id}.json"))).ok()).flatten()?;
+    Some((run.meta, run.reports))
 }
 
 /// The reports of the run `run_id` among the saved runs in `dir`, if it is still saved.
@@ -671,6 +720,7 @@ pub(crate) fn save_test_run(dir: &Path, run_id: &str, mod_file: &Path, reports: 
         seconds: 1.0,
         finished_at: 0,
         loaded_mods: vec![],
+        snapshot: None,
     };
     let run = SavedRun { meta, reports: reports.to_vec() };
     fs::create_dir_all(dir).unwrap();
@@ -696,7 +746,7 @@ pub fn timestamp(time: SystemTime) -> String {
     format!("{year:04}{month:02}{day:02}-{:02}{:02}{:02}", rest / 3600, rest % 3600 / 60, rest % 60)
 }
 
-fn slug(name: &str) -> String {
+pub(crate) fn slug(name: &str) -> String {
     let mut out = String::new();
     for c in name.chars() {
         if c.is_ascii_alphanumeric() || c == '-' {
@@ -725,6 +775,9 @@ pub struct Validation {
     pub warnings: Vec<String>,
     #[serde(flatten)]
     pub summary: Summary,
+    /// What this check covered. A stage that did not run says `not_run`: a clean static check
+    /// is not a tested update.
+    pub status: Stages,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub since_last_run: Option<Comparison>,
     pub seconds: f64,
@@ -734,6 +787,30 @@ pub struct Validation {
     pub results_file: PathBuf,
     /// The validator's own messages: the game version check and any problems loading the mod.
     pub stderr: String,
+}
+
+/// The stages of an update that one validation can speak for.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+pub struct Stages {
+    /// The validator finished and returned reports.
+    pub process: &'static str,
+    /// `clean` when the check found no errors or fatal reports, else `errors`.
+    #[serde(rename = "static")]
+    pub static_check: &'static str,
+    /// Validation never starts the game: `xtiger_project` status says what the journal shows.
+    pub runtime: &'static str,
+    /// Validation reviews nothing: `xtiger_project` status says what was looked at.
+    pub review: &'static str,
+}
+
+fn stages(reports: &[Value]) -> Stages {
+    let failing = reports.iter().any(|r| matches!(severity(r).as_str(), "error" | "fatal"));
+    Stages {
+        process: "completed",
+        static_check: if failing { "errors" } else { "clean" },
+        runtime: "not_run",
+        review: "not_run",
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -898,6 +975,8 @@ pub fn validate(
         Some(text) => Some(TempConf::write(loc, text)?),
         None => None,
     };
+    // Taken before the validator starts, so an edit made while it works shows as stale.
+    let snapshot = mods::describe(mod_file).and_then(|info| projects::manifest_hash(&info.dir));
 
     let mut args: Vec<String> =
         vec!["--json".into(), "--paradox".into(), loc.user_dir.display().to_string()];
@@ -1031,6 +1110,7 @@ pub fn validate(
             exit_code: status.code(),
             seconds,
             loaded_mods: loaded_names,
+            snapshot,
         },
         &reports,
     )?;
@@ -1044,6 +1124,7 @@ pub fn validate(
         unresolved_dependencies: setup.unresolved,
         warnings: setup.warnings,
         summary,
+        status: stages(&reports),
         since_last_run,
         seconds,
         exit_code: status.code(),
@@ -1087,6 +1168,17 @@ mod tests {
 
     fn pairs(list: &[(&str, usize)]) -> Vec<(String, usize)> {
         list.iter().map(|(k, n)| ((*k).to_owned(), *n)).collect()
+    }
+
+    #[test]
+    fn a_validation_never_claims_a_game_run_or_a_review() {
+        let none = stages(&[]);
+        assert_eq!((none.static_check, none.runtime, none.review), ("clean", "not_run", "not_run"));
+        let failing = stages(&[json!({"severity": "error", "key": "k", "message": "m"})]);
+        assert_eq!(failing.static_check, "errors");
+        assert_eq!((failing.runtime, failing.review), ("not_run", "not_run"));
+        let warned = stages(&[json!({"severity": "warning", "key": "k", "message": "m"})]);
+        assert_eq!(warned.static_check, "clean");
     }
 
     #[test]
@@ -1348,6 +1440,7 @@ mod tests {
             exit_code: Some(0),
             seconds: 1.0,
             loaded_mods: vec![],
+            snapshot: None,
         };
         let old = fake_reports();
         let first = save_run(&tmp, new_run("xTiger app"), &old).unwrap();
@@ -1397,6 +1490,7 @@ mod tests {
                 seconds: 1.0,
                 finished_at: 0,
                 loaded_mods: vec![],
+                snapshot: None,
             };
             let run = SavedRun { meta, reports: reports.to_vec() };
             fs::write(tmp.join(format!("{run_id}.json")), serde_json::to_string(&run).unwrap())
@@ -1433,6 +1527,7 @@ mod tests {
             state_dir: tmp.to_path_buf(),
             state_from: "test",
             extra_mods: vec![],
+            game_tests_background: false,
         };
         let save = |run_id: &str| {
             let meta = RunMeta {
@@ -1447,6 +1542,7 @@ mod tests {
                 seconds: 1.0,
                 finished_at: 0,
                 loaded_mods: vec![],
+                snapshot: None,
             };
             let run = SavedRun { meta, reports: fake_reports() };
             fs::write(dir.join(format!("{run_id}.json")), serde_json::to_string(&run).unwrap())

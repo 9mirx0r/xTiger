@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 470" width="1200" height="470" role="img" aria-labelledby="t d">
+<title id="t">What xTiger does</title>
+<desc id="d">Four things xTiger does: validates mods, ships a desktop app, lets AI assistants fix and test mods, and follows a mod to a new game version.</desc>
+<style>
+.card{animation:cardin .8s cubic-bezier(.2,.8,.2,1) both}
+@keyframes cardin{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.tick{stroke-dasharray:40;animation:draw 3.2s ease-in-out infinite}
+@keyframes draw{0%{stroke-dashoffset:40}30%,80%{stroke-dashoffset:0}100%{stroke-dashoffset:40}}
+.pulse-line{stroke-dasharray:60;animation:draw2 2.6s linear infinite}
+@keyframes draw2{from{stroke-dashoffset:60}to{stroke-dashoffset:-60}}
+.spark{transform-box:fill-box;transform-origin:center;animation:spark 2.8s ease-in-out infinite}
+@keyframes spark{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(.8) rotate(45deg)}}
+.orb{animation:orb 2.8s ease-in-out infinite}
+@keyframes orb{0%,100%{opacity:.2}50%{opacity:1}}
+.flag{transform-box:fill-box;transform-origin:left center;animation:flag 2.2s ease-in-out infinite}
+@keyframes flag{0%,100%{transform:skewY(0)}50%{transform:skewY(-6deg)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<rect width="1200" height="470" rx="28" fill="#0a1030"/>
+<g class="card" style="animation-delay:0s">
+  <rect x="40" y="40" width="540" height="180" rx="20" fill="#1a2557" stroke="#2a3a78"/>
+  <rect x="40" y="64" width="5" height="132" rx="2.5" fill="#6f9bf0"/>
+  <circle cx="102" cy="102" r="34" fill="#141c3d"/>
+  <circle cx="98" cy="98" r="17" fill="none" stroke="#6f9bf0" stroke-width="4"/><path d="M111 111 L124 124" stroke="#6f9bf0" stroke-width="5" stroke-linecap="round"/><path class="tick" d="M90 98 l6 7 l11 -13" fill="none" stroke="#6fd6a0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="158" y="98" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="22" font-weight="700" fill="#f4efe0">A validator you can trust</text>
+  <g font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="15" fill="#9fb4d9">
+    <text x="158" y="132">Typos, missing localization, broken references,</text>
+    <text x="158" y="156">effects in the wrong scope and much more.</text>
+    <text x="158" y="180">Same mod, same reports, every single run.</text>
+  </g>
+</g>
+<g class="card" style="animation-delay:0.12s">
+  <rect x="620" y="40" width="540" height="180" rx="20" fill="#1a2557" stroke="#2a3a78"/>
+  <rect x="620" y="64" width="5" height="132" rx="2.5" fill="#6fd6a0"/>
+  <circle cx="682" cy="102" r="34" fill="#141c3d"/>
+  <rect x="660" y="84" width="44" height="32" rx="5" fill="none" stroke="#6fd6a0" stroke-width="4"/><path d="M672 124 H692 M682 116 V124" stroke="#6fd6a0" stroke-width="4" stroke-linecap="round"/><path class="pulse-line" d="M668 100 h8 l4 -8 l6 16 l4 -8 h6" fill="none" stroke="#6fd6a0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="738" y="98" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="22" font-weight="700" fill="#f4efe0">A desktop app, no terminal</text>
+  <g font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="15" fill="#9fb4d9">
+    <text x="738" y="132">It finds CK3 and every mod, Workshop included.</text>
+    <text x="738" y="156">Double-click a mod, read the reports, and open</text>
+    <text x="738" y="180">the broken line in VS Code in one click.</text>
+  </g>
+</g>
+<g class="card" style="animation-delay:0.24s">
+  <rect x="40" y="250" width="540" height="180" rx="20" fill="#1a2557" stroke="#2a3a78"/>
+  <rect x="40" y="274" width="5" height="132" rx="2.5" fill="#f4c542"/>
+  <circle cx="102" cy="312" r="34" fill="#141c3d"/>
+  <path class="spark" d="M102 290 L108 306 L124 312 L108 318 L102 334 L96 318 L80 312 L96 306 Z" fill="#f4c542"/><circle class="orb" cx="122" cy="294" r="4" fill="#f4efe0"/>
+  <text x="158" y="308" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="22" font-weight="700" fill="#f4efe0">Let an AI assistant do the fixing</text>
+  <g font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="15" fill="#9fb4d9">
+    <text x="158" y="342">Connect Claude, Codex, Cursor, VS Code or Windsurf.</text>
+    <text x="158" y="366">It validates, fixes, starts CK3, fires your event</text>
+    <text x="158" y="390">and checks the window. You watch it all live.</text>
+  </g>
+</g>
+<g class="card" style="animation-delay:0.36s">
+  <rect x="620" y="250" width="540" height="180" rx="20" fill="#1a2557" stroke="#2a3a78"/>
+  <rect x="620" y="274" width="5" height="132" rx="2.5" fill="#ff8a65"/>
+  <circle cx="682" cy="312" r="34" fill="#141c3d"/>
+  <path d="M664 330 V294" stroke="#ff8a65" stroke-width="4" stroke-linecap="round"/><path class="flag" d="M664 294 H698 L690 304 L698 314 H664" fill="#ff8a65"/>
+  <text x="738" y="308" font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="22" font-weight="700" fill="#f4efe0">Follow an update step by step</text>
+  <g font-family='"Segoe UI", "Helvetica Neue", Arial, sans-serif' font-size="15" fill="#9fb4d9">
+    <text x="738" y="342">Track an update with a status, a checklist and</text>
+    <text x="738" y="366">notes on each report. Game tests run in the</text>
+    <text x="738" y="390">background so you can keep your desktop.</text>
+  </g>
+</g>
+</svg>

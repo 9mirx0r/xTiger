@@ -26,6 +26,13 @@ pub struct Settings {
     pub durations: HashMap<String, u64>,
     /// Look for a newer xTiger when the app starts.
     pub check_updates: bool,
+    /// Draw the moving letters behind the home screen.
+    pub ascii_background: bool,
+    /// Open on the home screen instead of the last mod's page.
+    pub start_on_home: bool,
+    /// Run game tests minimized, without taking the focus, so the user can play something else.
+    /// When off, the game is brought to the front and console commands are typed into it.
+    pub game_tests_background: bool,
     /// A version the user chose not to be told about again.
     pub skipped_version: Option<String>,
     /// The version that ran last, to tell when xTiger was updated.
@@ -45,6 +52,9 @@ impl Default for Settings {
             last_mod: None,
             durations: HashMap::new(),
             check_updates: true,
+            ascii_background: true,
+            start_on_home: true,
+            game_tests_background: true,
             skipped_version: None,
             last_version: None,
             whats_new: Vec::new(),

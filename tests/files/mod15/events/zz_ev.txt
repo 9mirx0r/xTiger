@@ -1,0 +1,21 @@
+namespace = shd
+
+shd.0001 = {
+	id_override_priority = 1
+	hidden = yes
+}
+
+shd.0002 = {
+	id_override_priority = 1
+	hidden = yes
+}
+
+shd.0003 = {
+	id_override_priority = 2
+	hidden = yes
+}
+
+shd.0004 = {
+	id_override_priority = 1
+	hidden = yes
+}

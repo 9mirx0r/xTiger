@@ -1,20 +1,34 @@
-# xTiger
+<p align="center">
+  <img src="assets/hero.svg" alt="xTiger: Qubis, a small blue pixel creature with a magnifying glass, watches a beam scan a mod's script and flag three reports" width="100%">
+</p>
 
-<img src="assets/qubis.png" alt="Qubis, a small blue pixel creature holding a magnifying glass" width="160" align="right">
+<p align="center">
+  <a href="https://github.com/9mirx0r/xTiger/releases/latest"><b>Download</b></a> ·
+  <a href="#the-app">The app</a> ·
+  <a href="#with-an-ai-assistant">With an AI assistant</a> ·
+  <a href="#the-command-line">Command line</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
+  <a href="ROADMAP.md">Roadmap</a>
+</p>
 
 xTiger finds the mistakes in your Crusader Kings III mod before the game does: typos, missing
 localization, broken references, effects used in the wrong scope, and a lot more.
 
 It's a fork of [Tiger](https://github.com/amtep/tiger) by amtep, brought up to date for CK3
 1.20.0.4. On top of that it adds a desktop app, so you never need a terminal, and a way to let an
-AI assistant check and test your mod for you. Qubis, the little reviewer on the right, keeps an eye
-on things.
+AI assistant check and test your mod for you. Qubis, the little reviewer, keeps an eye on things.
 
 xTiger is for CK3 only. For other Paradox games, use upstream Tiger.
 
+<p align="center">
+  <img src="assets/features.svg" alt="What xTiger does: a validator you can trust, a desktop app with no terminal, an AI assistant that does the fixing, and following an update step by step" width="100%">
+</p>
+
 ## The app
 
-![The results screen of the xTiger app](assets/app/results.png)
+<p align="center">
+  <img src="assets/app/results.png" alt="The results screen of the xTiger app: a severity bar, a summary of what was fixed and what is new, the list of reports and the broken line of the selected one" width="100%">
+</p>
 
 Download `xTiger_<version>_x64-setup.exe` from the [releases](https://github.com/9mirx0r/xTiger/releases)
 and run it. No administrator rights needed. If you'd rather not install anything, grab the portable
@@ -22,13 +36,63 @@ zip, unzip it anywhere and run `xTiger.exe`.
 
 - It finds CK3 and all your mods on its own, local and Workshop alike.
 - Double-click a mod to check it.
-- Reports come grouped by file, kind or severity. You can filter them, or show only what's new
-  since your last check.
-- Each report shows the broken line, and one click opens it in VS Code.
+- The results open with a summary: a severity bar you can click to filter, what was fixed and what
+  is new since your last check, and the files with the most reports.
+- Reports come grouped by file, kind or severity. Each one shows the broken line, and one click
+  opens it in VS Code.
+- Follow a mod's update: a strip under the summary says what still blocks it, and a note on any
+  report records why it is fine or that it is still a defect. Notes never hide a report.
 
-| First start | Your mods |
-|---|---|
-| ![The welcome screen, with Qubis and the folders it found](assets/app/welcome.png) | ![The mods screen, with a card for each mod](assets/app/mods.png) |
+<table>
+  <tr>
+    <td width="50%"><img src="assets/app/home.png" alt="The Home screen, with the Crusader Kings III card and a Stellaris strip marked as coming soon"></td>
+    <td width="50%"><img src="assets/app/mods.png" alt="The mods screen, with a card for each mod and its last result"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Home.</b> Pick a game and go.</sub></td>
+    <td align="center"><sub><b>Your mods.</b> Local, Workshop and added by hand.</sub></td>
+  </tr>
+</table>
+
+## With an AI assistant
+
+xTiger comes with an MCP server that lets an assistant such as Claude validate your mod, read the
+reports, start CK3, type console commands and look at screenshots of the game.
+
+<p align="center">
+  <img src="assets/flow.svg" alt="How a fix flows: validate, read the reports, ask your assistant, test it in the game, ship" width="100%">
+</p>
+
+So you can ask for a new event, and the assistant writes it, validates it, fixes what it broke,
+fires the event in the game and checks the window looks right. You get back something that works.
+
+To set it up, open the app's Settings and press **Connect** next to Claude Desktop, Claude Code,
+Codex, Cursor, VS Code or Windsurf. The server finds the game, your mods and the validator on its
+own. To set it up by hand, see [`xtiger-mcp/README.md`](xtiger-mcp/README.md).
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/app/activity.png" alt="The AI activity screen: an assistant validating a mod right now, the requests waiting for an assistant and today's calls grouped by job"></td>
+    <td width="50%"><img src="assets/app/settings.png" alt="The Settings screen with the AI assistants, each with its logo and a Connect or Disconnect button"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>AI activity.</b> What the assistant is doing, and why.</sub></td>
+    <td align="center"><sub><b>AI assistants.</b> One click to connect.</sub></td>
+  </tr>
+</table>
+
+What the assistant can do:
+
+- Validate a mod, read the reports and see what is new since the last check, whoever ran it.
+- Search the base game's files and look up the game's own docs of triggers and effects.
+- Test your mod in the game with a launcher playset, **in the background** by default: the game
+  starts minimized and never takes your focus, so you can keep playing something else.
+- Follow a mod's update in a durable project record, with a ledger of what was preserved, changed,
+  removed or added, and a status that never calls a clean static check a tested update.
+
+From the app you can hand work over: **Ask AI to fix** on a report, or **Prepare update report**
+on the results of a mod that is behind the game, leaves a request the assistant picks up the next
+time you talk to it. The AI activity screen shows each request, who picked it up and how it ended.
 
 ## The command line
 
@@ -54,33 +118,11 @@ To choose languages, load parent mods for a submod or silence reports you don't 
 [`ck3-tiger.conf`](ck3-tiger.conf) in your mod folder. See also the [filter guide](filter.md) and
 the [annotations guide](annotations.md).
 
-## With an AI assistant
-
-xTiger comes with an MCP server that lets an assistant such as Claude validate your mod, read the
-reports, start CK3, type console commands and look at screenshots of the game.
-
-So you can ask for a new event, and the assistant writes it, validates it, fixes what it broke,
-fires the event in the game and checks the window looks right. You get back something that works.
-
-To set it up, open the app's Settings and press **Connect** next to Claude Desktop, Claude Code,
-Cursor, VS Code or Windsurf. The server finds the game, your mods and the validator on its own. To
-set it up by hand, see [`xtiger-mcp/README.md`](xtiger-mcp/README.md).
-
-The assistant can also search the base game's files, look up the game's own docs of triggers
-and effects, compare two checks, and test your mod in the game together with a launcher playset.
-
-From the app you can hand work over: **Ask AI to fix** on a report, or **Prepare update report**
-on the results of a mod that is behind the game, leaves a request the assistant picks up the next
-time you talk to it.
-
-The app's AI activity screen shows what the assistant is doing while it works, why, and what it
-found, with one click to the results of each check. The calls are grouped by job, with a chart of
-how the reports went down and a summary of what was fixed, what is left and which files changed.
-
-The app and the assistant share one history of checks: when either one checks a mod, what is new
-is measured against the last check of that mod, whoever ran it.
-
 ## How it differs from Tiger
+
+<p align="center">
+  <img src="assets/vanilla.svg" alt="Reports on the unmodded base game: about 144,000 with Tiger, about 15,000 with xTiger" width="100%">
+</p>
 
 | | Tiger | xTiger |
 |---|---|---|
@@ -103,7 +145,9 @@ details.
 
 ## Roadmap
 
-![The xTiger roadmap: Frankokratia (released), Menorá (next), Vatican (later)](assets/roadmap.svg)
+<p align="center">
+  <img src="assets/roadmap.svg" alt="The xTiger roadmap: Frankokratia (released), Menorá (next), Vatican (later)" width="100%">
+</p>
 
 Next is **Menorá**, a mod updater that brings old mods, or a whole mod list, up to the current
 game without cutting their content. After that comes **Vatican**, with much more help for mod

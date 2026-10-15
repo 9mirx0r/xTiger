@@ -985,3 +985,111 @@ fn test_mod11_special_group_icon() {
             .any(|m| m.contains("test_bad_category_group.dds does not exist"))
     );
 }
+
+#[test]
+fn test_mod12_trait_track_icons() {
+    let reports = check_mod_helper("mod12");
+    let icon_reports: Vec<_> = reports
+        .iter()
+        .filter(|(meta, _)| meta.msg.contains("trait_level_tracks"))
+        .map(|(meta, pointers)| {
+            let lines: Vec<u32> =
+                pointers.iter().flat_map(|p| p.iter().map(|pointer| pointer.loc.line)).collect();
+            (meta.msg.as_str(), lines)
+        })
+        .collect();
+    let reported = |name: &str| {
+        icon_reports.iter().any(|(msg, _)| msg.contains(&format!("trait_level_tracks/{name}.dds")))
+    };
+    // Icon files exist: no report.
+    assert!(!reported("test_track_valid"), "{icon_reports:?}");
+    assert!(!reported("test_single_valid"), "{icon_reports:?}");
+    // No icon file, or the icon file name has a typo: reported.
+    assert!(reported("test_track_missing"), "{icon_reports:?}");
+    assert!(reported("test_track_typo"), "{icon_reports:?}");
+    assert!(reported("test_single_missing"), "{icon_reports:?}");
+    assert!(reported("test_single_typo"), "{icon_reports:?}");
+    assert_eq!(icon_reports.len(), 4, "{icon_reports:?}");
+    // A track icon is only a UI issue, so it is a warning like the trait icon.
+    assert!(
+        reports
+            .iter()
+            .filter(|(meta, _)| meta.msg.contains("trait_level_tracks"))
+            .all(|(meta, _)| meta.severity == tiger_lib::Severity::Warning),
+        "{reports:?}"
+    );
+}
+
+#[test]
+fn test_mod13_event_override_priority() {
+    let reports = check_mod_helper("mod13");
+    let mentions = |text: &str| reports.keys().any(|meta| meta.msg.contains(text));
+    // The definition with the highest priority is the live one, whichever file comes first.
+    assert!(mentions("bogus_live_a2"), "{reports:?}");
+    assert!(mentions("bogus_live_z1"), "{reports:?}");
+    assert!(!mentions("bogus_dead_a1"), "{reports:?}");
+    assert!(!mentions("bogus_dead_z2"), "{reports:?}");
+    // With equal priority the game logs an error and keeps the first definition.
+    assert!(mentions("bogus_tie_a3"), "{reports:?}");
+    assert!(!mentions("bogus_tie_z3"), "{reports:?}");
+    let ties: Vec<_> =
+        reports.keys().filter(|meta| meta.msg.contains("same id_override_priority")).collect();
+    assert_eq!(ties.len(), 1, "{ties:?}");
+    assert!(ties[0].msg.contains("ovr.0003"), "{ties:?}");
+    // A valid priority is not an unknown field.
+    assert!(!mentions("id_override_priority`"), "{reports:?}");
+    assert!(mentions("id_overide_priority"), "{reports:?}");
+}
+
+#[test]
+fn test_mod15_shadowed_event_fields() {
+    let reports = check_mod_helper("mod15");
+    let unknown: Vec<_> =
+        reports.iter().filter(|(meta, _)| meta.msg.contains("unknown field")).collect();
+    let has = |field: &str| unknown.iter().any(|(meta, _)| meta.msg.contains(field));
+    // A misspelled field in a shadowed definition is reported, as the game does.
+    assert!(has("id_overide_priority"), "{reports:?}");
+    assert!(has("bogus_field_shadow"), "{reports:?}");
+    assert_eq!(unknown.len(), 2, "{reports:?}");
+    // The priority of a shadowed definition must still be a number.
+    assert!(reports.keys().any(|meta| meta.msg.contains("expected integer")), "{reports:?}");
+    // Only the structure is checked: the dead code inside is not, and no duplicate is reported.
+    assert!(!reports.keys().any(|meta| meta.msg.contains("bogus_dead_shadow")), "{reports:?}");
+    assert!(
+        !reports.keys().any(|meta| meta.msg.contains("same id_override_priority")),
+        "{reports:?}"
+    );
+}
+
+#[test]
+fn test_mod14_numeric_script_values() {
+    let reports = check_mod_helper("mod14");
+    // add_gold = no, add_prestige = yes, add_piety = { value = yes }, gold >= yes.
+    // Numbers, and booleans in boolean positions, stay clean.
+    let places: usize = reports
+        .iter()
+        .filter(|(meta, _)| meta.msg.contains("is a boolean, but a number is required"))
+        .map(|(_, locs)| locs.len())
+        .sum();
+    assert_eq!(places, 4, "{reports:?}");
+    assert_eq!(reports.len(), 2, "{reports:?}");
+}
+
+#[test]
+fn test_mod16_boolean_scope_values() {
+    let reports = check_mod_helper("mod16");
+    let count = |text: &str| -> usize {
+        reports.iter().filter(|(meta, _)| meta.msg.contains(text)).map(|(_, locs)| locs.len()).sum()
+    };
+    // kind.0001: add_gold, add_prestige { value }, gold >=, add_piety and the copy.
+    // kind.0008: the boolean survives a call that saves another name.
+    assert_eq!(count("was saved as a boolean, but a number is required"), 6, "{reports:?}");
+    // kind.0001: `scope:flag >= 1` and `scope:flag != 0`.
+    assert_eq!(count("was saved as a boolean, but is compared as a number"), 2, "{reports:?}");
+    // Nothing from kind.0002 (booleans as booleans, numbers as numbers), kind.0003 (saved again
+    // as a number), kind.0004 (branches that disagree), kind.0005 to kind.0007 and kind.0009 to
+    // kind.0010 (saved again as a number, by an effect or trigger, normal or overridden), or the
+    // bodies of kind_wrapper, kind_trigger_wrapper and kind_override_outer: only the four messages
+    // above.
+    assert_eq!(reports.len(), 4, "{reports:?}");
+}

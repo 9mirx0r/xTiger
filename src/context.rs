@@ -36,6 +36,10 @@ pub struct ScopeContext {
     /// Names of local variable lists; the values are indices into the `named` vector.
     local_list_names: TigerHashMap<&'static str, usize>,
 
+    /// What is known about the kind of the values saved with `save_scope_value_as` and
+    /// `save_temporary_scope_value_as`. Names that were saved in other ways are not in here.
+    scope_value_kinds: TigerHashMap<&'static str, ValueKind>,
+
     /// Named scope values are `ScopeEntry::Scope` or `ScopeEntry::Named` or `ScopeEntry::Rootref`.
     /// Invariant: there are no cycles in the array via `ScopeEntry::Named` entries.
     /// Invariant: entries are only added, never removed or rearranged.
@@ -76,6 +80,15 @@ pub struct ScopeContext {
     /// A history of the actions and events that were triggered on the way from `source` to the
     /// current context.
     traceback: Vec<ActionOrEvent>,
+}
+
+/// The kind of a saved scope value, as far as it is certain.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ValueKind {
+    /// Every save of this name in the current context was of a boolean (`yes` or `no`).
+    Boolean,
+    /// Anything else, including a mix of kinds: nothing is claimed about it.
+    Other,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -235,6 +248,7 @@ impl ScopeContext {
             scope_list_names: TigerHashMap::default(),
             local_names: TigerHashMap::default(),
             local_list_names: TigerHashMap::default(),
+            scope_value_kinds: TigerHashMap::default(),
             named: Vec::new(),
             is_input: Vec::new(),
             is_builder: false,
@@ -261,6 +275,7 @@ impl ScopeContext {
             scope_list_names: TigerHashMap::default(),
             local_names: TigerHashMap::default(),
             local_list_names: TigerHashMap::default(),
+            scope_value_kinds: TigerHashMap::default(),
             named: Vec::new(),
             is_input: Vec::new(),
             is_builder: false,
@@ -320,6 +335,8 @@ impl ScopeContext {
         new_sc.prev_levels = 0;
         new_sc.is_unrooted = false;
         new_sc.traceback.push(trace);
+        // The triggered event may be reached from other places with other kinds of values.
+        new_sc.scope_value_kinds.clear();
         new_sc.wipe_temporaries();
         Some(new_sc)
     }
@@ -370,6 +387,9 @@ impl ScopeContext {
         reason: Reason,
         temp: Temporary,
     ) {
+        if let Some(kind) = self.scope_value_kinds.get_mut(name) {
+            *kind = ValueKind::Other;
+        }
         if let Some((idx, t)) = self.scope_names.get_mut(name) {
             *t = temp;
             let idx = *idx;
@@ -403,6 +423,62 @@ impl ScopeContext {
         temp: Temporary,
     ) {
         self.define_name_internal(name, scopes, Reason::Token(token.into()), temp);
+    }
+
+    /// Like [`Self::define_name_token()`] for a scope value saved with `save_scope_value_as` or
+    /// `save_temporary_scope_value_as`, but also remember whether the saved value is a boolean.
+    ///
+    /// The boolean kind is only remembered when it is certain: if the name was already defined in
+    /// some other way, or was saved before as something else, then nothing is claimed about it.
+    pub fn define_scope_value<T: Into<Token>>(
+        &mut self,
+        name: &'static str,
+        token: T,
+        temp: Temporary,
+        is_boolean: bool,
+    ) {
+        let was_defined = self.scope_names.contains_key(name);
+        let previous = self.scope_value_kinds.get(name).copied();
+        self.define_name_internal(name, Scopes::primitive(), Reason::Token(token.into()), temp);
+        let kind = match (was_defined, previous, is_boolean) {
+            (false, _, true) | (true, Some(ValueKind::Boolean), true) => ValueKind::Boolean,
+            _ => ValueKind::Other,
+        };
+        self.scope_value_kinds.insert(name, kind);
+    }
+
+    /// Is `scope:name` certainly a boolean saved by `save_scope_value_as` or
+    /// `save_temporary_scope_value_as`? This is false when the kind is unknown.
+    pub fn is_boolean_scope_value(&self, name: &str) -> bool {
+        self.scope_value_kinds.get(name) == Some(&ValueKind::Boolean)
+            && self.scope_names.get(name).is_some_and(|&(_, temp)| temp != Temporary::Wiped)
+    }
+
+    /// Forget the boolean kinds of all scope values in this `ScopeContext`.
+    ///
+    /// This is used when a call may have saved any scope value again, without this context
+    /// knowing which ones, so none of the kinds can be trusted any more.
+    pub fn forget_scope_value_kinds(&mut self) {
+        self.scope_value_kinds.clear();
+    }
+
+    /// Merge the boolean kinds of the named scopes of `other`, a callee, into `self`, its caller.
+    ///
+    /// A name stays boolean only if it is boolean in both contexts, or if `self` does not have it
+    /// yet. Any other name is forgotten, because the callee may have saved it as something else,
+    /// or may only expect it from the caller.
+    fn merge_scope_value_kinds(&mut self, other: &ScopeContext) {
+        for (&name, &(oidx, _)) in &other.scope_names {
+            let other_is_boolean = other.is_input[oidx].is_none()
+                && other.scope_value_kinds.get(name) == Some(&ValueKind::Boolean);
+            let self_is_boolean = !self.scope_names.contains_key(name)
+                || self.scope_value_kinds.get(name) == Some(&ValueKind::Boolean);
+            if other_is_boolean && self_is_boolean {
+                self.scope_value_kinds.insert(name, ValueKind::Boolean);
+            } else {
+                self.scope_value_kinds.remove(name);
+            }
+        }
     }
 
     /// Look up a named scope and return its scope types if it's known.
@@ -503,6 +579,9 @@ impl ScopeContext {
 
     /// This is like [`Self::define_name()`], but `scope:name` is declared equal to the current `this`.
     pub fn save_current_scope(&mut self, name: &'static str, temp: Temporary) {
+        if let Some(kind) = self.scope_value_kinds.get_mut(name) {
+            *kind = ValueKind::Other;
+        }
         if let Some((idx, t)) = self.scope_names.get_mut(name) {
             *t = temp;
             let idx = *idx;
@@ -1302,6 +1381,9 @@ impl ScopeContext {
     ///
     /// It expects `self` to be the caller and `other` to be the callee.
     pub fn expect_compatibility(&mut self, other: &ScopeContext, key: &Token, data: &Everything) {
+        // The kinds are merged even when warnings are off, because the body of an overridden
+        // effect still reports on the scope values it uses.
+        self.merge_scope_value_kinds(other);
         if self.no_warn {
             return;
         }
