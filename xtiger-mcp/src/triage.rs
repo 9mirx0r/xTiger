@@ -325,7 +325,7 @@ mod tests {
         let reports = vec![report(2), report(9)];
         assert_eq!(select(&reports, "duplicate-item", "events", 0).len(), 2);
         assert_eq!(select(&reports, "duplicate-item", "events", 9).len(), 1);
-        assert!(select(&reports, "other", "events", 0).is_empty());
+        assert_eq!(select(&reports, "other", "events", 0).len(), 0);
     }
 
     #[test]

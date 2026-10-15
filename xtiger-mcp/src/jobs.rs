@@ -636,7 +636,7 @@ mod tests {
     #[test]
     fn jobs_are_listed_newest_first_with_their_state() {
         let tmp = TempDir::new();
-        assert!(list(&tmp).is_empty());
+        assert_eq!(list(&tmp).len(), 0);
         save(&tmp, &record("job-1", State::Finished, 1));
         save(&tmp, &record("job-2", State::Failed, 1));
         let ids: Vec<(String, State)> =

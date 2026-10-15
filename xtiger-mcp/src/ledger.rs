@@ -792,7 +792,7 @@ mod tests {
         let again = diff(&old, &snapshot(&after));
         let review = content_review(&again, &decisions);
         assert_eq!(review.state, "needs_decision");
-        assert!(!review.stale_decisions.is_empty());
+        assert_ne!(review.stale_decisions.len(), 0);
     }
 
     #[test]
@@ -848,7 +848,7 @@ mod tests {
         let unused = find(&entries, "unused.key");
         assert_eq!((unused.kind, unused.state), ("localization", State::Removed));
         assert!(unused.still_named_by.is_empty() && !unused.needs_decision());
-        assert!(find(&entries, "ev.1.t").still_named_by.is_empty());
+        assert_eq!(find(&entries, "ev.1.t").still_named_by.len(), 0);
 
         // With the event naming it both before and after, removing the text leaves a dangling name.
         write(&before, "events/x.txt", &BEFORE.replace("name = a", "name = a\n\t\ttitle = ev.1.t"));
