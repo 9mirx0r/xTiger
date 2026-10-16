@@ -1,5 +1,15 @@
 # Changelog
 
+## xTiger 1.6.2 alpha
+
+A small fix release.
+
+### The validator
+
+- `has_ethnicity` takes the key of an ethnicity from `common/ethnicities`, as it does in the game, and
+  no longer reports every valid ethnicity as an "unknown token". An ethnicity that does not exist is now
+  reported as a missing item instead. Thanks to shalola-author for the report (issue #5).
+
 ## xTiger 1.6.1 alpha "Qizilbash"
 
 We are still working on speed, on what the validator can catch, and on making xTiger fit the way people

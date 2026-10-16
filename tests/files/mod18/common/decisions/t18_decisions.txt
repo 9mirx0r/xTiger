@@ -1,0 +1,6 @@
+t18_decision = {
+	is_shown = {
+		has_ethnicity = t18_ethnicity
+		has_ethnicity = t18_missing_ethnicity
+	}
+}

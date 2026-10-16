@@ -1130,3 +1130,15 @@ fn test_mod16_boolean_scope_values() {
     // above.
     assert_eq!(reports.len(), 4, "{reports:?}");
 }
+
+#[test]
+fn test_mod18_has_ethnicity_takes_an_ethnicity_key() {
+    let reports = check_mod_helper("mod18");
+    let msgs: Vec<String> = reports.keys().map(|r| r.msg.clone()).collect();
+    let has = |needle: &str| msgs.iter().any(|m| m.contains(needle));
+
+    // `has_ethnicity` takes a key of `common/ethnicities`, not a character scope.
+    assert!(!has("t18_ethnicity"), "a defined ethnicity must be accepted: {msgs:?}");
+    assert!(has("t18_missing_ethnicity"), "an undefined ethnicity must be reported: {msgs:?}");
+    assert!(!has("is not a scope") && !has("scope"), "no scope complaint expected: {msgs:?}");
+}

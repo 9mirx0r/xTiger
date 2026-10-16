@@ -848,7 +848,7 @@ pub(crate) const TRIGGER: &[(Scopes, &str, Trigger)] = &[
         Block(&[("who", Scope(Scopes::Character)), ("title", Scope(Scopes::LandedTitle))]),
     ),
     (Scopes::Character, "has_employed_any_court_position", Boolean),
-    (Scopes::Character, "has_ethnicity", Scope(Scopes::Character)),
+    (Scopes::Character, "has_ethnicity", Item(Item::Ethnicity)),
     (Scopes::Character, "has_execute_reason", Scope(Scopes::Character)),
     (Scopes::Character, "has_faith", Scope(Scopes::Faith)),
     (Scopes::Character, "has_father", Boolean),
