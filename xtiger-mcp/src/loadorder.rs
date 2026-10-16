@@ -540,7 +540,7 @@ mod tests {
         let a = world.add("a", "Mod A", &[]);
         let b = world.add("b", "Mod B", &[]);
         let c = world.add("c", "Patch C", &[]);
-        assert!(world.order(&c).loaded.is_empty());
+        assert_eq!(world.order(&c).loaded.len(), 0);
         world.keep(&c, &[&b, &a]);
         let order = world.order(&c);
         assert_eq!(names(&order), ["Mod B", "Mod A"]);
@@ -671,7 +671,7 @@ mod tests {
         let world = World::new();
         let main = world.add("main", "Main", &["Nowhere"]);
         let order = world.order(&main);
-        assert!(order.loaded.is_empty());
+        assert_eq!(order.loaded.len(), 0);
         assert_eq!(order.unresolved[0].name, "Nowhere");
     }
 

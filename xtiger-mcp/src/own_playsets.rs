@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn a_playset_is_kept_listed_renamed_and_deleted() {
         let tmp = TempDir::new();
-        assert!(list(&tmp).is_empty());
+        assert_eq!(list(&tmp).len(), 0);
         save(&tmp, own("  Patch  test ", &[("a", true), ("b", false), ("a", true)])).unwrap();
         save(&tmp, own("Big", &[])).unwrap();
         let names: Vec<String> = list(&tmp).into_iter().map(|p| p.name).collect();

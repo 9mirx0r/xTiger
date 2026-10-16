@@ -3226,7 +3226,7 @@ mod tests {
         }
         add_mod(&tmp, "c", "Patch C", &[]);
         let go = |arguments: Value| will_load(run("xtiger_loadorder", &arguments, &loc));
-        assert!(go(json!({"mod_path": "Patch C"})).is_empty());
+        assert_eq!(go(json!({"mod_path": "Patch C"})).len(), 0);
         assert_eq!(
             go(json!({"mod_path": "Patch C", "action": "set", "requires": ["Mod B", "Mod A"]})),
             ["Mod B", "Mod A"]
@@ -3261,7 +3261,7 @@ mod tests {
         assert!(
             matches!(not_listed, Err(CallError::Failed(message)) if message.contains("not in the load order"))
         );
-        assert!(go(json!({"mod_path": "Patch C", "action": "clear"})).is_empty());
+        assert_eq!(go(json!({"mod_path": "Patch C", "action": "clear"})).len(), 0);
         assert!(
             !loadorder::path(&loc.state_dir, &tmp.join("user").join("mod").join("c.mod")).exists()
         );
@@ -3335,7 +3335,7 @@ mod tests {
                 })
                 .collect()
         };
-        assert!(go(json!({}))["playsets"].as_array().unwrap().is_empty());
+        assert_eq!(go(json!({}))["playsets"].as_array().unwrap().len(), 0);
         let made = go(
             json!({"action": "set", "name": "Heraldry", "mods": ["Mod B", "Mod A"], "notes": "for Patch C"}),
         );
