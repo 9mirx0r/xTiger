@@ -1,0 +1,4 @@
+t17_decision = {
+	ai_goal = yes
+	ai_check_interval = 120
+}

@@ -81,8 +81,12 @@ impl DbKind for Decision {
                 warn(ErrorKey::Validation).msg(msg).loc(key).push();
             }
         });
-        if block.get_field_bool("ai_goal").unwrap_or(false) {
-            vd.advice_field("ai_check_interval", "not needed if ai_goal = yes");
+        if block.get_field_bool("ai_goal").unwrap_or(false)
+            && let Some(token) = block.get_key("ai_check_interval")
+        {
+            let msg = "`ai_check_interval` conflicts with `ai_goal = yes`";
+            let info = "the game logs an error and ignores the interval";
+            warn(ErrorKey::Validation).msg(msg).info(info).loc(token).push();
         }
         vd.field_validated_block_sc("cooldown", &mut sc, validate_duration);
 

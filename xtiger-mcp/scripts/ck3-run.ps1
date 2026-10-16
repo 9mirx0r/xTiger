@@ -144,6 +144,10 @@ function Get-Confirmed {
 }
 
 $out = @("=== run $runId ===", "game: $exe", "args: $($args2 -join ' ')", "typing: $Typing")
+# Where the time goes, written to the report as "timing (s)": each phase of the run in order.
+$clock = [Diagnostics.Stopwatch]::StartNew()
+$phases = New-Object System.Collections.Generic.List[string]
+function Mark([string]$name) { $phases.Add("$name $([Math]::Round($clock.Elapsed.TotalSeconds, 1))"); $clock.Restart() }
 $sent = @(); $failure = $null
 $p = if ($Background) {
     Start-Process $exe -ArgumentList $args2 -WorkingDirectory (Split-Path $exe) -WindowStyle Minimized -PassThru
@@ -167,18 +171,23 @@ try {
         if (((Get-Date) - $t0).TotalSeconds -gt $LoadTimeout) { throw "load timeout after $LoadTimeout s (no '$ready' in game.log)" }
     }
     $out += "loaded after $([int]((Get-Date) - $t0).TotalSeconds) s"
-    # The loading screen stays up for a moment after the game state is ready.
+    Mark "game load"
+    # The loading screen stays up for a moment after the game state is ready. No log line says when it
+    # is gone: the map starts logging about 9 s after the state is ready, and keys typed 2 s after that
+    # were lost, so this stays a fixed wait.
     Start-Sleep 12
+    Mark "loading screen wait"
     if ($Background) {
         # Nothing is typed, so the game keeps running unseen while the mod's on_actions do their work.
         for ($s = 0; $s -lt $Settle -and -not $p.HasExited; $s++) { [CK3Input]::KeepMinimized($p.MainWindowHandle); Start-Sleep 1 }
         $out += "background run: waited $Settle s after loading, no input sent"
     } else {
-        [CK3Input]::SetForegroundWindow($p.MainWindowHandle) | Out-Null; Start-Sleep 1
+        [CK3Input]::SetForegroundWindow($p.MainWindowHandle) | Out-Null; Start-Sleep -Milliseconds 400
     }
     # Open the console once. The game can still be streaming assets, and keys typed before the
     # console takes text are lost (a run once lost the first three letters of a command).
-    if ($Cmd) { Send-Tap $p 0x29; Start-Sleep -Milliseconds 2000 }
+    Mark $(if ($Background) { "settle" } else { "focus" })
+    if ($Cmd) { Send-Tap $p 0x29; Start-Sleep -Milliseconds 2000; Mark "open console" }
     foreach ($c in $Cmd) {
         # Typing stops with an error when another window takes focus. The command was not sent then
         # (Enter is the last key), so it is safe to clear the line and type it again. A command that was
@@ -212,14 +221,17 @@ try {
         # Wait for the game to log the command, so a slow or dropped one is visible at once.
         $seen = $false; $until = (Get-Date).AddSeconds(8)
         do {
-            Start-Sleep -Milliseconds 1000
+            Start-Sleep -Milliseconds 250
             $seen = (Get-LoggedCount $c) -gt $before
         } while (-not $seen -and (Get-Date) -lt $until)
+        Mark "type + log wait: $(if ($c.Length -gt 24) { $c.Substring(0, 24) + '...' } else { $c })"
         if ($ShotDir) { Save-WindowShot $p (Join-Path $ShotDir (($c -replace '[^a-zA-Z0-9]','_') + ".png")) }
+        Mark "screenshot"
         $sent += $c; Write-Host ("sent: $c" + $(if ($seen) { " (confirmed)" } else { " (not logged yet)" }))
     }
     if ($Cmd) { Send-Tap $p 0x29; Start-Sleep -Milliseconds 400 }   # close the console
     if ($Shot) { Save-WindowShot $p $Shot; Write-Host "screenshot $Shot" }
+    Mark "close console + shot"
 } catch {
     $failure = $_.Exception.Message
     Write-Host "FAILED: $failure"
@@ -235,9 +247,10 @@ $deadline = (Get-Date).AddSeconds(15)
 do {
     $flags = Get-Confirmed
     if (-not ($flags -contains $false)) { break }
-    Start-Sleep 2
+    Start-Sleep -Milliseconds 500
 } while ((Get-Date) -lt $deadline -and -not $p.HasExited)
 $unconfirmed = $sent.Count -ne $Cmd.Count -or ($flags -contains $false)
+Mark "confirm in debug.log"
 $out += "commands sent: $($sent.Count) of $($Cmd.Count), run by the game: $(@($flags | Where-Object { $_ }).Count)"
 for ($i = 0; $i -lt $sent.Count; $i++) {
     $out += if ($flags[$i]) { "  ran      > $($sent[$i])" } else { "  unconfirmed > $($sent[$i])  (not in debug.log: mistyped, unknown, or a command the game does not log; check its output)" }
@@ -283,6 +296,8 @@ if (Test-Path $gameLog) {
     if ($hits.Count -gt 60) { $out += "... $($hits.Count - 60) more matching lines in $gameLog" }
 } else { $out += "(no game.log)" }
 if (Test-Path $archive) { $out += "previous logs moved to $archive" }
+Mark "read logs"
+$out += "timing (s): " + ($phases -join " | ")
 $out | Set-Content $Report -Encoding utf8; Write-Host "report $Report ($($out.Count) lines)"
 
 if ((-not $Keep -or $failure -or $unconfirmed) -and -not $p.HasExited) { Start-Sleep 2; Stop-Process -Id $p.Id -Force; Write-Host "game closed" }

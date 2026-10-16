@@ -1,5 +1,104 @@
 # Changelog
 
+## xTiger 1.6.1 alpha "Qizilbash"
+
+We are still working on speed, on what the validator can catch, and on making xTiger fit the way people
+actually mod. This release is a step on that road.
+
+- Faster: the tools that drive the game no longer wait fixed seconds, and a whole test set-up is one
+  call instead of many. We keep measuring and trimming, in the validator as well as in the game control.
+- A validator that finds more: we compare what the game logs when it loads a mod with what Tiger
+  reports, and every error Tiger missed becomes a new check. Each check was run over all of vanilla
+  first, so none of them reports anything in the base game.
+- Modding without keeping xTiger on screen: we are building it so that xTiger can run in the background,
+  watch a mod and hand you the result when you come back.
+- Next, planned and not part of this release: our own commands for reviewing and validating mods, and a
+  substantial improvement to updating deprecated mods to a newer game version.
+
+
+### The assistants
+
+- `ck3_keys` is much faster. A resident input helper now stays alive between calls, so a key press
+  takes about half a second instead of three, and the fixed one-second waits are gone: the game gets
+  `wait_ms` (300 by default) to react instead. If the helper cannot start, the old one-shot script is
+  used as before.
+- `ck3_keys` takes `steps`, a list of `{scancodes, text, wait_ms}` run in order in one call, so a
+  console command (open the console, type, press Enter) no longer needs three round trips. The
+  screenshot is taken after the last step. A failing step stops the call and says which one it was.
+- `ck3_keys` can wait for the game instead of for a fixed time. Give a step `wait_for`, a regular
+  expression, and it ends as soon as a matching line reaches the game's log (`debug` by default, `log`
+  picks another), and says which line. `wait_ms` is then the longest it waits (5 s by default); if the
+  line never comes, the call fails and still returns the screenshot. For a console command,
+  `Running console command: effect` confirms that the game ran it. The game buffers its logs and
+  writes them when it is busy, so a paused game that does nothing may hold the line back for a
+  minute: use it for steps that make the game work, or check the screenshot.
+- New tool `ck3_script` runs a list of effects on the player in an open game. It writes them to a file in the
+  game's `run` folder, types the console's `run` command for it, and waits until the game has run to the end of
+  the file (a `debug_log` marker it adds as the last line), so a test set-up (traits, gold, a title, then an event)
+  is one call instead of one console line each. It returns the script's own `debug_log` lines, and when the
+  game rejects the file, the `error.log` lines about it. The console's key is a toggle, so it looks at the
+  game's picture to see whether the console is open and presses it only when closed (also with the window covered
+  or minimized). The file is written with a BOM so the game does not warn on every run. A script is never sent
+  twice, because the game writes `debug.log` late and a missing line does not prove that it did not run.
+- New tool `ck3_cases` runs up to 25 effect scripts one after the other in the open game and reports, for each,
+  what it printed and which new errors it caused. It leaves out the game's noise: what it logs while it
+  describes effects (the tooltip pass) and the warnings it repeats on every run (an event target "used but
+  never set"), so what is left is what that case did wrong.
+- `ck3_script`, `ck3_cases` and the new `ck3_events` take `with`, scope fixtures such as `character:friend`,
+  `child:kid=7`, `courtier:c`, `title:t`, `faith:f` or `value:n=3`, set up before the effects so an event that
+  needs `scope:friend` gets one. The report notes how many lines of the file are fixtures.
+- New tool `ck3_events` fires events one after the other in the open game, by id or every event a mod
+  defines (`mod_path`, with `filter`, `skip` and `max` to page). When the game says an event target is
+  undefined, it makes a scope of that name (a character, child, title... as the name suggests) and fires
+  the event again. Each event comes back ok, silent (nothing logged, possibly a false trigger), ERRORS or
+  NEEDS SCOPES.
+- New tool `ck3_click` clicks the mouse in the open game at a fraction of the window's width and height,
+  taken from a screenshot, for what keys cannot reach (number keys do not pick event options; a click
+  does). It can wait for a log line like `ck3_keys`.
+- The tools that take a screenshot accept `shot_region` and `shot_scale`, to keep part of the window and
+  shrink it, so the picture costs the reader fewer tokens.
+- Documented: a game started by `ck3_run` picks up edits to events, scripted effects and localization (also new
+  files) within seconds, with no command, and logs syntax errors in the edited files at once.
+- `ck3_logs` takes `since`: `"end"` returns no lines and reports an offset, and passing that offset
+  back returns only what the game wrote in between (and a new offset). It reads only the new part of
+  the file, so it is cheap on a large log, and starts again from the top if the game restarted.
+- The `ck3_keys` screenshot no longer needs the game in front: it asks the window to paint itself, so it
+  is right when another window covers the game and does not take the focus. A minimized game, or a
+  picture that comes back black, still falls back to the old screen copy. A call with no keys at all
+  takes just a screenshot of the game as it is.
+- `ck3_run` checks the game's log for each console command it sent every quarter of a second instead
+  of every second, and gives focus back to the game in less time. The wait for the loading screen
+  stays fixed: no log line says when it is gone, and keys typed as soon as the map started logging
+  were lost.
+
+### The validator
+
+Eight checks for errors the game logs at start-up that Tiger used to miss. Each was checked against
+every vanilla definition first, so none of them reports anything in the base game.
+
+- A culture without `head_determination` is an error: the game logs it, and all 193 vanilla cultures have it.
+- A scheme without the localization `<scheme>_desc_general` is reported: all 37 vanilla schemes have it.
+- `ai_check_interval` next to `ai_goal = yes` in a decision is a warning (it was untidy): the game logs an
+  error and ignores the interval.
+- A regiment (`men_at_arms_types`) `icon` whose .dds is not uncompressed B8G8R8A8 is an error: the game
+  logs "Only B8G8R8A8_UNORM support so far" and shows no icon (all 81 vanilla icons are that format).
+  This looked at DXT files only at first; it now checks the exact pixel format and masks.
+- A portrait `dna_modifiers` `accessory` block with a `template` but none of `value`, `range` or
+  `accessory` is an error: the game logs "Need a value set" and ignores it. Vanilla uses `range` in most of
+  its 2200 blocks, which stays valid.
+- A portrait `dna_modifiers` `accessory` block that names an `accessory` which is not an entry of the gene
+  `template` is an error: the game logs "Can't find accessory 'X' in gene template Y". With a `type` only
+  that body is searched (following `female = male` style references); `empty` does not count as an
+  accessory. Checked against all 892 such blocks in vanilla: none is reported.
+- A history character without any `birth` event is an error: the game logs "No birth date for character".
+  For a `history_override_priority` override the info says that the date of birth is one of the base
+  attributes the override replaces, so the birth has to be repeated. All 73450 vanilla characters have one.
+- A `history_override_priority` character now needs `name` like any other: the override replaces all base
+  attributes, and one without a name makes the game log `Missing loc for name ''` when it is instantiated.
+  All vanilla overrides have one.
+- The dds lookup used backslash paths on Windows, so any check that finds a texture by its script path
+  (including the frame check for game concepts) silently found nothing there. Paths are now normalized.
+
 ## xTiger 1.6.0 alpha
 
 A big step for the app and the assistants: a new Home screen, a results summary, following a mod's

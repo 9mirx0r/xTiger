@@ -76,10 +76,40 @@ an error, never quietly ignored.
 | `ck3_run` | Starts CK3, loads a bookmark, types console commands, takes a screenshot, reports `error.log` and closes the game. With `playset`, the mods of that playset are loaded too |
 | `ck3_run_start` | The same play-test as `ck3_run`, started as a job: it answers at once with a job id and the game keeps running in the server, for runs longer than the client is willing to wait (a long list of commands, `load_timeout` of 480) |
 | `ck3_job` | Reads a job: `status` (state, phase, latest progress line, elapsed time, commands typed; `wait` holds the call up to 30 seconds), `result` (the report and screenshot), `cancel` or `list`. Jobs are kept on disk |
-| `ck3_keys` | Sends keys or text to a running game and returns a screenshot |
-| `ck3_logs` | Reads the start or end of a CK3 log, optionally filtered by a regex |
+| `ck3_keys` | Sends keys or text to a running game, as one action or a list of `steps`, and returns a screenshot (also when another window covers the game; no keys means a screenshot only). A resident helper keeps each step to a fraction of a second, and `wait_for` ends a step as soon as a matching line reaches the game's log |
+| `ck3_script` | Runs a list of effects on the player in an open game: writes them to the `run` folder, types the console's `run` for them and waits for the game to finish the file. Returns the script's `debug_log` lines, or the `error.log` lines when the game rejects it. `with` sets up scope fixtures first (see below) |
+| `ck3_cases` | Runs up to 25 effect scripts one after the other in an open game and says for each what it printed and which new errors it caused. The game's noise (what it logs while it describes effects, warnings it repeats on every run) is left out, so what is left is what the case did wrong. Stops at the first case that does not finish |
+| `ck3_events` | Fires events one after the other in an open game, by id or by sweeping the events a mod defines (`mod_path`, `filter`, `skip`, `max`). When the game says an event needs a scope that is not set, it makes one by the scope's name and fires the event again. Says per event: ok, silent (nothing logged), ERRORS or NEEDS SCOPES. The events really run in the open game: use a test game |
+| `ck3_click` | Clicks the mouse in an open game at a point given as a fraction of the window (from a screenshot), for what keys cannot reach: an event option, a button |
+| `ck3_logs` | Reads the start or end of a CK3 log, optionally filtered by a regex. `since` returns only what the game wrote after an earlier read (`"end"` sets the marker) |
 | `ck3_vanilla` | Searches the base game's files: where a trigger, effect, event, decision, GUI type or localization key is defined, or the lines that match a regex |
 | `ck3_docs` | Looks up the game's own script docs: triggers, effects, event targets, `on_actions`, modifiers, scopes and custom localization |
+
+**Fixtures.** `ck3_script`, `ck3_cases` and `ck3_events` take `with`, a list of `kind:name` (or
+`kind:name=value`) that set up scopes before the effects, so an event that needs `scope:friend` gets one:
+`character:N` (a new character, age 30; `=age` sets it), `courtier:N` (employed by the player, age 30),
+`child:N` (the player's child, age 5), `self:N` (the player), `capital:N`, `county:N`, `title:N`,
+`house:N`, `dynasty:N`, `culture:N`, `faith:N` (the player's own) and `value:N=number` (a saved
+number). Each run of a character fixture creates a character in the game, so use a test game. The
+fixtures sit in the first lines of the file, so the line numbers the game reports are shifted by that
+many; the report says so.
+
+**Screenshots.** The tools that take a screenshot (`ck3_keys`, `ck3_click`, `ck3_script`, `ck3_cases`,
+`ck3_events`) accept `shot_region` (`[left, top, right, bottom]`, fractions of the window) and
+`shot_scale` (0.1 to 1) to keep only the part that matters and shrink it. At `shot_scale` 0.4 a whole
+window is still readable, at a fraction of the cost.
+
+**What a sweep cannot tell.** The game logs many errors once, so an event that fails the first time can come
+back clean the second time in the same game: restart the game to repeat a check. An event whose
+window opens is reported as silent unless it logs something: look at the window with `ck3_keys` and pick an
+option with `ck3_click`. Real run on a flavour mod: 57 events in four calls, the scopes that its event texts
+needed were made on their own.
+
+**Editing a mod while the game runs.** With the game started by `ck3_run` (debug mode) and the mod loaded from its
+folder, the game picks up edits by itself within a few seconds: events (including new events in an
+existing file and new files), scripted effects and localization. No console command is needed (`reload`
+only covers assets), and syntax errors in the edited files reach `error.log` within seconds. So the
+loop is: edit, wait a moment, `ck3_events` or `ck3_script`, read the errors.
 
 There are also two prompts:
 

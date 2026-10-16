@@ -8,8 +8,9 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use crate::docs::{self, Lookup};
-use crate::game::{self, LOGS, ReadLog, RunGame};
+use crate::game::{self, LOGS, ReadLog, RunGame, Shot, Since};
 use crate::gap;
+use crate::helper::Step;
 use crate::jobs;
 use crate::journal::{self, ModRef, Tally};
 use crate::ledger;
@@ -21,6 +22,7 @@ use crate::overrides;
 use crate::projects;
 use crate::requests::{self, Status};
 use crate::runs::{self, Counts, Filter, GROUPS, Options, QueryResult, Row, SEVERITIES, Summary};
+use crate::script;
 use crate::vanilla::{self, Search};
 use crate::{playsets, sessions};
 
@@ -189,7 +191,47 @@ fn run_params() -> Vec<(&'static str, Value)> {
     ]
 }
 
+/// The tools that take a screenshot of the game window, and so a `shot_region` and `shot_scale`.
+const SHOT_TOOLS: [&str; 5] = ["ck3_keys", "ck3_click", "ck3_script", "ck3_cases", "ck3_events"];
+
+fn shot_params() -> [(&'static str, Value); 2] {
+    [
+        (
+            "shot_region",
+            json!({
+                "type": "array",
+                "items": {"type": "number", "minimum": 0, "maximum": 1},
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "Keep only this part of the screenshot: [left, top, right, bottom], each a fraction of the window's width or height from 0 to 1. [0, 0.5, 0.5, 1] is the lower left quarter, where the console is. A smaller picture is cheaper to read.",
+            }),
+        ),
+        (
+            "shot_scale",
+            json!({
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 1,
+                "default": 1,
+                "description": "Shrink the screenshot to this fraction of its size (after shot_region). 0.5 is a quarter of the pixels.",
+            }),
+        ),
+    ]
+}
+
 fn tools() -> Vec<Tool> {
+    let mut list = base_tools();
+    for tool in &mut list {
+        if SHOT_TOOLS.contains(&tool.name)
+            && let Some(at) = tool.params.iter().position(|(name, _)| *name == "screenshot")
+        {
+            tool.params.splice((at + 1)..=at, shot_params());
+        }
+    }
+    list
+}
+
+fn base_tools() -> Vec<Tool> {
     vec![
         Tool {
             name: "xtiger_status",
@@ -393,9 +435,18 @@ fn tools() -> Vec<Tool> {
             name: "ck3_keys",
             title: "Send keys to CK3",
             description: "Send keys or text to a CK3 window that is already open, for example after ck3_run with \
-                          keep_open. scancodes are sent first, then text is typed. To run a console command: \
-                          scancodes \"29\" opens the console, text \"event my_mod.0001\", then scancodes \"1C\" \
-                          in a second call presses Enter. Windows only.",
+                          keep_open. scancodes are sent first, then text is typed. To run a console command in \
+                          one call, give steps: [{\"scancodes\": \"29\"}, {\"text\": \"event my_mod.0001\"}, \
+                          {\"scancodes\": \"1C\", \"wait_for\": \"Running console command: event\"}]. Each step \
+                          takes a fraction of a second (a resident helper keeps the input code loaded), so prefer \
+                          one call with steps over several calls. Instead of a fixed wait, give wait_for: a \
+                          regular expression for a line the game writes to its log (debug by default) after the \
+                          keys; the step ends as soon as it shows, and fails if it does not within wait_ms. \
+                          To run many effects with one console line, write them (plain effects, no `effect` \
+                          prefix; a `debug_log = \"...\"` line leaves a marker in debug.log) to a file in the \
+                          run folder of the game's user folder, and type `run <file>`. The console key (29) \
+                          opens the console, but typed again while it is open it writes a `|` into the line. \
+                          Windows only.",
             params: vec![
                 (
                     "scancodes",
@@ -405,7 +456,240 @@ fn tools() -> Vec<Tool> {
                     ),
                 ),
                 ("text", string("Text typed as Unicode characters, after the scancodes.")),
+                (
+                    "steps",
+                    json!({
+                        "type": "array",
+                        "description": "Several actions in order, instead of scancodes and text. The screenshot is taken after the last one.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "scancodes": {"type": "string", "description": "As above."},
+                                "text": {"type": "string", "description": "As above."},
+                                "wait_ms": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "description": format!("Milliseconds to wait after this step, for the game to react (default {DEFAULT_WAIT_MS}; {DEFAULT_LOG_WAIT_MS} with wait_for, where it is the longest wait). Raise it before a screenshot of something slow, such as a window opening.")
+                                },
+                                "wait_for": {"type": "string", "description": "As below."},
+                                "log": {"type": "string", "enum": LOGS, "description": "As below."}
+                            }
+                        }
+                    }),
+                ),
+                (
+                    "wait_ms",
+                    integer(
+                        "Milliseconds to wait after scancodes and text, for the game to react (not for steps, which each have their own). With wait_for, the longest wait.",
+                        DEFAULT_WAIT_MS,
+                        0,
+                    ),
+                ),
+                (
+                    "wait_for",
+                    string(
+                        "Regular expression (case-insensitive). Wait until a line that matches it is written to the log after the keys, instead of a fixed time. For a console command, \"Running console command: effect\" confirms the game ran it; the game does not log every command. The game buffers its logs and writes them when it is busy: a paused game that does nothing can hold a line back for a minute or more, so use it for steps that make the game work, such as an event or unpausing.",
+                    ),
+                ),
+                ("log", choice("The log wait_for watches.", &LOGS)),
+                (
+                    "screenshot",
+                    boolean(
+                        "Take a screenshot of the game window afterwards. It works while another window covers the game and does not take the focus; give no keys at all for a screenshot of the game as it is (a minimized game is restored first).",
+                        true,
+                    ),
+                ),
+            ],
+            required: &[],
+            kind: GAME,
+        },
+        Tool {
+            name: "ck3_click",
+            title: "Click in CK3",
+            description: "Click the mouse in a CK3 window that is already open, at a point given as a fraction \
+                          of the window: x from 0 (left edge) to 1 (right), y from 0 (top) to 1 (bottom). Take \
+                          the point from a screenshot: its pixel column divided by the picture's width, its \
+                          pixel row divided by its height (the screenshot of the whole window, before \
+                          shot_region and shot_scale). Use it for what keys cannot reach, such as an event \
+                          option or a button. The window is brought to the front and the mouse moves there. \
+                          Windows only.",
+            params: vec![
+                (
+                    "x",
+                    json!({"type": "number", "minimum": 0, "maximum": 1, "description": "Horizontal position, from 0 (left) to 1 (right)."}),
+                ),
+                (
+                    "y",
+                    json!({"type": "number", "minimum": 0, "maximum": 1, "description": "Vertical position, from 0 (top) to 1 (bottom)."}),
+                ),
+                ("button", choice("Which mouse button.", &["left", "right"])),
+                (
+                    "wait_ms",
+                    integer(
+                        "Milliseconds to wait after the click, for the game to react (with wait_for, the longest wait).",
+                        DEFAULT_WAIT_MS,
+                        0,
+                    ),
+                ),
+                (
+                    "wait_for",
+                    string(
+                        "As for ck3_keys: wait until a matching line reaches the log after the click.",
+                    ),
+                ),
+                ("log", choice("The log wait_for watches.", &LOGS)),
                 ("screenshot", boolean("Take a screenshot of the game window afterwards.", true)),
+            ],
+            required: &["x", "y"],
+            kind: GAME,
+        },
+        Tool {
+            name: "ck3_script",
+            title: "Run an effect script in CK3",
+            description: "Run a script of effects on the player character in a CK3 window that is already open. \
+                          It writes the effects to a file in the run folder of the game's user folder, types the \
+                          console's `run` command for it, and waits until the game has run to the end of the \
+                          file. Use it instead of ck3_keys for anything longer than one console line, such as \
+                          setting up a test: give a character a trait, gold and a title, then fire an event. \
+                          The script holds plain effects, one or more per line, as in an event's immediate \
+                          block: `add_gold = 500`, `trigger_event = my_mod.0001`, `debug_log = \"state ok\"`. \
+                          Not console lines: no `effect` prefix, and console-only commands (yesman, gold) do \
+                          not work. A `debug_log` line is the way to read a value back: the game writes it to \
+                          debug.log at once, and it is returned. The scope is the player character. If the file \
+                          has an error, the game runs none of it and the error.log lines about it are returned. \
+                          The tool finds out whether the console is open and never sends a script twice: if \
+                          it reports a failure, check the game before trying again. Windows only.",
+            params: vec![
+                (
+                    "effects",
+                    string(
+                        "The effects to run, as the text of the file. Up to 64 KB; no line starts with `effect `.",
+                    ),
+                ),
+                (
+                    "wait_ms",
+                    integer(
+                        "The longest wait, in milliseconds, for the game to run the file.",
+                        DEFAULT_LOG_WAIT_MS,
+                        0,
+                    ),
+                ),
+                (
+                    "close_console",
+                    boolean(
+                        "Press the console key again at the end, to close the console. Left open, the screenshot shows what the console printed.",
+                        false,
+                    ),
+                ),
+                (
+                    "with",
+                    fixtures_param(
+                        "Fixtures to set up before the effects, so an event that needs a scope gets it: `character:friend` makes a character and saves it as scope:friend, which the event fired by trigger_event then sees.",
+                    ),
+                ),
+                ("screenshot", boolean("Take a screenshot of the game window afterwards.", true)),
+            ],
+            required: &["effects"],
+            kind: GAME,
+        },
+        Tool {
+            name: "ck3_cases",
+            title: "Run several effect scripts in CK3",
+            description: "Run a list of effect scripts, one after the other, in a CK3 window that is already                           open, and say for each what it printed and which errors it caused. Each case is run                           like a ck3_script (same effects, same rules), but the error.log lines that are only                           the game's noise are left out: what the game logs while it describes the effects, and                           the warnings about event targets that every run logs again. What is left is what that                           case did wrong. Use it to try many variants at once: which of these twenty effects or                           triggers compile, or what a value reads back for each setup. It stops at the first case                           that does not finish. About three seconds a case; up to 25 cases. Windows only.",
+            params: vec![
+                (
+                    "cases",
+                    json!({
+                        "type": "array",
+                        "description": "The scripts to run. A case is an object with the effects and an optional name, or just the effects as text.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string", "description": "What the case is called in the report (default: its number)."},
+                                "effects": {"type": "string", "description": "The effects of the case, as for ck3_script."},
+                                "with": {"type": "array", "items": {"type": "string"}, "description": "Fixtures for this case, after the shared ones."}
+                            },
+                            "required": ["effects"]
+                        }
+                    }),
+                ),
+                (
+                    "wait_ms",
+                    integer(
+                        "The longest wait, in milliseconds, for the game to run each case.",
+                        DEFAULT_LOG_WAIT_MS,
+                        0,
+                    ),
+                ),
+                (
+                    "close_console",
+                    boolean(
+                        "Press the console key again after the last case, to close the console.",
+                        true,
+                    ),
+                ),
+                (
+                    "with",
+                    fixtures_param(
+                        "Fixtures set up before every case, as for ck3_script. A case can add its own.",
+                    ),
+                ),
+                (
+                    "screenshot",
+                    boolean("Take a screenshot of the game window after the last case.", false),
+                ),
+            ],
+            required: &["cases"],
+            kind: GAME,
+        },
+        Tool {
+            name: "ck3_events",
+            title: "Fire events in CK3",
+            description: "Fire events one after the other in a CK3 window that is already open, and say for \
+                          each what it printed and which errors it caused. Give the ids, or a mod and the \
+                          sweep takes the events it defines (a regex narrows them, skip and max page through). \
+                          When the game says an event needs a scope that is not set (`scope:friend`), the \
+                          tool makes one by the scope's name (a character, or a child, a title, a faith... \
+                          as the name suggests) and fires the event again, and reports the fixtures it added. \
+                          States: ok (it logged something, no errors), silent (nothing logged and no error: \
+                          the event may print nothing, or its trigger was false), ERRORS, NEEDS SCOPES (a \
+                          scope the guess could not provide), NOT FINISHED. The events really run, with their \
+                          effects, on the player of the open game: use a test game. About three seconds an \
+                          event; up to 25 per call. Windows only.",
+            params: vec![
+                ("events", strings("Event ids to fire, such as `my_mod.0001`.")),
+                (
+                    "mod_path",
+                    string(
+                        "A mod to take the events from (name, folder or .mod file) when events is empty.",
+                    ),
+                ),
+                ("filter", string("With mod_path: only the event ids that match this regex.")),
+                (
+                    "skip",
+                    integer("With mod_path: events to skip from the start of the list.", 0, 0),
+                ),
+                ("max", integer("With mod_path: the most events to fire in this call.", 20, 1)),
+                (
+                    "wait_ms",
+                    integer(
+                        "The longest wait, in milliseconds, for the game to run each event.",
+                        DEFAULT_LOG_WAIT_MS,
+                        0,
+                    ),
+                ),
+                (
+                    "close_console",
+                    boolean(
+                        "Press the console key again after the last event, to close the console.",
+                        true,
+                    ),
+                ),
+                ("with", fixtures_param("Fixtures set up before every event, as for ck3_script.")),
+                (
+                    "screenshot",
+                    boolean("Take a screenshot of the game window after the last event.", false),
+                ),
             ],
             required: &[],
             kind: GAME,
@@ -427,6 +711,13 @@ fn tools() -> Vec<Tool> {
                     boolean("Without dedupe, return the last lines instead of the first.", false),
                 ),
                 ("pattern", string("Keep only lines matching this case-insensitive regex.")),
+                (
+                    "since",
+                    json!({
+                        "type": ["integer", "string"],
+                        "description": "Read only what the game wrote after a point, to see what an action did: the text \"end\" returns no lines, only the offset the log ends at (a marker to set before the action); a number returns the lines written after that offset. Every read with since ends with \"offset N\", the value for the next call. A line the game is still writing is left for the next read."
+                    }),
+                ),
             ],
             required: &[],
             kind: READ_ONLY,
@@ -856,6 +1147,186 @@ impl Args<'_> {
             Some(_) => Err(format!("{name} must be a list of strings")),
         }
     }
+}
+
+/// How long the game gets to react to keys before the next step or the screenshot.
+const DEFAULT_WAIT_MS: u64 = 300;
+/// The longest a step with `wait_for` waits for its log line when it does not say.
+const DEFAULT_LOG_WAIT_MS: u64 = 5_000;
+/// The longest wait of one step, so a typo does not freeze the helper for minutes.
+const MAX_WAIT_MS: u64 = 60_000;
+const MAX_STEPS: usize = 50;
+
+/// `since` of `ck3_logs`: the text "end", or an offset as a number or as the digits of one.
+fn log_since(value: Option<&Value>) -> Result<Option<Since>, String> {
+    let bad = || "since must be \"end\" or an offset, a whole number".to_owned();
+    match value {
+        None => Ok(None),
+        Some(Value::String(text)) if text.trim().eq_ignore_ascii_case("end") => {
+            Ok(Some(Since::End))
+        }
+        Some(Value::String(text)) => {
+            text.trim().parse().map(|at| Some(Since::Offset(at))).map_err(|_| bad())
+        }
+        Some(Value::Number(n)) => n.as_u64().map(|at| Some(Since::Offset(at))).ok_or_else(bad),
+        Some(_) => Err(bad()),
+    }
+}
+
+/// One step of a `ck3_keys` call, read from the call itself or from an item of `steps`.
+fn key_step(fields: &Args) -> Result<Step, String> {
+    let wait_for = fields.string("wait_for", "")?;
+    let log = fields.string("log", "debug")?;
+    if !LOGS.contains(&log.as_str()) {
+        return Err(format!("log must be one of {}", LOGS.join(", ")));
+    }
+    let default_wait = if wait_for.is_empty() { DEFAULT_WAIT_MS } else { DEFAULT_LOG_WAIT_MS };
+    Ok(Step {
+        scancodes: fields.string("scancodes", "")?,
+        text: fields.string("text", "")?,
+        wait_ms: fields.integer("wait_ms", default_wait)?.min(MAX_WAIT_MS),
+        log,
+        wait_for,
+    })
+}
+
+/// A number argument; missing is `None`.
+fn number_of(arguments: &Map<String, Value>, key: &str) -> Result<Option<f64>, String> {
+    match arguments.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(n)) => {
+            n.as_f64().map(Some).ok_or_else(|| format!("{key} must be a number"))
+        }
+        Some(Value::String(text)) => {
+            text.trim().parse().map(Some).map_err(|_| format!("{key} must be a number"))
+        }
+        Some(_) => Err(format!("{key} must be a number")),
+    }
+}
+
+/// The screenshot a call asks for: `screenshot` (taken or not, by default `take`), `shot_region` and `shot_scale`.
+fn shot_of(arguments: &Map<String, Value>, take: bool) -> Result<Shot, String> {
+    let take = Args(arguments).boolean("screenshot", take)?;
+    let region = match arguments.get("shot_region") {
+        None | Some(Value::Null) => None,
+        Some(Value::Array(items)) => Some(
+            items
+                .iter()
+                .map(|item| {
+                    item.as_f64().ok_or_else(|| "shot_region must be a list of numbers".to_owned())
+                })
+                .collect::<Result<Vec<f64>, String>>()?,
+        ),
+        Some(_) => return Err("shot_region must be a list of four numbers".to_owned()),
+    };
+    Shot::from_arguments(take, region.as_deref(), number_of(arguments, "shot_scale")?)
+}
+
+/// A list of strings argument; missing is an empty list.
+fn strings_of(arguments: &Map<String, Value>, key: &str) -> Result<Vec<String>, String> {
+    match arguments.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|item| {
+                item.as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| format!("{key} must be a list of text"))
+            })
+            .collect(),
+        Some(_) => Err(format!("{key} must be a list of text")),
+    }
+}
+
+/// The `with` parameter of the tools that run scripts.
+fn fixtures_param(description: &str) -> Value {
+    strings(&format!(
+        "{description} Each is kind:name or kind:name=value: {}.",
+        script::FIXTURE_HELP
+    ))
+}
+
+/// The cases of `ck3_cases`: objects with `effects` and a `name`, or bare effect texts.
+fn cases_of(
+    arguments: &Map<String, Value>,
+    shared: &[String],
+) -> Result<Vec<script::Case>, String> {
+    let Some(Value::Array(items)) = arguments.get("cases") else {
+        return Err("cases must be a list of cases.".into());
+    };
+    items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let n = index + 1;
+            let mut with = shared.to_vec();
+            let (name, effects) = match item {
+                Value::String(effects) => (None, Some(effects.as_str())),
+                Value::Object(fields) => {
+                    with.extend(
+                        strings_of(fields, "with").map_err(|why| format!("case {n}: {why}"))?,
+                    );
+                    (
+                        fields.get("name").and_then(Value::as_str),
+                        fields.get("effects").and_then(Value::as_str),
+                    )
+                }
+                _ => (None, None),
+            };
+            let Some(effects) = effects else {
+                return Err(format!("case {n} needs effects (text)."));
+            };
+            let name = name.map(str::trim).filter(|name| !name.is_empty());
+            Ok(script::Case {
+                name: name.map_or_else(|| format!("case {n}"), str::to_owned),
+                effects: effects.to_owned(),
+                with,
+            })
+        })
+        .collect()
+}
+
+/// The steps of a `ck3_keys` call: the `steps` list, or the single step of its own fields. A call with
+/// no keys at all is a request for a screenshot of the game as it is, which sends nothing.
+fn key_steps(arguments: &Map<String, Value>, screenshot: bool) -> Result<Vec<Step>, String> {
+    let listed = match arguments.get("steps") {
+        None | Some(Value::Null) => None,
+        Some(Value::Array(items)) if items.is_empty() => None,
+        Some(Value::Array(items)) => Some(items),
+        Some(_) => return Err("steps must be a list of objects".into()),
+    };
+    let own = key_step(&Args(arguments))?;
+    let has_own = !own.scancodes.trim().is_empty() || !own.text.is_empty();
+    let Some(items) = listed else {
+        if !has_own {
+            if !screenshot {
+                return Err("Give steps, or scancodes, text or both (or leave them out for a screenshot only).".into());
+            }
+            return Ok(vec![Step { wait_ms: 0, ..own }]);
+        }
+        return Ok(vec![own]);
+    };
+    if has_own {
+        return Err("Give either steps or scancodes and text, not both.".into());
+    }
+    if items.len() > MAX_STEPS {
+        return Err(format!("At most {MAX_STEPS} steps in one call."));
+    }
+    items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let n = index + 1;
+            let Value::Object(fields) = item else {
+                return Err(format!("step {n} must be an object with scancodes, text and wait_ms"));
+            };
+            let step = key_step(&Args(fields)).map_err(|e| format!("step {n}: {e}"))?;
+            if step.scancodes.trim().is_empty() && step.text.is_empty() {
+                return Err(format!("step {n} has neither scancodes nor text"));
+            }
+            Ok(step)
+        })
+        .collect()
 }
 
 fn usize_of(n: u64) -> usize {
@@ -1602,19 +2073,145 @@ pub fn call(
         }
         "ck3_job" => job_tool(&args, loc, ctx),
         "ck3_keys" => {
-            let scancodes = args.string("scancodes", "")?;
-            let text = args.string("text", "")?;
-            if scancodes.trim().is_empty() && text.is_empty() {
-                return Err("Give scancodes, text or both.".into());
+            let screenshot = shot_of(arguments, true)?;
+            let steps = key_steps(arguments, screenshot.take)?;
+            let (out, shot) = game::send_keys(loc, &steps, screenshot, ctx.cancelled)?;
+            let summary = if shot.is_some() { "Keys sent, screenshot taken" } else { "Keys sent" };
+            Ok(Done::new(
+                std::iter::once(Content::Text(out)).chain(shot.map(Content::Image)).collect(),
+                summary,
+            ))
+        }
+        "ck3_click" => {
+            let (Some(x), Some(y)) = (number_of(arguments, "x")?, number_of(arguments, "y")?)
+            else {
+                return Err("Give x and y, each from 0 to 1.".to_owned().into());
+            };
+            if !(0.0..=1.0).contains(&x) || !(0.0..=1.0).contains(&y) {
+                return Err("x and y are fractions of the window, from 0 to 1.".to_owned().into());
             }
-            let (out, shot) = game::send_keys(
+            let button = args.string("button", "left")?;
+            if button != "left" && button != "right" {
+                return Err("button must be left or right.".to_owned().into());
+            }
+            let mut step = key_step(&args)?;
+            step.scancodes =
+                format!("?click:{x:.4}:{y:.4}{}", if button == "right" { ":right" } else { "" });
+            let (out, shot) =
+                game::send_keys(loc, &[step], shot_of(arguments, true)?, ctx.cancelled)?;
+            let summary = if shot.is_some() { "Clicked, screenshot taken" } else { "Clicked" };
+            Ok(Done::new(
+                std::iter::once(Content::Text(out)).chain(shot.map(Content::Image)).collect(),
+                summary,
+            ))
+        }
+        "ck3_script" => {
+            let effects = args.string("effects", "")?;
+            let wait_ms = args.integer("wait_ms", DEFAULT_LOG_WAIT_MS)?.min(MAX_WAIT_MS);
+            let close_console = args.boolean("close_console", false)?;
+            let screenshot = shot_of(arguments, true)?;
+            let with = strings_of(arguments, "with")?;
+            let (out, shot) = script::run_script(
                 loc,
-                &scancodes,
-                &text,
-                args.boolean("screenshot", true)?,
+                &effects,
+                &with,
+                wait_ms,
+                close_console,
+                screenshot,
                 ctx.cancelled,
             )?;
-            let summary = if shot.is_some() { "Keys sent, screenshot taken" } else { "Keys sent" };
+            let summary = out.lines().next().unwrap_or_default().to_owned();
+            Ok(Done::new(
+                std::iter::once(Content::Text(out)).chain(shot.map(Content::Image)).collect(),
+                summary,
+            ))
+        }
+        "ck3_cases" => {
+            let cases = cases_of(arguments, &strings_of(arguments, "with")?)?;
+            let wait_ms = args.integer("wait_ms", DEFAULT_LOG_WAIT_MS)?.min(MAX_WAIT_MS);
+            let close_console = args.boolean("close_console", true)?;
+            let screenshot = shot_of(arguments, false)?;
+            let (out, shot) =
+                script::run_cases(loc, &cases, wait_ms, close_console, screenshot, ctx.cancelled)?;
+            let summary = out.lines().next().unwrap_or_default().to_owned();
+            Ok(Done::new(
+                std::iter::once(Content::Text(out)).chain(shot.map(Content::Image)).collect(),
+                summary,
+            ))
+        }
+        "ck3_events" => {
+            let mut events = strings_of(arguments, "events")?;
+            let mut header = String::new();
+            if events.is_empty() {
+                let wanted = args.string("mod_path", "")?;
+                if wanted.trim().is_empty() {
+                    return Err("Give events (ids to fire) or mod_path (a mod to sweep)."
+                        .to_owned()
+                        .into());
+                }
+                let mods = all_mods(loc);
+                let mod_file = mods::resolve(&wanted, &mods)?;
+                let info = mods::describe(&mod_file)
+                    .ok_or_else(|| format!("Cannot read {}.", mod_file.display()))?;
+                let pattern = args.string("filter", "")?;
+                let filter = if pattern.trim().is_empty() {
+                    None
+                } else {
+                    Some(
+                        regex::Regex::new(pattern.trim())
+                            .map_err(|why| format!("filter is not a valid regex: {why}"))?,
+                    )
+                };
+                let all: Vec<String> = script::mod_events(&info.dir)
+                    .into_iter()
+                    .map(|(id, _)| id)
+                    .filter(|id| filter.as_ref().is_none_or(|re| re.is_match(id)))
+                    .collect();
+                let skip = usize_of(args.integer("skip", 0)?);
+                let max = usize_of(args.integer("max", 20)?).clamp(1, script::MAX_CASES);
+                events = all.iter().skip(skip).take(max).cloned().collect();
+                if events.is_empty() {
+                    return Err(format!(
+                        "{} defines {} matching events; none after skip={skip}.",
+                        info.name,
+                        all.len()
+                    )
+                    .into());
+                }
+                let _ = writeln!(
+                    header,
+                    "Events {}-{} of {} in {}{}.",
+                    skip + 1,
+                    skip + events.len(),
+                    all.len(),
+                    info.name,
+                    if skip + events.len() < all.len() {
+                        format!(" (skip={} for the next ones)", skip + events.len())
+                    } else {
+                        String::new()
+                    }
+                );
+            }
+            let wait_ms = args.integer("wait_ms", DEFAULT_LOG_WAIT_MS)?.min(MAX_WAIT_MS);
+            let close_console = args.boolean("close_console", true)?;
+            let screenshot = shot_of(arguments, false)?;
+            let with = strings_of(arguments, "with")?;
+            let (out, shot) = script::run_events(
+                loc,
+                &events,
+                &with,
+                wait_ms,
+                close_console,
+                screenshot,
+                ctx.cancelled,
+            )
+            .map(|(out, shot)| (format!("{header}{out}"), shot))
+            .map_err(|why| format!("{header}{why}"))?;
+            let summary = out
+                .lines()
+                .find(|line| line.contains(" events fired"))
+                .unwrap_or_default()
+                .to_owned();
             Ok(Done::new(
                 std::iter::once(Content::Text(out)).chain(shot.map(Content::Image)).collect(),
                 summary,
@@ -1627,6 +2224,7 @@ pub fn call(
                 dedupe: args.boolean("dedupe", true)?,
                 tail: args.boolean("tail", false)?,
                 pattern: &args.string("pattern", "")?,
+                since: log_since(args.get("since"))?,
             };
             let log = game::read_log(&loc.user_dir, &read)?;
             let first = log.lines().next().unwrap_or_default().to_owned();
@@ -1933,7 +2531,7 @@ mod tests {
     fn every_tool_is_listed_with_a_schema() {
         let list = list();
         let tools = list["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 22);
+        assert_eq!(tools.len(), 26);
         for tool in tools {
             assert_eq!(tool["inputSchema"]["type"], "object");
             assert!(tool["description"].as_str().unwrap().len() > 40);
@@ -2104,5 +2702,82 @@ mod tests {
         let err = run("ck3_run_start", &json!({"commands": ["a\nb"]}), &loc).unwrap_err();
         assert!(matches!(err, CallError::Failed(_)));
         assert_eq!(text(run("ck3_job", &json!({"action": "list"}), &loc)), "[]");
+    }
+
+    #[test]
+    fn keys_come_as_one_step_or_a_list_of_steps() {
+        let single = keys(&json!({"scancodes": " 29 "})).unwrap();
+        assert_eq!(single.len(), 1);
+        assert_eq!((single[0].scancodes.as_str(), single[0].wait_ms), (" 29 ", DEFAULT_WAIT_MS));
+        assert_eq!((single[0].log.as_str(), single[0].wait_for.as_str()), ("debug", ""));
+        let list = json!({"steps": [{"scancodes": "29"}, {"text": "event a.1"}, {"scancodes": "1C", "wait_ms": 1500}]});
+        let steps = keys(&list).unwrap();
+        assert_eq!(steps.len(), 3);
+        assert_eq!((steps[0].wait_ms, steps[2].wait_ms), (DEFAULT_WAIT_MS, 1500));
+        assert_eq!(steps[1].text, "event a.1");
+        // An empty list falls back to the single step.
+        assert!(keys(&json!({"steps": []})).is_err());
+        assert_eq!(keys(&json!({"steps": [], "scancodes": "01"})).unwrap().len(), 1);
+        // A wait that is too long is capped, not obeyed.
+        let long = json!({"steps": [{"scancodes": "01", "wait_ms": 10_000_000}]});
+        assert_eq!(keys(&long).unwrap()[0].wait_ms, MAX_WAIT_MS);
+    }
+
+    #[test]
+    fn since_is_the_word_end_or_an_offset() {
+        assert_eq!(log_since(None), Ok(None));
+        assert_eq!(log_since(Some(&json!("End"))), Ok(Some(Since::End)));
+        assert_eq!(log_since(Some(&json!(120))), Ok(Some(Since::Offset(120))));
+        assert_eq!(log_since(Some(&json!(" 7 "))), Ok(Some(Since::Offset(7))));
+        for bad in [json!(-1), json!("later"), json!(1.5), json!(true)] {
+            assert!(log_since(Some(&bad)).unwrap_err().contains("offset"), "{bad}");
+        }
+    }
+
+    #[test]
+    fn waiting_for_a_log_line_gets_a_longer_default_wait() {
+        let one = keys(&json!({"scancodes": "1C", "wait_for": "Running console command"})).unwrap();
+        assert_eq!(one[0].wait_for, "Running console command");
+        assert_eq!((one[0].wait_ms, one[0].log.as_str()), (DEFAULT_LOG_WAIT_MS, "debug"));
+        let own = json!({"scancodes": "1C", "wait_for": "x", "wait_ms": 800, "log": "game"});
+        let own = keys(&own).unwrap();
+        assert_eq!((own[0].wait_ms, own[0].log.as_str()), (800, "game"));
+        let list = json!({"steps": [{"text": "a"}, {"scancodes": "1C", "wait_for": "ran"}]});
+        let steps = keys(&list).unwrap();
+        assert_eq!((steps[0].wait_ms, steps[1].wait_ms), (DEFAULT_WAIT_MS, DEFAULT_LOG_WAIT_MS));
+        assert_eq!(steps[1].wait_for, "ran");
+        let bad =
+            keys(&json!({"steps": [{"text": "a"}, {"text": "b", "log": "nope"}]})).unwrap_err();
+        assert!(bad.contains("step 2") && bad.contains("log must be one of"), "{bad}");
+    }
+
+    fn keys(arguments: &Value) -> Result<Vec<Step>, String> {
+        key_steps(arguments.as_object().unwrap(), false)
+    }
+
+    #[test]
+    fn a_call_without_keys_is_a_screenshot_only_request() {
+        let arguments = json!({});
+        let steps = key_steps(arguments.as_object().unwrap(), true).unwrap();
+        assert_eq!(steps.len(), 1);
+        assert!(steps[0].scancodes.is_empty() && steps[0].text.is_empty());
+        assert_eq!(steps[0].wait_ms, 0);
+        assert!(keys(&arguments).unwrap_err().contains("Give steps"));
+    }
+
+    #[test]
+    fn bad_key_steps_say_which_step_and_why() {
+        let both = keys(&json!({"steps": [{"text": "a"}], "scancodes": "29"})).unwrap_err();
+        assert!(both.contains("not both"), "{both}");
+        assert!(keys(&json!({})).unwrap_err().contains("Give steps"));
+        assert!(keys(&json!({"steps": "29"})).unwrap_err().contains("list"));
+        let empty = keys(&json!({"steps": [{"text": "a"}, {}]})).unwrap_err();
+        assert!(empty.contains("step 2") && empty.contains("neither"), "{empty}");
+        let kind = keys(&json!({"steps": [{"scancodes": 5}]})).unwrap_err();
+        assert!(kind.contains("step 1") && kind.contains("scancodes"), "{kind}");
+        let object = keys(&json!({"steps": ["29"]})).unwrap_err();
+        assert!(object.contains("step 1 must be an object"), "{object}");
+        let many = json!({"steps": vec![json!({"scancodes": "01"}); MAX_STEPS + 1]});
+        assert!(keys(&many).unwrap_err().contains("At most"));
     }
 }

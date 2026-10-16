@@ -23,7 +23,7 @@ const INSTRUCTIONS: &str = "xTiger checks Crusader Kings III mods. Typical work:
 xtiger_mods lists them), look at the shape with xtiger_reports group_by=key or group_by=file, then list the \
 reports of one key or file, open the file at the given line, fix it, and validate again: since_last_run says \
 what was fixed and what is new. Errors and fatal reports first; tips and untidy last. Use ck3_run to test \
-events and effects in the real game (Windows), and ck3_logs to read the game's own logs. If something is \
+events and effects in the real game (Windows), ck3_keys, ck3_click and ck3_script to drive a game that is open (ck3_script runs a list of effects in one go, with `with` fixtures that set up the scopes an event needs; ck3_cases runs many scripts and reports only the errors each caused; ck3_events fires events, or all of a mod's, and makes the scopes they need; ck3_click clicks at a fraction of the window, for event options; shot_region and shot_scale make screenshots cheaper). A game started by ck3_run picks up edits to events, scripted effects and localization by itself within seconds; ck3_logs reads the game's own logs. If something is \
 not found, xtiger_status says what was looked at. Always pass reason: one short sentence on why you make the \
 call, such as \"Checking that the fixed event loads\". The user follows your work in the xTiger app through it. \
 At the start of a job, call xtiger_session with a title such as \"Update Better Courts to 1.20\"; at the end, \
@@ -581,7 +581,7 @@ mod tests {
         let instructions = answers["1"]["result"]["instructions"].as_str().unwrap();
         assert!(instructions.contains("reason") && instructions.contains(sessions::TOOL));
         let tools = answers["2"]["result"]["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 22);
+        assert_eq!(tools.len(), 26);
         assert!(tools.iter().all(|tool| tool["inputSchema"]["properties"]["reason"].is_object()));
         let prompt = answers["\"p\""]["result"]["messages"][0]["content"]["text"].as_str().unwrap();
         assert!(prompt.contains("\"Silk\""));

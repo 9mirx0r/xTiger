@@ -282,11 +282,10 @@ fn test_mod4_history_override_priority() {
     let report = take_report_pointer(&mut reports, file_a, "duplicate character id", 5, 1);
     report.expect("duplicate without override priority");
 
-    // ov_char carries history_override_priority: no duplicate, no unknown field, no missing name.
+    // ov_char carries history_override_priority: no duplicate, no unknown field.
     for report in reports.keys() {
         assert!(!report.msg.contains("duplicate character id"), "{report:?}");
         assert!(!report.msg.contains("history_override_priority"), "{report:?}");
-        assert!(!report.msg.contains("required field `name` missing"), "{report:?}");
     }
 }
 
@@ -384,6 +383,44 @@ fn test_mod5_engine_rejects_and_orphans() {
     );
     let faith_reports = msgs.iter().filter(|m| m.contains("no faith, religion or rite")).count();
     assert_eq!(faith_reports, 1, "only no_faith_char should be reported: {msgs:?}");
+}
+
+#[test]
+fn test_mod17_game_logged_errors() {
+    let reports = check_mod_helper("mod17");
+    let msgs: Vec<String> = reports.keys().map(|r| r.msg.clone()).collect();
+    let has = |needle: &str| msgs.iter().any(|m| m.contains(needle));
+
+    assert!(has("required field `head_determination` missing"), "culture pillar: {msgs:?}");
+    assert!(has("missing english localization key t17_scheme_desc_general"), "scheme: {msgs:?}");
+    assert!(
+        has("`ai_check_interval` conflicts with `ai_goal = yes`"),
+        "decision interval: {msgs:?}"
+    );
+    assert!(has("icon DDS must be uncompressed B8G8R8A8"), "maa icon format: {msgs:?}");
+    assert!(
+        has("accessory modifier with `template` needs `value`, `range` or `accessory`"),
+        "dna template: {msgs:?}"
+    );
+    // The `range` form is what vanilla uses and must stay accepted: only one modifier is wrong.
+    let dna_reports = msgs.iter().filter(|m| m.contains("needs `value`, `range` or")).count();
+    assert_eq!(dna_reports, 1, "range-only accessory is valid: {msgs:?}");
+
+    // `accessory = X` must be an entry of the template (of the given body type, following
+    // `female = male`): the stray one, the wrong body type and `empty` are the three wrong ones.
+    let stray: Vec<_> = msgs.iter().filter(|m| m.contains("is not in gene template")).collect();
+    assert_eq!(stray.len(), 3, "accessory not in template: {msgs:?}");
+    assert!(has("accessory t17_acc_stray is not in gene template t17_template"), "{msgs:?}");
+    assert!(has("accessory t17_acc_girl is not in gene template t17_template"), "{msgs:?}");
+    assert!(has("accessory empty is not in gene template t17_template"), "{msgs:?}");
+
+    // A character without a birth event is logged by the game as "No birth date".
+    let unborn = msgs.iter().filter(|m| m.contains("character has no birth date")).count();
+    assert_eq!(unborn, 1, "only t17_unborn lacks a birth: {msgs:?}");
+
+    // An override replaces the name too: without one the game logs `Missing loc for name ''`.
+    let nameless = msgs.iter().filter(|m| m.contains("required field `name` missing")).count();
+    assert_eq!(nameless, 1, "only t17_override_noname lacks a name: {msgs:?}");
 }
 
 #[test]

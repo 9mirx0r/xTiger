@@ -64,6 +64,9 @@ impl DbKind for Scheme {
         data.verify_exists(Item::Localization, key);
         let loca = format!("{key}_action");
         data.verify_exists_implied(Item::Localization, &loca, key);
+        // The scheme tooltip looks this up regardless of `desc`; the game logs it when missing.
+        let loca = format!("{key}_desc_general");
+        data.verify_exists_implied(Item::Localization, &loca, key);
 
         vd.req_field("desc");
         vd.field_validated_sc("desc", &mut sc, validate_desc);

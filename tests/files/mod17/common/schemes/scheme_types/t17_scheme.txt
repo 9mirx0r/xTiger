@@ -1,0 +1,5 @@
+t17_scheme = {
+	skill = diplomacy
+	desc = t17_scheme_desc
+	success_desc = "t17_scheme_success_desc"
+}

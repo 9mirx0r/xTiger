@@ -1,0 +1,5 @@
+t17_maa = {
+	type = skirmishers
+	damage = 10
+	icon = t17_maa_dxt5
+}

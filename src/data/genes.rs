@@ -343,6 +343,49 @@ impl AccessoryGene {
         }
         false
     }
+
+    /// Whether `accessory` is listed in `template` of the accessory gene `block`.
+    /// With `body_type`, only that body type is searched (following body types that refer to
+    /// another one, such as `female = male`); without it, every body type is.
+    /// Returns `None` when the template does not exist, so that other checks report that instead.
+    pub fn template_has_accessory(
+        block: &Block,
+        template: &str,
+        accessory: &str,
+        body_type: Option<&str>,
+    ) -> Option<bool> {
+        if template == "ugliness_feature_categories" {
+            return None;
+        }
+        let template = block.get_field_block(template)?;
+        let body_types: Vec<&str> = match body_type {
+            Some(body_type) => vec![body_type],
+            None => BODY_TYPES.to_vec(),
+        };
+        for body_type in body_types {
+            let mut field = body_type;
+            // Follow references such as `female = male`, with a bound against cycles.
+            for _ in 0..=BODY_TYPES.len() {
+                if let Some(target) = template.get_field_value(field) {
+                    field = target.as_str();
+                    continue;
+                }
+                if let Some(body) = template.get_field_block(field) {
+                    let in_assignments = body
+                        .iter_assignments()
+                        .any(|(_, token)| !token.is("empty") && token.is(accessory));
+                    let in_blocks = body.iter_definitions().any(|(_, weighted)| {
+                        weighted.iter_values().any(|token| token.is(accessory))
+                    });
+                    if in_assignments || in_blocks {
+                        return Some(true);
+                    }
+                }
+                break;
+            }
+        }
+        Some(false)
+    }
 }
 
 impl DbKind for AccessoryGene {

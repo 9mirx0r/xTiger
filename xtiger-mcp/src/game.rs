@@ -13,13 +13,15 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use regex::{Regex, RegexBuilder};
 
+use crate::helper::{self, Reply, Step, Trouble};
 use crate::locate::Locations;
 use crate::runs::{most_common, no_window};
 
 pub const LOGS: [&str; 6] = ["error", "game", "exceptions", "debug", "database_conflicts", "setup"];
 
-const SCRIPTS: [(&str, &str); 3] = [
+const SCRIPTS: [(&str, &str); 4] = [
     ("ck3-input.ps1", include_str!("../scripts/ck3-input.ps1")),
+    ("ck3-helper.ps1", include_str!("../scripts/ck3-helper.ps1")),
     ("ck3-keys.ps1", include_str!("../scripts/ck3-keys.ps1")),
     ("ck3-run.ps1", include_str!("../scripts/ck3-run.ps1")),
 ];
@@ -303,7 +305,7 @@ fn failure_lead(code: Option<i32>, report: bool) -> Option<&'static str> {
     }
 }
 
-const WINDOWS_ONLY: &str =
+pub(crate) const WINDOWS_ONLY: &str =
     "Game control needs Windows (it sends input through the Win32 SendInput API).";
 
 fn powershell(
@@ -660,28 +662,180 @@ pub fn run_game(
     begin(loc, run)?.execute(loc, control)
 }
 
-/// Send keys and text to the open CK3 window.
+/// Whether to take a screenshot of the game window after an action, and how much of it to keep. A
+/// smaller picture costs the reader fewer tokens: `region` keeps part of the window (as fractions of its
+/// width and height) and `scale` shrinks what is kept.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Shot {
+    pub take: bool,
+    /// `[left, top, right, bottom]`, each from 0 to 1.
+    pub region: Option<[f64; 4]>,
+    /// From 0.1 to 1; 1 keeps the pixels as they are.
+    pub scale: f64,
+}
+
+impl Shot {
+    pub const OFF: Self = Self { take: false, region: None, scale: 1.0 };
+
+    pub const fn full(take: bool) -> Self {
+        Self { take, region: None, scale: 1.0 }
+    }
+
+    /// The same view, but only taken when `last` (the screenshot goes after the last of several runs).
+    #[must_use]
+    pub const fn when(self, last: bool) -> Self {
+        Self { take: self.take && last, ..self }
+    }
+
+    /// What the input helper is told: `x0,y0,x1,y1,scale`, or nothing for the whole window.
+    pub fn view(&self) -> String {
+        if self.region.is_none() && (self.scale - 1.0).abs() < f64::EPSILON {
+            return String::new();
+        }
+        let [left, top, right, bottom] = self.region.unwrap_or([0.0, 0.0, 1.0, 1.0]);
+        format!("{left:.4},{top:.4},{right:.4},{bottom:.4},{:.3}", self.scale)
+    }
+
+    /// The `shot_region` and `shot_scale` arguments of a tool call; `take` is `screenshot`.
+    pub fn from_arguments(
+        take: bool,
+        region: Option<&[f64]>,
+        scale: Option<f64>,
+    ) -> Result<Self, String> {
+        let region = match region {
+            None => None,
+            Some([left, top, right, bottom]) => {
+                let all = [*left, *top, *right, *bottom];
+                if all.iter().any(|n| !(0.0..=1.0).contains(n)) || left >= right || top >= bottom {
+                    return Err("shot_region is [left, top, right, bottom] as fractions of the window, from 0 to 1, with left < right and top < bottom.".to_owned());
+                }
+                Some(all)
+            }
+            Some(_) => {
+                return Err(
+                    "shot_region needs four numbers: [left, top, right, bottom].".to_owned()
+                );
+            }
+        };
+        let scale = scale.unwrap_or(1.0);
+        if !(0.1..=1.0).contains(&scale) {
+            return Err("shot_scale must be between 0.1 and 1.".to_owned());
+        }
+        Ok(Self { take, region, scale })
+    }
+}
+
+/// Send steps of keys and text to the open CK3 window, in order. The resident input helper does it
+/// in a fraction of a second per step; if it cannot start, each step goes through `ck3-keys.ps1`
+/// instead, which takes seconds. A screenshot is taken after the last step.
 pub fn send_keys(
     loc: &Locations,
-    scancodes: &str,
-    text: &str,
-    screenshot: bool,
+    steps: &[Step],
+    screenshot: Shot,
     cancelled: &dyn Fn() -> bool,
 ) -> Result<(String, Option<PathBuf>), String> {
-    let shot = if screenshot { Some(work_dir(loc, "keys")?.join("screen.png")) } else { None };
+    if !cfg!(windows) {
+        return Err(WINDOWS_ONLY.to_owned());
+    }
+    let scripts = scripts_dir(loc)?;
+    let shot = if screenshot.take { Some(work_dir(loc, "keys")?.join("screen.png")) } else { None };
+    let view = screenshot.view();
+    let mut lines: Vec<String> = Vec::new();
+    let mut resident = true;
+    for (index, step) in steps.iter().enumerate() {
+        let want = if index + 1 == steps.len() { shot.as_deref() } else { None };
+        let label = if steps.len() > 1 { format!("step {}: ", index + 1) } else { String::new() };
+        let failed = |lines: &[String], message: &str| {
+            let mut text = if steps.len() > 1 {
+                format!("Step {} of {} failed: {message}", index + 1, steps.len())
+            } else {
+                message.to_owned()
+            };
+            if !lines.is_empty() {
+                let _ = write!(text, "\nAlready sent:\n{}", lines.join("\n"));
+            }
+            // A step that waited for a log line still took its screenshot, which shows what happened.
+            if let Some(path) = want.filter(|path| path.is_file()) {
+                let _ = write!(text, "\nScreenshot: {}", path.display());
+            }
+            text
+        };
+        let reply = if resident {
+            match helper::request(
+                &scripts.join("ck3-helper.ps1"),
+                &loc.user_dir.join("logs"),
+                step,
+                want,
+                &view,
+                cancelled,
+            ) {
+                Ok(reply) => Some(reply),
+                Err(Trouble::Lost(why)) => return Err(failed(&lines, &why)),
+                Err(Trouble::Unavailable(why)) => {
+                    lines.push(format!("(input helper unavailable: {why}; using the slow script)"));
+                    resident = false;
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let message = match reply {
+            Some(Reply::Done(message)) => message,
+            Some(Reply::Failed(message)) => return Err(failed(&lines, &message)),
+            None => send_with_script(loc, step, want, &view, cancelled)
+                .map_err(|message| failed(&lines, &message))?,
+        };
+        lines.push(format!("{label}{message}"));
+    }
+    Ok((lines.join("\n"), shot.filter(|path| path.is_file())))
+}
+
+/// The slow way: a new PowerShell for one step. Its waits are fixed, so `wait_ms` does not apply.
+fn send_with_script(
+    loc: &Locations,
+    step: &Step,
+    shot: Option<&Path>,
+    view: &str,
+    cancelled: &dyn Fn() -> bool,
+) -> Result<String, String> {
+    if step.scancodes.trim().starts_with("?click") {
+        return Err("A click needs the resident input helper, which could not start.".to_owned());
+    }
     let mut args = Vec::new();
-    if !scancodes.is_empty() {
-        args.extend(["-Sc".to_owned(), scancodes.to_owned()]);
+    if !step.scancodes.trim().is_empty() {
+        args.extend(["-Sc".to_owned(), step.scancodes.trim().to_owned()]);
     }
-    if !text.is_empty() {
-        args.extend(["-Text".to_owned(), text.to_owned()]);
+    if !step.text.is_empty() {
+        args.extend(["-Text".to_owned(), step.text.clone()]);
     }
-    if let Some(shot) = &shot {
-        args.extend(["-Shot".to_owned(), shot.display().to_string()]);
+    if let Some(shot) = shot {
+        args.extend([
+            "-Shot".to_owned(),
+            shot.display().to_string(),
+            "-View".to_owned(),
+            view.to_owned(),
+        ]);
     }
     let mut control = Control { cancelled, progress: &mut |_| {}, tick: &mut || {} };
     let outcome = powershell(loc, "ck3-keys.ps1", &args, Duration::from_secs(120), &mut control)?;
-    Ok((status(&outcome), shot.filter(|path| path.is_file())))
+    let mut text = status(&outcome);
+    if outcome.code != Some(0) {
+        return Err(text);
+    }
+    if !step.wait_for.is_empty() {
+        text.push_str("\n(wait_for was not checked: the slow script cannot watch a log)");
+    }
+    Ok(text)
+}
+
+/// Where to start reading a log, so a second read returns only what the game wrote since the first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Since {
+    /// Read nothing, only report the offset to resume from: a marker to set before an action.
+    End,
+    /// Read from this byte offset, as an earlier read reported it.
+    Offset(u64),
 }
 
 #[derive(Debug)]
@@ -691,6 +845,7 @@ pub struct ReadLog<'a> {
     pub dedupe: bool,
     pub tail: bool,
     pub pattern: &'a str,
+    pub since: Option<Since>,
 }
 
 /// Read a log from the CK3 user folder.
@@ -711,9 +866,33 @@ pub fn read_log(user_dir: &Path, read: &ReadLog) -> Result<String, String> {
     let path = user_dir.join("logs").join(format!("{}.log", read.name));
     let file_name = format!("{}.log", read.name);
     let Ok(bytes) = fs::read(&path) else {
-        return Ok(format!("{file_name} does not exist yet."));
+        let offset = if read.since.is_some() { "; offset 0" } else { "" };
+        return Ok(format!("{file_name} does not exist yet{offset}."));
     };
-    let text = String::from_utf8_lossy(&bytes);
+    // With `since`, only the part written after that offset is read. A line the game has not finished
+    // writing is left for the next read, so the offset reported always sits on a line start.
+    let mut resume = None;
+    let mut part: &[u8] = &bytes;
+    let mut restarted = false;
+    if let Some(since) = read.since {
+        let line_end =
+            |bytes: &[u8]| bytes.iter().rposition(|b| *b == b'\n').map_or(0, |at| at + 1);
+        let from = match since {
+            // The start of the unfinished last line, so that line is read whole next time.
+            Since::End => line_end(&bytes),
+            Since::Offset(at) => {
+                usize::try_from(at).ok().filter(|at| *at <= bytes.len()).unwrap_or_else(|| {
+                    restarted = true;
+                    0
+                })
+            }
+        };
+        let fresh = &bytes[from..];
+        let whole = line_end(fresh);
+        part = if since == Since::End { &[] } else { &fresh[..whole] };
+        resume = Some(from + whole);
+    }
+    let text = String::from_utf8_lossy(part);
     let all: Vec<&str> = text.lines().collect();
     let total = all.len();
     let mut lines: Vec<String> = match &pattern {
@@ -723,8 +902,19 @@ pub fn read_log(user_dir: &Path, read: &ReadLog) -> Result<String, String> {
         None => all.iter().map(|line| (*line).to_owned()).collect(),
     };
     let mut head = format!("{file_name}: {total} lines");
+    if read.since.is_some() {
+        head = format!("{file_name}: {total} new lines");
+    }
     if pattern.is_some() {
         let _ = write!(head, ", {} matching '{}'", lines.len(), read.pattern);
+    }
+    if let Some(offset) = resume {
+        let _ = write!(head, "; offset {offset}");
+        if restarted {
+            head.push_str(
+                " (the log is shorter than the offset given, so it was read from the start)",
+            );
+        }
     }
     if read.dedupe {
         let stamp = Regex::new(r"^\[[0-9:.]+\]").map_err(|e| e.to_string())?;
@@ -763,7 +953,8 @@ mod tests {
     }
 
     fn log(dir: &Path, max_lines: usize, dedupe: bool, tail: bool, pattern: &str) -> String {
-        read_log(dir, &ReadLog { name: "error", max_lines, dedupe, tail, pattern }).unwrap()
+        read_log(dir, &ReadLog { name: "error", max_lines, dedupe, tail, pattern, since: None })
+            .unwrap()
     }
 
     #[test]
@@ -812,6 +1003,69 @@ mod tests {
         );
     }
 
+    fn since(dir: &Path, since: Since, pattern: &str) -> String {
+        let read = ReadLog {
+            name: "error",
+            max_lines: 50,
+            dedupe: false,
+            tail: false,
+            pattern,
+            since: Some(since),
+        };
+        read_log(dir, &read).unwrap()
+    }
+
+    #[test]
+    fn since_returns_only_what_the_game_wrote_after() {
+        use std::io::Write as _;
+        let tmp = setup();
+        let path = tmp.join("logs/error.log");
+        let old = fs::metadata(&path).unwrap().len();
+        // The marker reads nothing and says where the log ends.
+        assert_eq!(since(&tmp, Since::End, ""), format!("error.log: 0 new lines; offset {old}"));
+        let whole = "[12:00:04.005] New one\n";
+        let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+        file.write_all(format!("{whole}[12:00:05.006] Half").as_bytes()).unwrap();
+        // A line still being written waits for the next read, so no fragment comes back.
+        let next = old + whole.len() as u64;
+        assert_eq!(
+            since(&tmp, Since::Offset(old), ""),
+            format!("error.log: 1 new lines; offset {next}\n[12:00:04.005] New one")
+        );
+        assert_eq!(
+            since(&tmp, Since::Offset(old), "nothing like this"),
+            format!("error.log: 1 new lines, 0 matching 'nothing like this'; offset {next}")
+        );
+        file.write_all(b" done\n[12:00:06.007] Last\n").unwrap();
+        let end = fs::metadata(&path).unwrap().len();
+        assert_eq!(
+            since(&tmp, Since::Offset(next), ""),
+            format!(
+                "error.log: 2 new lines; offset {end}\n[12:00:05.006] Half done\n[12:00:06.007] Last"
+            )
+        );
+        assert_eq!(
+            since(&tmp, Since::Offset(end), ""),
+            format!("error.log: 0 new lines; offset {end}")
+        );
+        // A log the game started again is shorter than the offset: read it from the start.
+        let again = since(&tmp, Since::Offset(end + 1000), "");
+        assert!(
+            again.contains("read from the start") && again.contains("Missing faith"),
+            "{again}"
+        );
+        // An unfinished line at the marker is read whole once it is finished.
+        file.write_all(b"[12:00:07.008] Part").unwrap();
+        let marker = since(&tmp, Since::End, "");
+        assert_eq!(marker, format!("error.log: 0 new lines; offset {end}"));
+    }
+
+    #[test]
+    fn since_on_a_missing_log_starts_at_zero() {
+        let tmp = TempDir::new();
+        assert_eq!(since(&tmp, Since::End, ""), "error.log does not exist yet; offset 0.");
+    }
+
     #[test]
     fn missing_empty_invalid() {
         let tmp = TempDir::new();
@@ -823,12 +1077,26 @@ mod tests {
         assert_eq!(log(&tmp, 10, false, false, ""), "error.log: 1 lines\nInvalid byte: \u{fffd}");
         let bad = read_log(
             &tmp,
-            &ReadLog { name: "invalid", max_lines: 1, dedupe: false, tail: false, pattern: "" },
+            &ReadLog {
+                name: "invalid",
+                max_lines: 1,
+                dedupe: false,
+                tail: false,
+                pattern: "",
+                since: None,
+            },
         );
         assert!(bad.unwrap_err().contains("name must be one of"));
         let bad = read_log(
             &tmp,
-            &ReadLog { name: "error", max_lines: 1, dedupe: false, tail: false, pattern: "(" },
+            &ReadLog {
+                name: "error",
+                max_lines: 1,
+                dedupe: false,
+                tail: false,
+                pattern: "(",
+                since: None,
+            },
         );
         assert!(bad.unwrap_err().contains("not a valid regex"));
     }
@@ -1109,5 +1377,58 @@ mod tests {
         assert_eq!(outcome.code, None);
         assert!(outcome.stdout.contains("waiting") && outcome.stdout.contains("Cancelled."));
         assert!(begun.elapsed() < Duration::from_secs(15));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn keys_without_a_game_window_fail_fast_and_reuse_the_helper() {
+        if ck3_running() {
+            return;
+        }
+        let tmp = TempDir::new();
+        let loc = locations_in(&tmp);
+        let steps = [
+            Step { scancodes: "29".to_owned(), ..Step::default() },
+            Step { text: "hello".to_owned(), ..Step::default() },
+        ];
+        // The first call pays for starting the helper; the answer is its own message.
+        let err = send_keys(&loc, &steps, Shot::OFF, &|| false).unwrap_err();
+        assert!(err.contains("no CK3 window"), "{err}");
+        assert!(err.contains("Step 1 of 2"), "{err}");
+        let pid = helper::running_pid().expect("the helper stays up after an error reply");
+        // The second one goes to the same process and is quick.
+        let again = Instant::now();
+        let err = send_keys(&loc, &steps[..1], Shot::OFF, &|| false).unwrap_err();
+        assert!(err.contains("no CK3 window") && !err.contains("Step 1"), "{err}");
+        assert_eq!(helper::running_pid(), Some(pid));
+        assert!(again.elapsed() < Duration::from_secs(5), "{:?}", again.elapsed());
+    }
+
+    #[test]
+    fn a_screenshot_view_is_a_region_and_a_scale() {
+        assert_eq!(Shot::full(true).view(), "");
+        assert!(!Shot::OFF.when(true).take);
+        assert!(Shot::full(true).when(true).take && !Shot::full(true).when(false).take);
+        let shot = Shot::from_arguments(true, Some(&[0.2, 0.25, 0.8, 0.75]), Some(0.5)).unwrap();
+        assert_eq!(shot.view(), "0.2000,0.2500,0.8000,0.7500,0.500");
+        let only_scale = Shot::from_arguments(true, None, Some(0.4)).unwrap();
+        assert_eq!(only_scale.view(), "0.0000,0.0000,1.0000,1.0000,0.400");
+        assert_eq!(only_scale.when(false).view(), only_scale.view());
+    }
+
+    #[test]
+    fn a_bad_screenshot_view_is_refused() {
+        for region in [
+            vec![0.5, 0.0, 0.2, 1.0],
+            vec![0.0, 0.6, 1.0, 0.6],
+            vec![0.0, 0.0, 1.5, 1.0],
+            vec![-0.1, 0.0, 1.0, 1.0],
+            vec![0.0, 0.0, 1.0],
+        ] {
+            assert!(Shot::from_arguments(true, Some(&region), None).is_err(), "{region:?}");
+        }
+        for scale in [0.0, 0.05, 1.01, f64::NAN] {
+            assert!(Shot::from_arguments(true, None, Some(scale)).is_err(), "{scale}");
+        }
     }
 }

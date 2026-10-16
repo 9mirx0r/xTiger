@@ -1,0 +1,70 @@
+t17_group = {
+	usage = game
+	t17_modifier = {
+		dna_modifiers = {
+			accessory = {
+				mode = add
+				gene = t17_gene
+				template = t17_template
+			}
+		}
+	}
+	t17_ok_modifier = {
+		dna_modifiers = {
+			accessory = {
+				mode = add
+				gene = t17_gene
+				template = t17_template
+				range = { 0 1 }
+			}
+		}
+	}
+	t17_listed_modifier = {
+		dna_modifiers = {
+			accessory = {
+				mode = add
+				gene = t17_gene
+				template = t17_template
+				accessory = t17_acc_b
+			}
+			accessory = {
+				mode = add
+				gene = t17_gene
+				template = t17_template
+				accessory = t17_acc_b
+				type = female
+			}
+			accessory = {
+				mode = add
+				gene = t17_gene
+				template = t17_template
+				accessory = t17_acc_girl
+				type = girl
+			}
+		}
+	}
+	t17_stray_modifier = {
+		dna_modifiers = {
+			accessory = {
+				mode = add
+				gene = t17_gene
+				template = t17_template
+				accessory = t17_acc_stray
+			}
+			accessory = {
+				mode = add
+				gene = t17_gene
+				template = t17_template
+				accessory = t17_acc_girl
+				type = male
+			}
+			accessory = {
+				mode = add
+				gene = t17_gene
+				template = t17_template
+				accessory = empty
+				type = boy
+			}
+		}
+	}
+}

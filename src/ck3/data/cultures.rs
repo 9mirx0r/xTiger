@@ -118,6 +118,8 @@ impl DbKind for Culture {
         vd.field_item("heritage", Item::CultureHeritage);
         vd.field_item("language", Item::Language);
         vd.field_item("martial_custom", Item::MartialCustom);
+        // The game logs an error for a culture without a head determination pillar.
+        vd.req_field("head_determination");
         vd.field_item("head_determination", Item::HeadDetermination);
 
         vd.field_list_items("traditions", Item::CultureTradition);

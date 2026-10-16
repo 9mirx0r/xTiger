@@ -82,7 +82,8 @@ impl Characters {
             {
                 // Since 1.20 a second definition of the same id is legal when one of the two
                 // carries `history_override_priority`: the higher priority sets the base
-                // attributes and the dated entries of both are combined. The first definition
+                // attributes (name and date of birth included) and the dated entries of both are
+                // combined. The first definition
                 // stays in the map; the other is still validated through `duplicates`.
                 let is_override =
                     block.has_key(OVERRIDE_PRIORITY) || other.block.has_key(OVERRIDE_PRIORITY);
@@ -572,10 +573,9 @@ impl Character {
             warn(ErrorKey::CharacterId).msg(msg).info(info).loc(&self.key).push();
         }
 
-        // An override stub only changes some attributes; the name comes from the character it overrides.
-        if !self.block.has_key(OVERRIDE_PRIORITY) {
-            vd.req_field("name");
-        }
+        // The override with the highest priority replaces all base attributes, the name
+        // included, so an override without `name` gives the game `Missing loc for name ''`.
+        vd.req_field("name");
         vd.field_integer(OVERRIDE_PRIORITY);
         if let Some(name) = vd.field_value("name") {
             data.localization.verify_name_exists(name, Severity::Warning);
@@ -647,6 +647,16 @@ impl Character {
         });
 
         life_events.sort_unstable();
+        if !life_events.iter().any(|life_event| life_event.event == LifeEventType::Birth) {
+            let msg = "character has no birth date";
+            let info = if self.block.has_key(OVERRIDE_PRIORITY) {
+                "the game logs `No birth date for character`; the date of birth is one of the \
+                 base attributes that an override replaces, so repeat the `birth` event here"
+            } else {
+                "the game logs `No birth date for character`"
+            };
+            err(ErrorKey::History).msg(msg).info(info).loc(&self.key).push();
+        }
         Self::validate_life(&self.key, life_events);
     }
 

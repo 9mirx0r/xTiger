@@ -1,0 +1,21 @@
+t17_unborn = {
+	name = "Unborn"
+	culture = t17_culture
+	religion = t17_faith
+}
+t17_born = {
+	name = "Born"
+	culture = t17_culture
+	religion = t17_faith
+	900.1.1 = {
+		birth = yes
+	}
+}
+t17_override_noname = {
+	history_override_priority = 1
+	culture = t17_culture
+	religion = t17_faith
+	900.1.1 = {
+		birth = yes
+	}
+}

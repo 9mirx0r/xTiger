@@ -178,6 +178,11 @@ impl MenAtArmsType {
 
         if let Some(icon) = vd.field_value("icon") {
             data.verify_icon("NGameIcons|REGIMENTYPE_ICON_PATH", icon, ".dds");
+            if let Some(icon_path) =
+                data.get_defined_string_warn(icon, "NGameIcons|REGIMENTYPE_ICON_PATH")
+            {
+                data.dds.validate_bgra8(&format!("{icon_path}/{icon}.dds"), icon);
+            }
             data.verify_icon("NGameIcons|REGIMENTYPE_HORIZONTAL_IMAGE_PATH", icon, ".dds");
             data.verify_icon("NGameIcons|REGIMENTYPE_VERTICAL_IMAGE_PATH", icon, ".dds");
         } else if let Some(base) = self.block.get_field_value("type") {

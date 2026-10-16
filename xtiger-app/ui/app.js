@@ -1690,6 +1690,13 @@ function describeCall(entry) {
     case 'xtiger_status': return ['is checking', 'Checked', ' the setup'];
     case 'ck3_run': return ['is play-testing', 'Play-tested', `${named} in CK3`];
     case 'ck3_keys': return ['is sending keys to', 'Sent keys to', ' CK3'];
+    case 'ck3_script': return ['is running a script in', 'Ran a script in', ' CK3'];
+    case 'ck3_cases': return ['is running test cases in', 'Ran test cases in', ` CK3 (${Array.isArray(args.cases) ? args.cases.length : 0})`];
+    case 'ck3_events': {
+      const n = Array.isArray(args.events) ? args.events.length : 0;
+      return ['is firing events in', 'Fired events in', n ? ` CK3 (${n})` : args.mod_path ? ` CK3 from ${esc(args.mod_path)}` : ' CK3'];
+    }
+    case 'ck3_click': return ['is clicking in', 'Clicked in', ' CK3'];
     case 'ck3_logs': return ['is reading', 'Read', ` the CK3 ${esc(args.name ?? 'error')} log`];
     case 'xtiger_session': return args.wrap_up ? ['is wrapping up', 'Wrapped up', ' the job'] : ['is naming', 'Named', ' the job'];
     default: return ['is using', 'Used', ` ${esc(entry.tool)}`];

@@ -375,5 +375,38 @@ pub fn validate_dna_modifiers(block: &Block, data: &Everything) {
         });
         vd.field_item("accessory", Item::Accessory);
         vd.field_choice("type", &["male", "female", "boy", "girl"]);
+
+        // The game logs "Can't find accessory 'X' in gene template Y" when the named accessory is
+        // not one of the template's entries (restricted to the body `type` if one is given).
+        if let Some(gene) = block.get_field_value("gene")
+            && let Some(template) = block.get_field_value("template")
+            && let Some(accessory) = block.get_field_value("accessory")
+            && let Some((_, gene_block)) = data.get_key_block(Item::GeneCategory, gene.as_str())
+        {
+            let body_type = block.get_field_value("type").map(Token::as_str);
+            if AccessoryGene::template_has_accessory(
+                gene_block,
+                template.as_str(),
+                accessory.as_str(),
+                body_type,
+            ) == Some(false)
+            {
+                let msg = format!("accessory {accessory} is not in gene template {template}");
+                let info = "the game logs \"Can't find accessory\" and ignores the modifier";
+                err(ErrorKey::MissingItem).msg(msg).info(info).loc(accessory).push();
+            }
+        }
+
+        // A template alone selects nothing: the game logs "Need a value set". Vanilla always gives
+        // one of `value`, `range` or `accessory` (about 2200 uses, `range` being the common one).
+        if block.has_key("template")
+            && !block.has_key("accessory")
+            && !block.has_key("value")
+            && !block.has_key("range")
+        {
+            let msg = "accessory modifier with `template` needs `value`, `range` or `accessory`";
+            let info = "the game logs \"Need a value set\" and ignores the modifier";
+            err(ErrorKey::Validation).msg(msg).info(info).loc(block).push();
+        }
     });
 }

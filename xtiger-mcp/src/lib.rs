@@ -6,6 +6,7 @@
 pub mod docs;
 pub mod game;
 pub mod gap;
+pub mod helper;
 pub mod jobs;
 pub mod journal;
 pub mod ledger;
@@ -18,6 +19,7 @@ pub mod playsets;
 pub mod projects;
 pub mod requests;
 pub mod runs;
+pub mod script;
 pub mod server;
 pub mod sessions;
 pub mod setup;
