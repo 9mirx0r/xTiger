@@ -889,8 +889,8 @@ mod tests {
             vec!["file: run/xtiger_script.txt line: 1: one".to_owned()]
         );
         // A log that restarted is shorter than the offset: nothing, not a panic.
-        assert!(lines_since(&log, 10_000, "").is_empty());
-        assert!(lines_since(&tmp.join("missing.log"), 0, "").is_empty());
+        assert_eq!(lines_since(&log, 10_000, "").len(), 0);
+        assert_eq!(lines_since(&tmp.join("missing.log"), 0, "").len(), 0);
     }
 
     const SAMPLE: &str = "\
@@ -915,7 +915,7 @@ mod tests {
         let entries = parse_entries(SAMPLE);
         assert_eq!(entries.len(), 5);
         assert_eq!(entries[0].source, "pdx_persistent_reader.cpp:216");
-        assert!(entries[0].body.is_empty());
+        assert_eq!(entries[0].body.len(), 0);
         assert_eq!(entries[2].body.len(), 2);
         assert_eq!(entries[2].body[0], "Error: Undefined event target 'nobody'");
         // An indented line after a blank one belongs to nothing.
@@ -1079,7 +1079,7 @@ my_mod.0002 = { hidden = yes }
 }
 ";
         assert_eq!(event_ids(text), vec!["my_mod.0001", "my_mod.0002", "other_ns.12"]);
-        assert!(event_ids("a = { b.c = { } }").is_empty());
+        assert_eq!(event_ids("a = { b.c = { } }").len(), 0);
     }
 
     #[test]
@@ -1098,7 +1098,7 @@ my_mod.0002 = { hidden = yes }
                 ("ns2.1".to_owned(), "events/sub/b.txt".to_owned()),
             ]
         );
-        assert!(mod_events(&tmp.join("nothing")).is_empty());
+        assert_eq!(mod_events(&tmp.join("nothing")).len(), 0);
     }
 
     #[test]
@@ -1126,7 +1126,7 @@ my_mod.0002 = { hidden = yes }
 ";
         let errors = filter(parse_entries(log), &HashSet::new());
         assert_eq!(missing_scopes(&errors), vec!["friend", "child_one", "kid"]);
-        assert!(missing_scopes(&Filtered::default()).is_empty());
+        assert_eq!(missing_scopes(&Filtered::default()).len(), 0);
     }
 
     #[test]
