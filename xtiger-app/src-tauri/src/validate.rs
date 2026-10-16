@@ -17,7 +17,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 use xtiger_mcp::runs::{self, NewRun};
-use xtiger_mcp::{mods, projects, setup};
+use xtiger_mcp::{loadorder, mods, projects, setup};
 
 /// The name the app's own checks are saved under.
 pub const BY: &str = "xTiger app";
@@ -75,6 +75,8 @@ pub struct RunArgs<'a> {
     pub extra_mods: &'a [PathBuf],
     /// The shared runs folder, if the app's data folder is known.
     pub runs_dir: Option<&'a Path>,
+    /// The folder of the shared records, where the mod's saved load order is.
+    pub state_dir: Option<&'a Path>,
 }
 
 impl Runner {
@@ -91,16 +93,19 @@ impl Runner {
         let mut generated = None;
         if let Some(paradox) = args.paradox {
             let all = mods::list(Some(paradox), args.extra_mods);
-            let setup = setup::plan(
-                &setup::Request {
-                    mod_file: args.mod_file,
-                    config: None,
-                    with: &[],
-                    load_dependencies: true,
-                    paradox,
-                },
-                &all,
-            )?;
+            let request = setup::Request {
+                mod_file: args.mod_file,
+                config: None,
+                with: &[],
+                with_first: false,
+                load_dependencies: true,
+                paradox,
+            };
+            // The mods saved as this mod's load order come first, in their order.
+            let setup = match args.state_dir {
+                Some(state_dir) => loadorder::plan_check(state_dir, &all, &request, true)?,
+                None => setup::plan(&request, &all)?,
+            };
             for warning in &setup.warnings {
                 let _ = app.emit("validate-log", warning);
             }

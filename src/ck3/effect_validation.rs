@@ -241,14 +241,25 @@ pub fn validate_guest_subset(
 
 pub fn validate_add_trait_xp(
     _key: &Token,
-    _block: &Block,
-    _data: &Everything,
+    block: &Block,
+    data: &Everything,
     sc: &mut ScopeContext,
     mut vd: Validator,
     _tooltipped: Tooltipped,
 ) {
     vd.req_field("trait");
     vd.req_field("value");
+    // A trait with several tracks needs to be told which one gets the experience.
+    if !block.has_key("track")
+        && let Some(token) = block.get_field_value("trait")
+        && !token.as_str().contains('$')
+        && let Some(tracks) = data.traits.multiple_tracks_lc(&Lowercase::new(token.as_str()))
+    {
+        let names: Vec<&str> = tracks.iter().map(|t| t.as_str()).collect();
+        let msg = format!("trait {token} has several tracks, so `track` is required");
+        let info = format!("it has the tracks: {}", names.join(", "));
+        err(ErrorKey::Validation).msg(msg).info(info).loc(token).push();
+    }
     // TODO: if the trait is an Item, verify that the TraitTrack belongs to this trait
     vd.field_item_or_target("trait", sc, Item::Trait, Scopes::Trait);
     vd.field_item("track", Item::TraitTrack);

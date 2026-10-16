@@ -24,6 +24,8 @@ pub struct Playset {
     /// The one the launcher has selected.
     pub active: bool,
     pub enabled: usize,
+    /// "launcher" for the Paradox launcher's playsets, "xtiger" for the ones xTiger keeps.
+    pub source: &'static str,
     pub mods: Vec<PlaysetMod>,
 }
 
@@ -78,6 +80,7 @@ pub fn list(user_dir: &Path) -> Result<Vec<Playset>, String> {
                 name: name.unwrap_or_else(|| "(no name)".to_owned()),
                 active: active.unwrap_or(false),
                 enabled: 0,
+                source: "launcher",
                 mods: Vec::new(),
             };
             playsets.push((id.clone(), playset));
@@ -214,6 +217,7 @@ mod tests {
             name: "p".to_owned(),
             active: false,
             enabled: 2,
+            source: "launcher",
             mods: vec![item("Loose", Some(tmp.join("m/loose"))), item("Gone", None)],
         };
         assert_eq!(load_order(&playset).0.len(), 0);

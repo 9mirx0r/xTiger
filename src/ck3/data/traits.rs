@@ -91,6 +91,16 @@ impl Traits {
         self.traits_lc.get(key).is_some_and(|t| self.traits[t].has_track)
     }
 
+    /// The names of the tracks of a trait that has a `tracks` block with more than one entry.
+    /// For such a trait the game needs to be told which track an effect like `add_trait_xp` means.
+    pub fn multiple_tracks_lc(&self, key: &Lowercase) -> Option<Vec<&Token>> {
+        // SAFETY: traits[t] will always succeed due to invariant of traits_lc.
+        let item = &self.traits[self.traits_lc.get(key)?];
+        let tracks: Vec<&Token> =
+            item.block.get_field_block("tracks")?.iter_definitions().map(|(key, _)| key).collect();
+        (tracks.len() > 1).then_some(tracks)
+    }
+
     pub fn validate(&self, data: &Everything) {
         for item in self.traits.values() {
             item.validate(data);

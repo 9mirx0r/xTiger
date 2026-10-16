@@ -14,11 +14,13 @@ use crate::helper::Step;
 use crate::jobs;
 use crate::journal::{self, ModRef, Tally};
 use crate::ledger;
+use crate::loadorder;
 use crate::locate::Locations;
 use crate::migrate;
 use crate::migrate_apply;
 use crate::mods::{self, ModInfo};
 use crate::overrides;
+use crate::own_playsets::{self, Own, OwnMod};
 use crate::projects;
 use crate::requests::{self, Status};
 use crate::runs::{self, Counts, Filter, GROUPS, Options, QueryResult, Row, SEVERITIES, Summary};
@@ -165,8 +167,17 @@ fn run_params() -> Vec<(&'static str, Value)> {
         (
             "playset",
             string(
-                "A launcher playset whose enabled mods are loaded first, in its order, to test the mod \
-                     together with others. xtiger_playsets lists them.",
+                "A playset, the launcher's or one kept by xTiger, whose enabled mods are loaded first, \
+                     in its order, to test the mod together with others. xtiger_playsets lists them.",
+            ),
+        ),
+        (
+            "load_order",
+            boolean(
+                "When exactly one mod is passed in mods (and no playset), load the mods it needs first: \
+                     its saved load order (xtiger_loadorder) and the dependencies its descriptor names. \
+                     The answer lists what was loaded, in order. Turn it off to run the mod alone.",
+                true,
             ),
         ),
         ("load_timeout", integer("Seconds to wait for the game to load.", 300, 30)),
@@ -290,10 +301,18 @@ fn base_tools() -> Vec<Tool> {
                 (
                     "playset",
                     string(
-                        "A launcher playset (xtiger_playsets lists them): every enabled mod in it is \
+                        "A playset, the launcher's or one kept by xTiger (xtiger_playsets lists them): every enabled mod in it is \
                          loaded with this one, in the playset's order, as `with` does. A mod of the \
                          playset with no .mod file is read from the descriptor.mod in its folder; if \
                          it has neither, it is left out and named in the answer.",
+                    ),
+                ),
+                (
+                    "load_order",
+                    boolean(
+                        "Load the mods saved as this mod's load order (xtiger_loadorder) first, in their \
+                         order. Ignored when a playset is given.",
+                        true,
                     ),
                 ),
                 (
@@ -381,7 +400,7 @@ fn base_tools() -> Vec<Tool> {
                           load) is an error, with the report in its message. Earlier logs are moved to \
                           logs/xtiger-archive. Input stops if another \
                           window takes focus; use background to leave the user's screen alone. Windows only; takes a few minutes. The mod must be enabled in the \
-                          launcher playset, or passed in mods or playset.",
+                          launcher playset or a playset of xTiger, or passed in mods or playset.",
             params: run_params(),
             required: &[],
             kind: GAME,
@@ -1043,14 +1062,80 @@ fn base_tools() -> Vec<Tool> {
             kind: READ_ONLY,
         },
         Tool {
+            name: "xtiger_loadorder",
+            title: "Mods a mod needs loaded first",
+            description: "The load order of one mod: the mods that must load before it, in game order, so a patch or a mod built on others is tested with them. It is saved per mod, shared with the xTiger app, and used by default by xtiger_validate and by ck3_run / ck3_run_start when one mod is passed in mods. The mod being tested always loads last. Besides the saved list, a test loads the dependencies named in the mod's descriptor (after the saved ones, which win on order) and the mods its ck3-tiger.conf already loads. Actions: get (the default: the saved list and what a test will load now, in order, with why each loads and what is missing), set (replace the list with `requires`), add (put `requires` in the list, at the end or `before` / `after` a mod already in it), remove, move (`requires` to `before` / `after` another entry), clear, from_playset (copy the enabled mods of a launcher playset that come before this mod; with `replace` false they are added to the list).",
+            params: vec![
+                (
+                    "mod_path",
+                    string(
+                        "The mod that is tested: its name, folder or .mod file. xtiger_mods lists them.",
+                    ),
+                ),
+                (
+                    "action",
+                    choice(
+                        "What to do (default get).",
+                        &["get", "set", "add", "remove", "move", "clear", "from_playset"],
+                    ),
+                ),
+                (
+                    "requires",
+                    strings(
+                        "set, add, remove, move: mods, as names, folders or .mod files, as for mod_path.",
+                    ),
+                ),
+                ("before", string("add, move: put the mods right before this one of the list.")),
+                ("after", string("add, move: put the mods right after this one of the list.")),
+                (
+                    "playset",
+                    string("from_playset: the launcher playset (xtiger_playsets lists them)."),
+                ),
+                (
+                    "replace",
+                    boolean("from_playset: replace the list instead of adding to it.", true),
+                ),
+            ],
+            required: &["mod_path"],
+            kind: LOCAL,
+        },
+        Tool {
             name: "xtiger_playsets",
-            title: "List playsets",
-            description: "List the playsets of the Paradox launcher, with the active one marked. With name, list \
-                          the mods of that playset in load order: name, enabled, and the .mod file. Pass a \
-                          playset to ck3_run to test a mod together with its mods.",
-            params: vec![("name", string("A playset, to list its mods."))],
+            title: "Playsets",
+            description: "The playsets you can test a mod with: the launcher's (read only) and the ones xTiger \
+                          keeps, which you and the user create and edit here and in the app. Without action or \
+                          name it lists them all. With name it shows that playset's mods in load order. To \
+                          build one to test with: set (name, mods, notes) creates or replaces it; add, remove, \
+                          move, enable, disable and clear change it; copy (from, name) starts from another \
+                          playset; rename (new_name) and delete. Mods are named as in mod_path. Pass the name \
+                          as playset to ck3_run, xtiger_validate or xtiger_loadorder.",
+            params: vec![
+                (
+                    "action",
+                    choice(
+                        "What to do (default: list, or get when name is given).",
+                        &[
+                            "list", "get", "set", "add", "remove", "move", "enable", "disable",
+                            "clear", "copy", "rename", "delete",
+                        ],
+                    ),
+                ),
+                ("name", string("A playset.")),
+                (
+                    "mods",
+                    strings(
+                        "set, add, remove, move, enable, disable: mods, as names, folders or .mod files, \
+                         as for mod_path. For enable and disable, none means all.",
+                    ),
+                ),
+                ("before", string("add, move: put the mods right before this one of the playset.")),
+                ("after", string("add, move: put the mods right after this one of the playset.")),
+                ("notes", string("set: what the playset is for.")),
+                ("from", string("copy: the playset to copy, of the launcher or of xTiger.")),
+                ("new_name", string("rename: the new name.")),
+            ],
             required: &[],
-            kind: READ_ONLY,
+            kind: LOCAL,
         },
     ]
 }
@@ -1739,7 +1824,7 @@ fn prepare_run(args: &Args, loc: &Locations, ctx: &mut Context) -> Result<Prepar
     let mut mods = Vec::new();
     let mut playset_note = String::new();
     if !playset.trim().is_empty() {
-        let found = playsets::find(&loc.user_dir, &playset)?;
+        let found = own_playsets::find(&loc.state_dir, &loc.user_dir, &all_mods(loc), &playset)?;
         let (files, missing) = playsets::load_order(&found);
         playset_note =
             format!("Playset {}: {} loaded", found.name, plural(files.len(), "mod", "mods"));
@@ -1748,6 +1833,16 @@ fn prepare_run(args: &Args, loc: &Locations, ctx: &mut Context) -> Result<Prepar
         }
         playset_note.push_str(".\n\n");
         mods = files;
+    }
+    // One mod and no playset: it is tested with the mods it needs, in their order.
+    if wanted.len() == 1 && playset.trim().is_empty() && args.boolean("load_order", true)? {
+        let order = loadorder::resolve(&loc.state_dir, &loc.user_dir, &known, &wanted[0], true)?;
+        let mut note = order.describe();
+        for warning in &order.warnings {
+            let _ = write!(note, " {warning}");
+        }
+        playset_note = format!("{note}\n\n");
+        mods = order.files();
     }
     for file in wanted {
         if !mods.contains(&file) {
@@ -1771,6 +1866,337 @@ fn prepare_run(args: &Args, loc: &Locations, ctx: &mut Context) -> Result<Prepar
         working,
         mod_dir,
     })
+}
+
+/// `xtiger_loadorder`: read and change the mods a mod needs loaded before it.
+fn loadorder_tool(args: &Args, loc: &Locations, ctx: &mut Context) -> Result<Done, CallError> {
+    let all = all_mods(loc);
+    let mod_file = mods::resolve(&args.string("mod_path", "")?, &all)?;
+    let working = mod_ref(&all, &mod_file);
+    (ctx.working_on)(&working);
+    let action = args.string("action", "get")?;
+    let state_dir = &loc.state_dir;
+    let current: Vec<PathBuf> = loadorder::load(state_dir, &mod_file)
+        .map(|saved| saved.requires.into_iter().map(|entry| entry.mod_file).collect())
+        .unwrap_or_default();
+    let resolve_all = |names: Vec<String>| -> Result<Vec<PathBuf>, String> {
+        names.iter().map(|wanted| mods::resolve(wanted, &all)).collect()
+    };
+    let at = |name: &str| -> Result<Option<PathBuf>, String> {
+        let name = name.trim();
+        if name.is_empty() { Ok(None) } else { mods::resolve(name, &all).map(Some) }
+    };
+    let mut extra = Vec::new();
+    let list = match action.as_str() {
+        "get" => None,
+        "clear" => Some(Vec::new()),
+        "set" => Some(resolve_all(args.strings("requires")?)?),
+        "remove" => {
+            let drop = resolve_all(args.strings("requires")?)?;
+            Some(current.iter().filter(|file| !drop.contains(file)).cloned().collect())
+        }
+        "add" | "move" => {
+            let moved = resolve_all(args.strings("requires")?)?;
+            if moved.is_empty() {
+                return Err(format!("{action} needs `requires`: the mods to {action}.").into());
+            }
+            if action == "move"
+                && let Some(missing) = moved.iter().find(|file| !current.contains(file))
+            {
+                return Err(format!(
+                    "{} is not in the load order, so it cannot be moved. Use add.",
+                    missing.display()
+                )
+                .into());
+            }
+            let mut list: Vec<PathBuf> =
+                current.iter().filter(|file| !moved.contains(file)).cloned().collect();
+            let place = match (at(&args.string("before", "")?)?, at(&args.string("after", "")?)?) {
+                (Some(_), Some(_)) => {
+                    return Err("Give `before` or `after`, not both.".into());
+                }
+                (Some(anchor), None) => Some((anchor, 0)),
+                (None, Some(anchor)) => Some((anchor, 1)),
+                (None, None) => None,
+            };
+            let index = match place {
+                Some((anchor, shift)) => list
+                    .iter()
+                    .position(|file| *file == anchor)
+                    .map(|found| found + shift)
+                    .ok_or_else(|| format!("{} is not in the load order.", anchor.display()))?,
+                None => list.len(),
+            };
+            list.splice(index..index, moved);
+            Some(list)
+        }
+        "from_playset" => {
+            let found =
+                own_playsets::find(state_dir, &loc.user_dir, &all, &args.string("playset", "")?)?;
+            let (files, missing) = playsets::check_order(&found);
+            let before: Vec<PathBuf> = files
+                .into_iter()
+                .map(|file| mods::clean(&file))
+                .take_while(|file| *file != mod_file)
+                .collect();
+            let mut list =
+                if args.boolean("replace", true)? { Vec::new() } else { current.clone() };
+            for file in before {
+                if !list.contains(&file) {
+                    list.push(file);
+                }
+            }
+            if !missing.is_empty() {
+                extra.push(Content::Text(format!(
+                    "Left out, no .mod file: {}.",
+                    missing.join(", ")
+                )));
+            }
+            Some(list)
+        }
+        other => return Err(format!("Unknown action {other:?}.").into()),
+    };
+    if let Some(list) = list {
+        loadorder::save(state_dir, &mod_file, loadorder::entries(&list, &all))?;
+    }
+    let order = loadorder::resolve(state_dir, &loc.user_dir, &all, &mod_file, true)?;
+    let saved = loadorder::load(state_dir, &mod_file).map(|saved| saved.requires);
+    let summary = if order.loaded.is_empty() {
+        format!("{} loads alone", order.name)
+    } else {
+        format!("{} loads after {}", order.name, plural(order.loaded.len(), "mod", "mods"))
+    };
+    let mut content = vec![
+        json_text(&json!({
+            "mod": order.mod_file,
+            "name": order.name,
+            "saved": saved.unwrap_or_default(),
+            "will_load": order.loaded,
+            "dependencies": order.dependencies,
+            "unresolved": order.unresolved,
+            "warnings": order.warnings,
+        })),
+        Content::Text(order.describe()),
+    ];
+    content.append(&mut extra);
+    Ok(Done { content, note: Note { summary, mod_ref: Some(working), run_id: None, found: None } })
+}
+
+/// A playset as it is shown: what the launcher or xTiger keeps, plus the notes of ours.
+fn playset_json(playset: &playsets::Playset, own: Option<&Own>) -> Value {
+    let mut value = serde_json::to_value(playset).unwrap_or(Value::Null);
+    if let (Some(own), Some(map)) = (own, value.as_object_mut()) {
+        map.insert("notes".to_owned(), json!(own.notes));
+    }
+    value
+}
+
+/// The one summary line of a playset.
+fn playset_phrase(playset: &playsets::Playset) -> String {
+    let mut phrase =
+        format!("{}: {}", playset.name, plural(playset.enabled, "mod enabled", "mods enabled"));
+    let missing: Vec<&str> = playset
+        .mods
+        .iter()
+        .filter(|item| item.enabled && item.mod_file.is_none())
+        .map(|item| item.name.as_str())
+        .collect();
+    if !missing.is_empty() {
+        let _ = write!(phrase, " (not installed: {})", missing.join(", "));
+    }
+    phrase
+}
+
+/// Why a playset cannot be changed: there is none of that name kept by xTiger.
+fn not_ours(name: &str, state_dir: &std::path::Path) -> String {
+    let names: Vec<String> = own_playsets::list(state_dir).into_iter().map(|p| p.name).collect();
+    if names.is_empty() {
+        format!("xTiger keeps no playset called {name}. Create one with action set.")
+    } else {
+        format!("xTiger keeps no playset called {name}. It keeps: {}.", names.join(", "))
+    }
+}
+
+/// `xtiger_playsets`: list playsets, and keep the ones that xTiger owns.
+fn playsets_tool(args: &Args, loc: &Locations) -> Result<Done, CallError> {
+    let action = args.string("action", "")?;
+    let name = args.string("name", "")?;
+    let state_dir = &loc.state_dir;
+    let all = all_mods(loc);
+    let action = match action.as_str() {
+        "" if name.trim().is_empty() => "list",
+        "" => "get",
+        other => other,
+    };
+    if action == "list" {
+        let mut list = Vec::new();
+        for own in own_playsets::list(state_dir) {
+            let playset = own_playsets::to_playset(&own, &all);
+            let missing = playset.mods.iter().filter(|m| m.enabled && m.mod_file.is_none()).count();
+            list.push(json!({
+                "name": own.name, "source": "xtiger", "active": false, "mods": own.mods.len(),
+                "enabled": playset.enabled, "not_installed": missing, "notes": own.notes,
+            }));
+        }
+        // The launcher may not be installed; the playsets of xTiger are still there.
+        for p in playsets::list(&loc.user_dir).unwrap_or_default() {
+            list.push(json!({
+                "name": p.name, "source": "launcher", "active": p.active, "mods": p.mods.len(),
+                "enabled": p.enabled,
+            }));
+        }
+        let summary = plural(list.len(), "playset", "playsets");
+        return Ok(Done::new(vec![json_text(&json!({"playsets": list}))], summary));
+    }
+    if name.trim().is_empty() {
+        return Err(format!("{action} needs `name`: the playset.").into());
+    }
+    let ours = own_playsets::load(state_dir, &name);
+    if action == "get" {
+        let found = own_playsets::find(state_dir, &loc.user_dir, &all, &name)?;
+        let own = if found.source == "xtiger" {
+            own_playsets::load(state_dir, &found.name)
+        } else {
+            None
+        };
+        let value = playset_json(&found, own.as_ref());
+        return Ok(Done::new(vec![json_text(&value)], playset_phrase(&found)));
+    }
+    if action == "delete" {
+        if !own_playsets::delete(state_dir, &name)? {
+            return Err(not_ours(&name, state_dir).into());
+        }
+        let text = format!("Deleted playset {name}.");
+        return Ok(Done::new(vec![Content::Text(text)], "playset deleted"));
+    }
+    if action == "copy" {
+        let from = args.string("from", "")?;
+        if from.trim().is_empty() {
+            return Err("copy needs `from`: the playset to copy.".into());
+        }
+        if ours.is_some() {
+            return Err(format!("A playset called {name} already exists.").into());
+        }
+        let source = own_playsets::find(state_dir, &loc.user_dir, &all, &from)?;
+        let saved =
+            own_playsets::save(state_dir, own_playsets::from_playset(&name, &source, &all)?)?;
+        let playset = own_playsets::to_playset(&saved, &all);
+        let phrase =
+            format!("Copied {} to {}. {}", source.name, saved.name, playset_phrase(&playset));
+        return Ok(Done::new(vec![json_text(&playset_json(&playset, Some(&saved)))], phrase));
+    }
+    if action == "rename" {
+        let new = args.string("new_name", "")?;
+        if ours.is_none() {
+            return Err(not_ours(&name, state_dir).into());
+        }
+        let saved = own_playsets::rename(state_dir, &name, &new)?;
+        let playset = own_playsets::to_playset(&saved, &all);
+        let phrase = format!("Renamed {name} to {}.", saved.name);
+        return Ok(Done::new(vec![json_text(&playset_json(&playset, Some(&saved)))], phrase));
+    }
+    // The rest change the mods of a playset of ours, which `set` and `add` may start.
+    if ours.is_none() {
+        if !matches!(action, "set" | "add") {
+            return Err(not_ours(&name, state_dir).into());
+        }
+        if playsets::find(&loc.user_dir, &name)
+            .is_ok_and(|found| found.name.to_lowercase() == name.trim().to_lowercase())
+        {
+            return Err(format!(
+                "{name} is a launcher playset and cannot be changed. Copy it first: \
+                 action copy, from {name}, name <new name>."
+            )
+            .into());
+        }
+    }
+    let mut own = ours.unwrap_or_else(|| Own {
+        name: name.clone(),
+        notes: String::new(),
+        mods: Vec::new(),
+        updated_ms: 0,
+    });
+    let given = args.strings("mods")?;
+    let files =
+        given.iter().map(|wanted| mods::resolve(wanted, &all)).collect::<Result<Vec<_>, _>>()?;
+    let wanted = loadorder::entries(&files, &all);
+    let anchor = |key: &str| -> Result<Option<PathBuf>, CallError> {
+        let text = args.string(key, "")?;
+        if text.trim().is_empty() {
+            return Ok(None);
+        }
+        let file = mods::resolve(&text, &all)?;
+        Ok(loadorder::entries(&[file], &all).pop().map(|entry| entry.mod_file))
+    };
+    let wanted_item = |own: &Own| -> Vec<OwnMod> {
+        wanted
+            .iter()
+            .map(|entry| OwnMod {
+                name: entry.name.clone(),
+                mod_file: entry.mod_file.clone(),
+                // A mod that is put somewhere else stays as switched on or off as it was.
+                enabled: own
+                    .mods
+                    .iter()
+                    .find(|m| m.mod_file == entry.mod_file)
+                    .is_none_or(|m| m.enabled),
+            })
+            .collect()
+    };
+    let is_wanted = |item: &OwnMod| wanted.iter().any(|entry| entry.mod_file == item.mod_file);
+    match action {
+        "set" => {
+            let notes = args.string("notes", "")?;
+            if !given.is_empty() || own.mods.is_empty() {
+                own.mods = wanted_item(&own);
+            }
+            if !notes.trim().is_empty() {
+                own.notes = notes;
+            }
+        }
+        "clear" => own.mods.clear(),
+        "remove" => {
+            if wanted.is_empty() {
+                return Err("remove needs `mods`: the mods to remove.".into());
+            }
+            own.mods.retain(|item| !is_wanted(item));
+        }
+        "enable" | "disable" => {
+            for item in &mut own.mods {
+                if wanted.is_empty() || is_wanted(item) {
+                    item.enabled = action == "enable";
+                }
+            }
+        }
+        "add" | "move" => {
+            if wanted.is_empty() {
+                return Err(format!("{action} needs `mods`: the mods to {action}.").into());
+            }
+            if action == "move"
+                && let Some(entry) =
+                    wanted.iter().find(|e| !own.mods.iter().any(|m| m.mod_file == e.mod_file))
+            {
+                return Err(format!("{} is not in {name}. Use add.", entry.name).into());
+            }
+            let moved = wanted_item(&own);
+            own.mods.retain(|item| !is_wanted(item));
+            let index = match (anchor("before")?, anchor("after")?) {
+                (Some(_), Some(_)) => return Err("Give `before` or `after`, not both.".into()),
+                (Some(next), None) => own.mods.iter().position(|m| m.mod_file == next),
+                (None, Some(prev)) => {
+                    own.mods.iter().position(|m| m.mod_file == prev).map(|at| at + 1)
+                }
+                (None, None) => Some(own.mods.len()),
+            }
+            .ok_or("The mod to put them next to is not in the playset.")?;
+            own.mods.splice(index..index, moved);
+        }
+        other => return Err(format!("Unknown action {other:?}.").into()),
+    }
+    let saved = own_playsets::save(state_dir, own)?;
+    let playset = own_playsets::to_playset(&saved, &all);
+    let phrase = playset_phrase(&playset);
+    Ok(Done::new(vec![json_text(&playset_json(&playset, Some(&saved)))], phrase))
 }
 
 /// `ck3_job`: look at, collect or stop a play-test job.
@@ -1887,7 +2313,7 @@ pub fn call(
             let mut playset_note = String::new();
             let playset = args.string("playset", "")?;
             if !playset.trim().is_empty() {
-                let found = playsets::find(&loc.user_dir, &playset)?;
+                let found = own_playsets::find(&loc.state_dir, &loc.user_dir, &mods, &playset)?;
                 let (files, missing) = playsets::check_order(&found);
                 // The mod that is checked is part of its own playset; it is not loaded twice.
                 with = files.into_iter().filter(|file| mods::clean(file) != mod_file).collect();
@@ -1914,6 +2340,8 @@ pub fn call(
                 by: Some(ctx.client.unwrap_or("An AI assistant")),
                 load_dependencies: args.boolean("load_dependencies", true)?,
                 with: &with,
+                // A playset is an order of its own.
+                use_load_order: args.boolean("load_order", true)? && playset.trim().is_empty(),
                 ..Options::default()
             };
             let result = runs::validate(
@@ -2460,24 +2888,8 @@ pub fn call(
             let summary = plural(found.matched, "entry", "entries");
             Ok(Done::new(vec![json_text(&found)], summary))
         }
-        "xtiger_playsets" => {
-            let name = args.string("name", "")?;
-            if name.trim().is_empty() {
-                let list: Vec<Value> = playsets::list(&loc.user_dir)?
-                    .iter()
-                    .map(|p| json!({"name": p.name, "active": p.active, "mods": p.mods.len(), "enabled": p.enabled}))
-                    .collect();
-                let summary = plural(list.len(), "playset", "playsets");
-                return Ok(Done::new(vec![json_text(&json!({"playsets": list}))], summary));
-            }
-            let playset = playsets::find(&loc.user_dir, &name)?;
-            let summary = format!(
-                "{}: {}",
-                playset.name,
-                plural(playset.enabled, "mod enabled", "mods enabled")
-            );
-            Ok(Done::new(vec![json_text(&playset)], summary))
-        }
+        "xtiger_loadorder" => loadorder_tool(&args, loc, ctx),
+        "xtiger_playsets" => playsets_tool(&args, loc),
         _ => Err(CallError::Unknown(name.to_owned())),
     }
 }
@@ -2531,7 +2943,7 @@ mod tests {
     fn every_tool_is_listed_with_a_schema() {
         let list = list();
         let tools = list["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 26);
+        assert_eq!(tools.len(), 27);
         for tool in tools {
             assert_eq!(tool["inputSchema"]["type"], "object");
             assert!(tool["description"].as_str().unwrap().len() > 40);
@@ -2779,5 +3191,223 @@ mod tests {
         assert!(object.contains("step 1 must be an object"), "{object}");
         let many = json!({"steps": vec![json!({"scancodes": "01"}); MAX_STEPS + 1]});
         assert!(keys(&many).unwrap_err().contains("At most"));
+    }
+
+    /// A mod called `name` in the Paradox `mod` folder of the test's user dir.
+    fn add_mod(tmp: &TempDir, file: &str, name: &str, deps: &[&str]) -> PathBuf {
+        fs::create_dir_all(tmp.join("user").join("mod").join(file)).unwrap();
+        let deps = if deps.is_empty() {
+            String::new()
+        } else {
+            let names: Vec<String> = deps.iter().map(|d| format!("\"{d}\"")).collect();
+            format!("dependencies = {{ {} }}\n", names.join(" "))
+        };
+        let path = tmp.join("user").join("mod").join(format!("{file}.mod"));
+        fs::write(&path, format!("name=\"{name}\"\npath=\"mod/{file}\"\n{deps}")).unwrap();
+        path
+    }
+
+    fn will_load(result: Result<Done, CallError>) -> Vec<String> {
+        let value: Value = serde_json::from_str(&text(result)).unwrap();
+        value["will_load"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|loaded| loaded["name"].as_str().unwrap().to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn the_load_order_of_a_mod_is_kept_and_edited() {
+        let tmp = TempDir::new();
+        let loc = locations(&tmp);
+        for (file, name) in [("a", "Mod A"), ("b", "Mod B"), ("d", "Mod D")] {
+            add_mod(&tmp, file, name, &[]);
+        }
+        add_mod(&tmp, "c", "Patch C", &[]);
+        let go = |arguments: Value| will_load(run("xtiger_loadorder", &arguments, &loc));
+        assert!(go(json!({"mod_path": "Patch C"})).is_empty());
+        assert_eq!(
+            go(json!({"mod_path": "Patch C", "action": "set", "requires": ["Mod B", "Mod A"]})),
+            ["Mod B", "Mod A"]
+        );
+        assert_eq!(
+            go(
+                json!({"mod_path": "Patch C", "action": "add", "requires": ["Mod D"], "before": "Mod A"})
+            ),
+            ["Mod B", "Mod D", "Mod A"]
+        );
+        assert_eq!(
+            go(
+                json!({"mod_path": "Patch C", "action": "move", "requires": ["Mod A"], "before": "Mod B"})
+            ),
+            ["Mod A", "Mod B", "Mod D"]
+        );
+        assert_eq!(
+            go(json!({"mod_path": "Patch C", "action": "remove", "requires": ["Mod B"]})),
+            ["Mod A", "Mod D"]
+        );
+        let both = run(
+            "xtiger_loadorder",
+            &json!({"mod_path": "Patch C", "action": "add", "requires": ["Mod B"], "before": "Mod A", "after": "Mod D"}),
+            &loc,
+        );
+        assert!(matches!(both, Err(CallError::Failed(message)) if message.contains("not both")));
+        let not_listed = run(
+            "xtiger_loadorder",
+            &json!({"mod_path": "Patch C", "action": "move", "requires": ["Mod B"]}),
+            &loc,
+        );
+        assert!(
+            matches!(not_listed, Err(CallError::Failed(message)) if message.contains("not in the load order"))
+        );
+        assert!(go(json!({"mod_path": "Patch C", "action": "clear"})).is_empty());
+        assert!(
+            !loadorder::path(&loc.state_dir, &tmp.join("user").join("mod").join("c.mod")).exists()
+        );
+    }
+
+    #[test]
+    fn a_game_run_of_one_mod_loads_what_it_needs_first() {
+        let tmp = TempDir::new();
+        let loc = locations(&tmp);
+        let a = add_mod(&tmp, "a", "Mod A", &[]);
+        let b = add_mod(&tmp, "b", "Mod B", &[]);
+        let c = add_mod(&tmp, "c", "Patch C", &[]);
+        let prepare = |arguments: Value| {
+            let mut progress = |_: &str| {};
+            let mut working_on = |_: &ModRef| {};
+            let mut ctx = Context {
+                progress: &mut progress,
+                cancelled: &|| false,
+                working_on: &mut working_on,
+                session: "test",
+                client: None,
+            };
+            prepare_run(&Args(arguments.as_object().unwrap()), &loc, &mut ctx).ok().unwrap()
+        };
+        // Nothing saved: the mod runs alone.
+        let alone = prepare(json!({"mods": ["Patch C"]}));
+        assert_eq!(alone.mods, [mods::clean(&c)]);
+        assert!(alone.playset_note.contains("Patch C alone"));
+        run(
+            "xtiger_loadorder",
+            &json!({"mod_path": "Patch C", "action": "set", "requires": ["Mod B", "Mod A"]}),
+            &loc,
+        )
+        .unwrap();
+        let ordered = prepare(json!({"mods": ["Patch C"]}));
+        assert_eq!(ordered.mods, [mods::clean(&b), mods::clean(&a), mods::clean(&c)]);
+        assert!(
+            ordered.playset_note.contains("Mod B, Mod A, then Patch C"),
+            "{}",
+            ordered.playset_note
+        );
+        // The caller can turn it off, and two mods or a playset are the caller's own order.
+        assert_eq!(
+            prepare(json!({"mods": ["Patch C"], "load_order": false})).mods,
+            [mods::clean(&c)]
+        );
+        let two = prepare(json!({"mods": ["Patch C", "Mod A"]}));
+        assert_eq!(two.mods, [mods::clean(&c), mods::clean(&a)]);
+    }
+
+    #[test]
+    fn the_playsets_of_xtiger_are_made_edited_and_used() {
+        let tmp = TempDir::new();
+        let loc = locations(&tmp);
+        let files: Vec<PathBuf> =
+            [("a", "Mod A"), ("b", "Mod B"), ("d", "Mod D"), ("c", "Patch C")]
+                .iter()
+                .map(|(file, name)| add_mod(&tmp, file, name, &[]))
+                .collect();
+        let go = |arguments: Value| -> Value {
+            serde_json::from_str(&text(run("xtiger_playsets", &arguments, &loc))).unwrap()
+        };
+        let names = |value: &Value| -> Vec<String> {
+            value["mods"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|m| {
+                    let off = if m["enabled"].as_bool().unwrap() { "" } else { " (off)" };
+                    format!("{}{off}", m["name"].as_str().unwrap())
+                })
+                .collect()
+        };
+        assert!(go(json!({}))["playsets"].as_array().unwrap().is_empty());
+        let made = go(
+            json!({"action": "set", "name": "Heraldry", "mods": ["Mod B", "Mod A"], "notes": "for Patch C"}),
+        );
+        assert_eq!(names(&made), ["Mod B", "Mod A"]);
+        assert_eq!(made["source"], "xtiger");
+        assert_eq!(made["notes"], "for Patch C");
+        let added =
+            go(json!({"action": "add", "name": "heraldry", "mods": ["Mod D"], "before": "Mod A"}));
+        assert_eq!(names(&added), ["Mod B", "Mod D", "Mod A"]);
+        let moved =
+            go(json!({"action": "move", "name": "Heraldry", "mods": ["Mod A"], "before": "Mod B"}));
+        assert_eq!(names(&moved), ["Mod A", "Mod B", "Mod D"]);
+        let off = go(json!({"action": "disable", "name": "Heraldry", "mods": ["Mod B"]}));
+        assert_eq!(names(&off), ["Mod A", "Mod B (off)", "Mod D"]);
+        // Moving a mod that is off keeps it off, and the notes survive a change of the mods.
+        let kept =
+            go(json!({"action": "move", "name": "Heraldry", "mods": ["Mod B"], "after": "Mod D"}));
+        assert_eq!(names(&kept), ["Mod A", "Mod D", "Mod B (off)"]);
+        assert_eq!(go(json!({"name": "Heraldry"}))["notes"], "for Patch C");
+        let listed = go(json!({}));
+        assert_eq!(listed["playsets"][0]["source"], "xtiger");
+        assert_eq!(listed["playsets"][0]["enabled"], 2);
+
+        // The game run and the check load what is on, in order, together with the mod.
+        let mut progress = |_: &str| {};
+        let mut working_on = |_: &ModRef| {};
+        let mut ctx = Context {
+            progress: &mut progress,
+            cancelled: &|| false,
+            working_on: &mut working_on,
+            session: "test",
+            client: None,
+        };
+        let arguments = json!({"mods": ["Patch C"], "playset": "heraldry"});
+        let prepared =
+            prepare_run(&Args(arguments.as_object().unwrap()), &loc, &mut ctx).ok().unwrap();
+        let clean = |i: usize| mods::clean(&files[i]);
+        assert_eq!(prepared.mods, [clean(0), clean(2), clean(3)]);
+        assert!(
+            prepared.playset_note.contains("Playset Heraldry: 2 mods"),
+            "{}",
+            prepared.playset_note
+        );
+
+        // It can start from another playset, be renamed and be deleted; the launcher's cannot change.
+        let copy = go(json!({"action": "copy", "name": "Heraldry 2", "from": "Heraldry"}));
+        assert_eq!(names(&copy), ["Mod A", "Mod D", "Mod B (off)"]);
+        let renamed = go(json!({"action": "rename", "name": "Heraldry 2", "new_name": "Spare"}));
+        assert_eq!(renamed["name"], "Spare");
+        let twice = run(
+            "xtiger_playsets",
+            &json!({"action": "copy", "name": "spare", "from": "Heraldry"}),
+            &loc,
+        );
+        assert!(matches!(twice, Err(CallError::Failed(m)) if m.contains("already exists")));
+        let unknown = run(
+            "xtiger_playsets",
+            &json!({"action": "add", "name": "Nope", "mods": ["No Such Mod"]}),
+            &loc,
+        );
+        assert!(unknown.is_err());
+        let not_ours = run(
+            "xtiger_playsets",
+            &json!({"action": "remove", "name": "Nope", "mods": ["Mod A"]}),
+            &loc,
+        );
+        assert!(
+            matches!(not_ours, Err(CallError::Failed(m)) if m.contains("keeps no playset called Nope"))
+        );
+        let gone =
+            text(run("xtiger_playsets", &json!({"action": "delete", "name": "Spare"}), &loc));
+        assert!(gone.contains("Deleted playset Spare"), "{gone}");
+        assert_eq!(go(json!({}))["playsets"].as_array().unwrap().len(), 1);
     }
 }

@@ -41,13 +41,15 @@ pub struct Setup {
     pub loaded: Vec<Loaded>,
     pub unresolved: Vec<Unresolved>,
     pub warnings: Vec<String>,
+    /// The mods the config already loads with `load_mod`, which come before the ones above.
+    pub configured: Vec<Loaded>,
     /// The config to give the validator, when mods are added to it. Without it the validator
     /// uses the config it finds by itself.
     #[serde(skip)]
     pub conf: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Request<'a> {
     /// The `.mod` file that is checked.
     pub mod_file: &'a Path,
@@ -55,6 +57,9 @@ pub struct Request<'a> {
     pub config: Option<&'a Path>,
     /// Mods to load besides its dependencies.
     pub with: &'a [PathBuf],
+    /// Load `with` before the mod's own dependencies, so the caller's order wins over the
+    /// descriptor's. Dependencies of the mods in `with` still come before each of them.
+    pub with_first: bool,
     pub load_dependencies: bool,
     /// The Paradox folder, where Workshop mods have their `.mod` files.
     pub paradox: &'a Path,
@@ -76,11 +81,23 @@ pub fn plan(request: &Request, all: &[ModInfo]) -> Result<Setup, String> {
         Some(path) => {
             let text = fs::read_to_string(&path)
                 .map_err(|e| format!("Cannot read the config {}: {e}", path.display()))?;
+            // The lines an export wrote are this plan's own doing, not the mod's config: they are
+            // worked out again below, so reading them back would make every dependency "configured".
+            let text = crate::loadorder::strip_conf_block(&text);
             rewrite_conf(&text, path.parent().unwrap_or(Path::new(".")), request.paradox)
         }
         None => (String::new(), Vec::new()),
     };
     // What the config already loads is not loaded again, by file or by name.
+    let configured: Vec<Loaded> = existing
+        .iter()
+        .filter_map(|file| mods::describe(file))
+        .map(|info| Loaded {
+            name: info.name,
+            mod_file: mods::clean(&info.mod_file),
+            why: "loaded by the config's load_mod".to_owned(),
+        })
+        .collect();
     let existing_names: HashSet<String> = existing
         .iter()
         .filter_map(|file| mods::describe(file))
@@ -109,16 +126,25 @@ pub fn plan(request: &Request, all: &[ModInfo]) -> Result<Setup, String> {
                 .push(format!("Cannot read {}, so it is not loaded.", file.display())),
         }
     }
+    let add_provided = |walk: &mut Walk| {
+        for info in walk.provided.clone() {
+            walk.add(info, "asked for with `with`".to_owned());
+        }
+    };
+    if request.with_first {
+        add_provided(&mut walk);
+    }
     if request.load_dependencies {
         for name in &main.dependencies {
             walk.dependency(name, &main.name);
         }
     }
-    for info in walk.provided.clone() {
-        walk.add(info, "asked for with `with`".to_owned());
+    if !request.with_first {
+        add_provided(&mut walk);
     }
 
     let mut setup = walk.setup;
+    setup.configured = configured;
     if !setup.loaded.is_empty() {
         let mut conf = base_text;
         if !conf.is_empty() && !conf.ends_with('\n') {
@@ -165,7 +191,7 @@ struct Walk<'a> {
 }
 
 /// Local copies come before added folders, which come before Workshop copies.
-fn source_rank(source: &str) -> u8 {
+pub(crate) fn source_rank(source: &str) -> u8 {
     match source {
         "local" => 0,
         "added" => 1,
@@ -266,7 +292,7 @@ impl Walk<'_> {
 }
 
 /// A label for a `load_mod` block, which the validator shows with the reports of that mod.
-fn unique_label(name: &str, used: &mut HashSet<String>) -> String {
+pub(crate) fn unique_label(name: &str, used: &mut HashSet<String>) -> String {
     let mut label: String = name
         .chars()
         .filter(|c| !c.is_control() && *c != '"' && *c != '\\')
@@ -417,6 +443,7 @@ mod tests {
                 mod_file: main,
                 config: None,
                 with,
+                with_first: false,
                 load_dependencies: true,
                 paradox: &self.tmp,
             };
@@ -604,6 +631,7 @@ mod tests {
             mod_file: &main,
             config: None,
             with: &[],
+            with_first: false,
             load_dependencies: false,
             paradox: &world.tmp,
         };

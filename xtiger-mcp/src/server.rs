@@ -581,7 +581,7 @@ mod tests {
         let instructions = answers["1"]["result"]["instructions"].as_str().unwrap();
         assert!(instructions.contains("reason") && instructions.contains(sessions::TOOL));
         let tools = answers["2"]["result"]["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 26);
+        assert_eq!(tools.len(), 27);
         assert!(tools.iter().all(|tool| tool["inputSchema"]["properties"]["reason"].is_object()));
         let prompt = answers["\"p\""]["result"]["messages"][0]["content"]["text"].as_str().unwrap();
         assert!(prompt.contains("\"Silk\""));

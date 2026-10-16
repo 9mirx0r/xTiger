@@ -214,7 +214,7 @@ function placeTabPill(root) {
 /* ---------- Navigation ---------- */
 
 const SCREENS = {};
-const RAIL_SCREENS = new Set(['home', 'mods','results', 'allclear', 'activity', 'settings']);
+const RAIL_SCREENS = new Set(['home', 'mods', 'loadorder', 'playsets', 'results', 'allclear', 'activity', 'settings']);
 
 // The screen the latest go() asked for. Swaps can run late when quick clicks cut transitions short,
 // so each swap renders the latest target rather than its own.
@@ -251,7 +251,7 @@ function render() {
   root.innerHTML = html();
   const rail = $('#rail');
   rail.hidden = !RAIL_SCREENS.has(state.screen);
-  const current = state.screen === 'allclear' ? 'results' : state.screen;
+  const current = { allclear: 'results', loadorder: 'mods' }[state.screen] ?? state.screen;
   for (const button of $$('.rail-btn', rail)) {
     if (button.dataset.nav === current) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
@@ -1191,6 +1191,7 @@ SCREENS.mods = {
           <div class="dock-title">${esc(mod.name)}</div>
           <div class="dock-sub">${esc(sub)}</div>
         </div>
+        <button class="btn btn-lg" data-act="loadorder" title="The mods this one is checked and tested with, in order">${icon.layers}Load order</button>
         <button class="btn btn-primary btn-lg" data-act="validate">${icon.magnifier}Validate</button>`;
     } else {
       dock = `
@@ -1262,6 +1263,7 @@ SCREENS.mods = {
       fresh.innerHTML = SCREENS.mods.html();
       dock.innerHTML = $('#dock', fresh).innerHTML;
       $('[data-act="validate"]', dock)?.addEventListener('click', () => validate(selectedMod()));
+      $('[data-act="loadorder"]', dock)?.addEventListener('click', () => openLoadOrder(selectedMod()));
       dock.classList.remove('bump');
       void dock.offsetWidth;
       dock.classList.add('bump');
@@ -1272,6 +1274,7 @@ SCREENS.mods = {
     });
     $('[data-act="add"]', root).addEventListener('click', addModFolder);
     $('[data-act="validate"]', root)?.addEventListener('click', () => validate(selectedMod()));
+    $('[data-act="loadorder"]', root)?.addEventListener('click', () => openLoadOrder(selectedMod()));
   },
 };
 

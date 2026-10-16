@@ -5,7 +5,9 @@
 
 mod clients;
 mod editor;
+mod loadorder;
 mod mods;
+mod playsets;
 mod settings;
 mod tracking;
 mod update;
@@ -218,7 +220,8 @@ async fn validate(app: AppHandle, mod_file: PathBuf) -> Result<RunResult, String
             .into_iter()
             .find(|info| info.mod_file == mod_file)
             .map(|info| info.name);
-        let runs_dir = mcp_state_dir(&app).map(|dir| dir.join("runs"));
+        let state_dir = mcp_state_dir(&app);
+        let runs_dir = state_dir.as_ref().map(|dir| dir.join("runs"));
         let args = RunArgs {
             mod_file: &mod_file,
             mod_name,
@@ -226,6 +229,7 @@ async fn validate(app: AppHandle, mod_file: PathBuf) -> Result<RunResult, String
             paradox: paradox.as_deref(),
             extra_mods: &extra,
             runs_dir: runs_dir.as_deref(),
+            state_dir: state_dir.as_deref(),
         };
         let result = state.runner.run(&app, &args)?;
         state.update(&app, |settings| {
@@ -574,6 +578,16 @@ fn main() {
             tracking::project_status,
             tracking::project_track,
             tracking::project_annotate,
+            loadorder::loadorder_get,
+            loadorder::loadorder_save,
+            loadorder::loadorder_playsets,
+            loadorder::loadorder_from_playset,
+            loadorder::loadorder_export_conf,
+            playsets::playsets_overview,
+            playsets::playsets_save,
+            playsets::playsets_create,
+            playsets::playsets_rename,
+            playsets::playsets_delete,
             ai_session,
             ask_ai,
             remove_request,

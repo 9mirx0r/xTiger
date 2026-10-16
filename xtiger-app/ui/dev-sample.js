@@ -408,7 +408,96 @@ function projectAnnotate({ key, path, line, kind, note, message = null }) {
   return { annotated: picked.length, kind, status: projectStatus() };
 }
 
+// Saved load orders by mod file, as the app keeps them. The first mod starts with a list so the screen
+// has something to show; ?emptyorder starts it empty, ?lostmod adds a mod that is no longer installed.
+const loadOrders = new Map();
+let loadOrderConf = false;
+function loadOrderView(modFile) {
+  const mod = mods.find((item) => item.modFile === modFile) ?? mods[0];
+  if (!loadOrders.has(mod.modFile)) {
+    const start = mod === mods[0] && !params.has('emptyorder') ? [mods[3], mods[1]] : [];
+    const list = start.map((item) => ({ name: item.name, mod: item.modFile, installed: true }));
+    if (mod === mods[0] && params.has('lostmod')) list.push({ name: 'Ancient Banners', mod: `${DOCS}\\mod\\ancient_banners.mod`, installed: false });
+    loadOrders.set(mod.modFile, list);
+  }
+  const saved = loadOrders.get(mod.modFile);
+  const willLoad = saved.filter((item) => item.installed).map((item) => ({ name: item.name, mod: item.mod, why: 'in your load order' }));
+  const needed = willLoad.some((item) => item.name === 'Faith Expanded') && !willLoad.some((item) => item.name === 'Coat of Arms Pack');
+  if (mod === mods[0] && needed && !params.has('nodeps')) {
+    willLoad.unshift({ name: 'Coat of Arms Pack', mod: mods[4].modFile, why: 'needed by Faith Expanded' });
+  }
+  // What the descriptors name: Faith Expanded builds on a pack that is installed and on one that is not.
+  const dependencies = [];
+  if (mod === mods[0] && saved.some((item) => item.name === 'Faith Expanded') && !params.has('nodeps')) {
+    const coat = saved.some((item) => item.name === 'Coat of Arms Pack');
+    dependencies.push({ name: 'Coat of Arms Pack', needed_by: 'Faith Expanded', state: coat ? 'listed' : 'automatic', mod: mods[4].modFile });
+    dependencies.push({ name: 'Heraldry Core', needed_by: 'Faith Expanded', state: 'missing' });
+  }
+  return {
+    mod: mod.modFile,
+    name: mod.name,
+    saved: saved.map((item) => ({ ...item })),
+    willLoad,
+    dependencies,
+    unresolved: saved.filter((item) => !item.installed).map((item) => ({ name: item.name, reason: 'it is not installed' })),
+    warnings: params.has('warnorder') ? ['Faith Expanded asks to load after Better Courts.'] : [],
+    conf: { path: `${mod.dir}\\ck3-tiger.conf`, exists: loadOrderConf, hasBlock: loadOrderConf && saved.length > 0 },
+  };
+}
+
+// The playsets xTiger keeps, as the app shows them. ?noplaysets starts with none.
+const ownPlaysets = params.has('noplaysets') ? [] : [
+  { name: 'Heraldry test', notes: 'Patch for the coat of arms mods', mods: [mods[4], mods[3], mods[1]].map((item) => ({ name: item.name, mod: item.modFile, enabled: item.name !== 'Better Courts', installed: true })) },
+  { name: 'Everything', notes: '', mods: [mods[2], mods[5]].map((item) => ({ name: item.name, mod: item.modFile, enabled: true, installed: true })) },
+];
+const sameName = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+const sortedPlaysets = () => ownPlaysets.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+const launcherPlaysets = [{ name: 'Main playset', active: true, mods: 16, enabled: 14 }, { name: 'Vanilla plus', active: false, mods: 3, enabled: 3 }];
+
 const commands = {
+  loadorder_get: ({ modFile }) => loadOrderView(modFile),
+  loadorder_save: ({ modFile, requires }) => {
+    loadOrderView(modFile);
+    loadOrders.set(modFile, requires.map((entry) => ({ name: entry.name, mod: entry.mod, installed: mods.some((item) => item.modFile === entry.mod) })));
+    if (loadOrderConf && requires.length === 0) loadOrderConf = false;
+    return loadOrderView(modFile);
+  },
+  loadorder_playsets: () => [...ownPlaysets.map((set) => ({ name: set.name, source: 'xtiger', active: false, enabled: set.mods.filter((item) => item.enabled).length })), ...launcherPlaysets.map((set) => ({ name: set.name, source: 'launcher', active: set.active, enabled: set.enabled }))],
+  loadorder_from_playset: ({ modFile }) => {
+    loadOrders.set(modFile, [mods[2], mods[5], mods[1]].filter((item) => item.modFile !== modFile).map((item) => ({ name: item.name, mod: item.modFile, installed: true })));
+    return loadOrderView(modFile);
+  },
+  loadorder_export_conf: ({ modFile }) => {
+    loadOrderView(modFile);
+    loadOrderConf = loadOrders.get(modFile).length > 0;
+    return loadOrderView(modFile);
+  },
+  playsets_overview: () => ({ ours: sortedPlaysets().map((set) => ({ ...set })), launcher: launcherPlaysets }),
+  playsets_save: ({ playset }) => {
+    const at = ownPlaysets.findIndex((set) => sameName(set.name, playset.name));
+    const saved = { name: playset.name, notes: playset.notes, mods: playset.mods.map((item) => ({ ...item, installed: mods.some((known) => known.modFile === item.mod) })) };
+    if (at < 0) ownPlaysets.push(saved);
+    else ownPlaysets[at] = saved;
+    return saved;
+  },
+  playsets_create: ({ name, from }) => {
+    if (ownPlaysets.some((set) => sameName(set.name, name))) throw new Error(`A playset called ${name} already exists.`);
+    const source = from ? ownPlaysets.find((set) => sameName(set.name, from)) : null;
+    const copied = source ? source.mods : from ? [mods[2], mods[5], mods[1]].map((item) => ({ name: item.name, mod: item.modFile, enabled: true, installed: true })) : [];
+    const made = { name, notes: '', mods: copied.map((item) => ({ ...item })) };
+    ownPlaysets.push(made);
+    return made;
+  },
+  playsets_rename: ({ name, newName }) => {
+    const set = ownPlaysets.find((item) => sameName(item.name, name));
+    if (ownPlaysets.some((item) => item !== set && sameName(item.name, newName))) throw new Error(`A playset called ${newName} already exists.`);
+    set.name = newName;
+    return set;
+  },
+  playsets_delete: ({ name }) => {
+    const at = ownPlaysets.findIndex((set) => sameName(set.name, name));
+    if (at >= 0) ownPlaysets.splice(at, 1);
+  },
   get_setup: () => ({ game: { path: GAME, version: '1.20.0.4' }, paradox: DOCS, hasVscode: true, openInEditor: true, theme: 'system', checkUpdates: true, asciiBackground: !params.has('noascii'), startOnHome: !params.has('nohome'), gameTestsBackground: true, lastMod: params.has('welcome') ? null : mods[0].modFile }),
   list_mods: () => mods,
   mod_picture: () => null,

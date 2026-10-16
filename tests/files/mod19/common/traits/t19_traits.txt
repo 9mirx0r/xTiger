@@ -1,0 +1,31 @@
+t19_multi = {
+	category = lifestyle
+	tracks = {
+		foot = { 25 = { } 50 = { } }
+		mounted = { 25 = { } 50 = { } }
+		archery = { 25 = { } 50 = { } }
+	}
+}
+
+t19_pair = {
+	category = lifestyle
+	tracks = {
+		t19_pair_one = { 25 = { } }
+		t19_pair_two = { 25 = { } }
+	}
+}
+
+t19_one_of_tracks = {
+	category = lifestyle
+	tracks = {
+		t19_only = { 25 = { } 50 = { } }
+	}
+}
+
+t19_single = {
+	category = lifestyle
+	track = {
+		25 = { }
+		50 = { }
+	}
+}

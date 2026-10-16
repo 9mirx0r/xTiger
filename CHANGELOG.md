@@ -1,5 +1,57 @@
 # Changelog
 
+## xTiger 1.6.3 alpha
+
+A patch, or a mod built on other mods, can now be tested together with the mods it needs. Thanks to
+shalola-author for the idea (issue #6).
+
+### Load order
+
+- xTiger used to load only the mod under test, so a patch checked on its own reported everything it
+  patches as missing, and a play-test of it failed or proved nothing. Each mod now has a saved load
+  order: the mods that load before it, in game order. The mod under test always loads last.
+- New Load order screen in the app, reached from the Mods screen. Tick the mods a mod needs, drag them
+  (or use the arrow keys on a handle) into the right order, and see below what the next test will load:
+  the saved mods, the dependencies their descriptors name, and anything that cannot be found. The list
+  can also start from a launcher playset.
+- Dependencies are reported. The Load order screen has a Dependencies block that lists the mods the
+  descriptors of the mod and of the listed mods name as needed: already in the list, installed and
+  loaded on their own (with an Add to list button), or not installed, so you know what to get. The
+  same list is the `dependencies` field of `xtiger_loadorder`.
+- The same list is used by the assistants. New tool `xtiger_loadorder` (get, set, add, remove, move,
+  clear, from_playset); `xtiger_validate`, `ck3_run` and `ck3_run_start` load it by default when one
+  mod is tested, and say what they loaded. `load_order: false` leaves the saved order out (a check
+  also needs `load_dependencies: false` to test the mod alone, as before). The Validate button of
+  the app uses the saved order too.
+- The order can be written into the mod's own `ck3-tiger.conf` as `load_mod` lines, for the plain
+  validator and CI. The lines hold paths from your computer, so keep that file out of anything you
+  publish; the app says so, keeps the old file next to it as `ck3-tiger.conf.xtiger-backup`, and takes
+  the lines out again when the list is emptied.
+- A dependency that the mod's own `ck3-tiger.conf` already loads is shown as loaded by the config, not
+  as one that loads on its own (`configured` in `xtiger_loadorder`).
+
+### Playsets of xTiger
+
+- xTiger now keeps playsets of its own, next to the launcher's, which it still only reads. They are
+  named lists of mods, in order, with a note on what they are for. The assistant puts there the mods it
+  wants to try together, and you can open and change the same lists.
+- New Playsets screen in the app: a bar with your playsets, an editor (name, note, duplicate, delete),
+  the mods of the playset with a handle to drag them (or the arrow keys), a tick to leave one out
+  without removing it, and the installed mods to pick from. A playset can start empty or as a copy of
+  one of the launcher's.
+- `xtiger_playsets` can now create and change them: set, add, remove, move, enable, disable, clear,
+  copy, rename, delete. A playset of the launcher cannot be changed: copy it first. Pass the name as
+  `playset` to `ck3_run`, `xtiger_validate` or `xtiger_loadorder` (from_playset); a name is looked up
+  in xTiger's playsets first.
+
+### The validator
+
+- `add_trait_xp` without `track` is reported when the trait has several tracks (for example
+  `tourney_participant`, `lifestyle_hunter`, `lifestyle_traveler` or `gallowsbait`): the game cannot tell
+  which track gets the experience, so say it with `track = foot`. A trait with one track, or a macro
+  or saved scope in place of the trait, is not reported. Thanks to shalola-author for the report
+  (issue #7).
+
 ## xTiger 1.6.2 alpha
 
 A small fix release.

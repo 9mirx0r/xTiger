@@ -1,0 +1,27 @@
+﻿namespace = t19
+
+t19.0001 = {
+	type = character_event
+	hidden = yes
+
+	immediate = {
+		# Good shapes.
+		add_trait_xp = { trait = t19_multi track = foot value = 10 }
+		add_trait_xp = { trait = t19_single value = 10 }
+		add_trait_xp = { trait = t19_one_of_tracks value = 10 }
+		add_trait_xp = { trait = t19_one_of_tracks track = t19_only value = 10 }
+		add_trait_xp = { trait = scope:t19_saved value = 10 }
+		add_trait_xp = { trait = t19_multi track = $TRACK$ value = 10 }
+	}
+}
+
+t19.0002 = {
+	type = character_event
+	hidden = yes
+
+	immediate = {
+		# Wrong: several tracks and no `track`.
+		add_trait_xp = { trait = t19_multi value = 10 }
+		add_trait_xp = { trait = t19_pair value = 10 }
+	}
+}

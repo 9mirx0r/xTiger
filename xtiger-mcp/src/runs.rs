@@ -19,6 +19,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
+use crate::loadorder;
 use crate::locate::Locations;
 use crate::mods;
 use crate::projects;
@@ -838,6 +839,8 @@ pub struct Options<'a> {
     pub load_dependencies: bool,
     /// More mods to load: `.mod` files.
     pub with: &'a [PathBuf],
+    /// Load the mods saved as this mod's load order first, in their order.
+    pub use_load_order: bool,
 }
 
 impl Default for Options<'_> {
@@ -849,6 +852,7 @@ impl Default for Options<'_> {
             by: None,
             load_dependencies: true,
             with: &[],
+            use_load_order: true,
         }
     }
 }
@@ -961,15 +965,18 @@ pub fn validate(
         return Err(format!("No config file at {}", config.display()));
     }
     let all = mods::list(Some(&loc.user_dir), &loc.extra_mods);
-    let setup = setup::plan(
+    let setup = loadorder::plan_check(
+        &loc.state_dir,
+        &all,
         &setup::Request {
             mod_file,
             config: options.config,
             with: options.with,
+            with_first: false,
             load_dependencies: options.load_dependencies,
             paradox: &loc.user_dir,
         },
-        &all,
+        options.use_load_order,
     )?;
     let generated = match &setup.conf {
         Some(text) => Some(TempConf::write(loc, text)?),

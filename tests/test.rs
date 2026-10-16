@@ -1142,3 +1142,26 @@ fn test_mod18_has_ethnicity_takes_an_ethnicity_key() {
     assert!(has("t18_missing_ethnicity"), "an undefined ethnicity must be reported: {msgs:?}");
     assert!(!has("is not a scope") && !has("scope"), "no scope complaint expected: {msgs:?}");
 }
+
+#[test]
+fn test_mod19_add_trait_xp_needs_track_for_multi_track_traits() {
+    let reports = check_mod_helper("mod19");
+    let mut seen: Vec<(u32, String)> = Vec::new();
+    for (meta, occurrences) in &reports {
+        for p in occurrences {
+            if p[0].loc.pathname().ends_with("t19_events.txt") {
+                seen.push((p[0].loc.line, meta.msg.clone()));
+            }
+        }
+    }
+    seen.sort();
+    let several: Vec<_> = seen.iter().filter(|(_, m)| m.contains("has several tracks")).collect();
+
+    // t19.0001 holds the good shapes: a track given (also as a macro), a single track, a trait
+    // with only one entry in `tracks`, and a saved scope that cannot be checked.
+    assert!(several.iter().all(|(l, _)| *l > 17), "good shapes should pass: {seen:?}");
+    // t19.0002 leaves `track` out for two traits that have several.
+    assert_eq!(several.len(), 2, "two wrong effects: {seen:?}");
+    assert!(several.iter().any(|(_, m)| m.contains("trait t19_multi has several tracks")));
+    assert!(several.iter().any(|(_, m)| m.contains("trait t19_pair has several tracks")));
+}
