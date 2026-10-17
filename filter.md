@@ -254,7 +254,7 @@ trigger = {
 trigger = {
     
     # For most files, print warnings and errors:
-    severity >= Warnings
+    severity >= Warning
     
     # For this very spammy file, only print errors:
     NAND = {

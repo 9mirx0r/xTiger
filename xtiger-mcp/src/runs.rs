@@ -1014,6 +1014,7 @@ pub fn validate(
 
     let started = Instant::now();
     let mut child = no_window(Command::new(&tiger).args(&args))
+        .env_remove("XTIGER_FORCE_TTY")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1043,7 +1044,6 @@ pub fn validate(
                     progress(line.trim_end());
                     log.push(line);
                 }
-                continue;
             }
             Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => {}
         }
@@ -1079,6 +1079,10 @@ pub fn validate(
     let stderr = last_chars(log.join("\n").trim(), 2000);
 
     let output = String::from_utf8_lossy(&output);
+    // 2 is the validator's own "could not do the run"; whatever it printed is not a result.
+    if status.code() == Some(2) {
+        return Err(format!("ck3-tiger could not do the run (exit 2): {stderr}"));
+    }
     let reports: Vec<Value> = if output.trim().is_empty() && status.success() {
         Vec::new()
     } else {

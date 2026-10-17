@@ -311,10 +311,12 @@ function loadPictures(root) {
     if (state.pictures.has(path)) {
       show(state.pictures.get(path));
     } else {
-      call('mod_picture', { path }).then((url) => {
-        state.pictures.set(path, url);
-        show(url);
-      });
+      call('mod_picture', { path })
+        .then((url) => {
+          state.pictures.set(path, url);
+          show(url);
+        })
+        .catch(() => {});
     }
   }
 }
@@ -362,11 +364,14 @@ async function finishProgress() {
 async function validate(mod) {
   if (!mod) return;
   state.selectedMod = mod.modFile;
-  const estimate = await call('last_duration', { modFile: mod.modFile });
-  state.validating = { mod, started: Date.now(), estimate, log: [], error: null, tip: 0 };
+  const estimate = await call('last_duration', { modFile: mod.modFile }).catch(() => null);
+  const run = { mod, started: Date.now(), estimate, log: [], error: null, tip: 0 };
+  state.validating = run;
   go('validating');
   try {
     const result = await call('validate', { modFile: mod.modFile });
+    // The run was cancelled, or another one replaced it, while it was going on.
+    if (run.cancelled || state.validating !== run) return;
     await finishProgress();
     state.run = { ...result, mod, finished: Date.now() };
     state.project = undefined;

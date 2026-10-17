@@ -93,7 +93,7 @@ pub fn choose(mods: &[LocalMod]) -> Result<PathBuf> {
         eprintln!("{footer}");
         drawn = last - first + 1;
 
-        match term.read_key() {
+        match term.read_key_raw() {
             Ok(Key::ArrowUp | Key::Char('k')) => {
                 selected = if selected == 0 { mods.len() - 1 } else { selected - 1 };
             }
@@ -104,6 +104,7 @@ pub fn choose(mods: &[LocalMod]) -> Result<PathBuf> {
             Ok(Key::Escape | Key::Char('q' | 'Q') | Key::CtrlC) => {
                 break Err(anyhow::anyhow!("No mod chosen."));
             }
+            Ok(Key::Unknown) => break Err(anyhow::anyhow!("Cannot read the keyboard.")),
             Ok(_) => {}
             Err(e) => break Err(anyhow::anyhow!("Cannot read the keyboard: {e}")),
         }

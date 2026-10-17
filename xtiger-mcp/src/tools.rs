@@ -1861,7 +1861,7 @@ fn prepare_run(args: &Args, loc: &Locations, ctx: &mut Context) -> Result<Prepar
         mods,
         screenshot: args.boolean("screenshot", true)?,
         keep_open: args.boolean("keep_open", false)?,
-        load_timeout: args.integer("load_timeout", 300)?.max(30),
+        load_timeout: args.integer("load_timeout", 300)?.clamp(30, 3600),
         background: loc.game_tests_background || args.boolean("background", false)?,
         working,
         mod_dir,

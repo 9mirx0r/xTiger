@@ -8,8 +8,14 @@ if [ -z "$VERSION" ]; then
     exit 2
 fi
 
-for toml in Cargo.toml {*-tiger,tiger-bin-shared,tiger-tables,utils}/Cargo.toml; do
+for toml in Cargo.toml {*-tiger,tiger-bin-shared,tiger-tables,utils,xtiger-mcp}/Cargo.toml \
+            xtiger-app/src-tauri/Cargo.toml xtiger-app/setup/Cargo.toml; do
     sed -i -e "s/^version = .*/version = \"$VERSION\"/" \
-           -e 's/^\(tiger-.*, version = \)"[.0-9]*"/\1'"\"$VERSION\"/" \
+           -e 's/^\(tiger-.*, version = \)"[^"]*"/\1'"\"$VERSION\"/" \
            "$toml"
+done
+
+# The app shows and compares this version too.
+for conf in xtiger-app/src-tauri/tauri.conf.json xtiger-app/setup/tauri.conf.json; do
+    sed -i -e '0,/"version": "[^"]*"/s//"version": "'"$VERSION"'"/' "$conf"
 done

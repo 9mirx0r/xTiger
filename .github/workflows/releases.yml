@@ -142,7 +142,7 @@ jobs:
         run: |
           title=$(grep -m1 '^## ' CHANGELOG.md | sed 's/^## //')
           {
-            echo '**Which file?** For the validator alone: `ck3-tiger-windows-*.zip` or `ck3-tiger-linux-*.tar.gz`.
+            echo '**Which file?** For the validator alone: `ck3-tiger-windows-*.zip` or `ck3-tiger-linux-*.tar.gz`.'
             echo 'For the desktop app: `xTiger_*_x64-setup.exe` (or the portable zip).'
             echo 'For the MCP server only, to use with an AI assistant: `xtiger-mcp-*`.'
             echo

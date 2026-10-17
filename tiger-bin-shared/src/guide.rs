@@ -72,10 +72,16 @@ pub fn print(g: &Guide) {
     eprintln!("{}", rule());
 
     if stats.total() == 0 {
-        let head =
-            if g.filtered { "Nothing to show with these filters." } else { "No problems found." };
+        let hidden = g.hidden_below.is_some() && stats.hidden() > 0;
+        let head = if g.filtered {
+            "Nothing to show with these filters."
+        } else if hidden {
+            "No errors or warnings."
+        } else {
+            "No problems found."
+        };
         eprintln!("{} {}", style(tick()).green().bold(), style(head).bold());
-        if !g.filtered {
+        if !g.filtered && !hidden {
             eprintln!("  Your mod passed every check xTiger knows.");
         }
         print_hidden(g);

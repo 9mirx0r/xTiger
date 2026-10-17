@@ -77,14 +77,18 @@ impl Stage {
         Stage { label: label.to_string(), started, spinner }
     }
 
-    /// Replace the spinner with a finished line. `detail` is shown in front of the time.
-    pub fn finish(self, detail: &str) {
-        let seconds = self.started.elapsed().as_secs_f32();
-        if let Some((stop, handle)) = self.spinner {
+    fn stop_spinner(&mut self) {
+        if let Some((stop, handle)) = self.spinner.take() {
             stop.store(true, Ordering::Relaxed);
             _ = handle.join();
             _ = Term::stderr().clear_line();
         }
+    }
+
+    /// Replace the spinner with a finished line. `detail` is shown in front of the time.
+    pub fn finish(mut self, detail: &str) {
+        let seconds = self.started.elapsed().as_secs_f32();
+        self.stop_spinner();
         let detail = if detail.is_empty() { String::new() } else { format!("{detail}  ") };
         eprintln!(
             "{} {}  {}{}",
@@ -93,5 +97,13 @@ impl Stage {
             style(detail).dim(),
             style(format!("{seconds:.1}s")).dim()
         );
+    }
+}
+
+/// A step that ends in an error never reaches `finish`; stop its spinner so the message that
+/// follows starts on a clean line.
+impl Drop for Stage {
+    fn drop(&mut self) {
+        self.stop_spinner();
     }
 }

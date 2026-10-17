@@ -195,26 +195,31 @@ struct ValidateArgs {
 /// Run the main tiger application.
 ///
 /// It provides a number of command line arguments, as well as self-updating capability with the `update` subcommand.
+fn command(current_version: &'static str) -> clap::Command {
+    use clap::CommandFactory;
+
+    Cli::command()
+        .version(current_version)
+        .name(crate::brand::NAME)
+        .display_name(crate::brand::NAME)
+        .about("xTiger-CK3: the Crusader Kings III mod validator, updated for CK3 1.20")
+        .after_help(
+            "Based on Tiger by amtep. Source and releases: https://github.com/9mirx0r/xTiger",
+        )
+}
+
 #[allow(clippy::missing_panics_doc)] // it thinks the argument parsing can panic
 pub fn run(
     game_consts: &GameConsts,
     current_version: &'static str,
     bin_name: &'static str,
 ) -> Result<()> {
-    use clap::{CommandFactory, FromArgMatches};
+    use clap::FromArgMatches;
 
     let &GameConsts { name, name_short, version, app_id, signature_file, paradox_dir } =
         game_consts;
 
-    let matches = Cli::command()
-        .version(current_version)
-        .name(crate::brand::NAME)
-        .display_name("xTiger")
-        .about("xTiger: Tiger, the Crusader Kings III mod validator, updated for CK3 1.20")
-        .after_help(
-            "Based on Tiger by amtep. Source and releases: https://github.com/9mirx0r/xTiger",
-        )
-        .get_matches();
+    let matches = command(current_version).get_matches();
     let cli = Cli::from_arg_matches(&matches).map_err(|err| err.exit()).unwrap();
 
     #[allow(clippy::single_match_else)]
@@ -233,14 +238,14 @@ pub fn run(
 
             if args.json {
                 if args.format != Format::Full && args.format != Format::Json {
-                    Cli::command()
+                    command(current_version)
                         .error(ErrorKind::ArgumentConflict, "--json conflicts with --format.")
                         .exit();
                 }
                 args.format = Format::Json;
             }
             if args.format == Format::Json && (args.consolidate || args.summary) {
-                Cli::command()
+                command(current_version)
                     .error(
                         ErrorKind::ArgumentConflict,
                         "Can't use report consolidation or --summary with JSON output.",
@@ -251,9 +256,9 @@ pub fn run(
             // A person at a terminal gets the friendly version: a header, steps with a spinner,
             // a card with what to do next. Anything redirected gets the plain lines it always had.
             let human = stderr().is_terminal() || forced();
-            let can_choose = human && stdin().is_terminal();
+            let can_choose = stderr().is_terminal() && stdin().is_terminal();
             if args.modpath.is_none() && !can_choose {
-                Cli::command()
+                command(current_version)
                     .error(
                         ErrorKind::MissingRequiredArgument,
                         "the path of a .mod file is required (it can only be chosen from a list in a terminal)",
@@ -453,7 +458,7 @@ pub fn run(
                 paths: args.path.clone(),
             };
             if let Err(e) = restrict_reports(&filter) {
-                Cli::command().error(ErrorKind::ValueValidation, e).exit();
+                command(current_version).error(ErrorKind::ValueValidation, e).exit();
             }
 
             let loading = step(human, "Understanding your scripts");
@@ -479,7 +484,8 @@ pub fn run(
                 || !args.only_key.is_empty()
                 || !args.skip_key.is_empty()
                 || !args.path.is_empty();
-            let fold = tty_out
+            let terminal_view = human && tty_out;
+            let fold = terminal_view
                 && matches!(args.format, Format::Full | Format::Short)
                 && args.severity.is_none()
                 && args.only_key.is_empty()
@@ -494,7 +500,7 @@ pub fn run(
                 },
                 consolidate: args.consolidate,
                 summary_first: args.summary,
-                summary_last: args.format == Format::Full && !human,
+                summary_last: args.format == Format::Full && !terminal_view,
                 pretty: tty_out,
                 hide_below: fold.then_some(Severity::Warning),
             };
@@ -519,7 +525,11 @@ pub fn run(
                     has_fail_on: args.fail_on != FailOn::Never,
                 });
             } else if args.format != Format::Json && stats.total() == 0 {
-                eprintln!("No problems found.");
+                if narrowed {
+                    eprintln!("Nothing to show with these filters.");
+                } else {
+                    eprintln!("No problems found.");
+                }
             }
 
             // Properly dropping `everything` takes a noticeable amount of time, and we're exiting anyway.

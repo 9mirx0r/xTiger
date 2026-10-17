@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/9mirx0r/xTiger/releases/latest">Download</a> ·
+  <a href="https://github.com/9mirx0r/xTiger/releases">Download</a> ·
   <a href="#usage">Usage</a> ·
   <a href="#how-it-differs-from-tiger">What's different</a> ·
   <a href="CHANGELOG.md">Changelog</a> ·
@@ -27,7 +27,7 @@ xTiger is for CK3 only. For the other Paradox games, use upstream Tiger.
 
 ## Download
 
-Get the validator for your system from the [latest release](https://github.com/9mirx0r/xTiger/releases/latest):
+Get the validator for your system from the [latest release](https://github.com/9mirx0r/xTiger/releases):
 
 - **Windows:** `ck3-tiger-windows-v<version>.zip`
 - **Linux:** `ck3-tiger-linux-v<version>.tar.gz`
@@ -59,7 +59,7 @@ knowing:
   of reports. `--format short` prints one line per report (`file:line: severity key: message`), easy to
   grep or to open from an editor.
 - `--severity error`, `--only-key missing-item`, `--skip-key unknown-field` and `--path events` narrow
-  the output without editing a config file. They combine, and a narrowed run is faster.
+  the output without editing a config file. They combine.
 - `--fail-on error` makes the exit status 1 when a report at that severity or worse is printed, for CI
   or a pre-commit check. Without it the status stays 0. Status 2 means the run could not be done.
 - `ck3-tiger explain missing-item` says what a key means, how to fix it and how to silence it. Without
@@ -69,9 +69,9 @@ In a terminal xTiger-CK3 is made to be read by a person: Qubis and the game and 
 per stage with how long it took, then the reports and a short card at the end (counts, what to look at
 first, which files hold most of them and the commands to try next). Tips and untidy reports are folded
 into a count; `--severity tips` shows everything. Run `ck3-tiger` with no mod and it lists the mods in
-your mod folder to choose from. When the output is redirected, piped or run in CI nothing of this
-appears and the output is the same as before. Set `XTIGER_FORCE_TTY=1` to get the terminal view in a
-captured output.
+your mod folder to choose from. All of this is written to the terminal's messages channel (stderr), so
+when that is redirected, or in CI, none of it appears and the output is the same as before. Set
+`XTIGER_FORCE_TTY=1` to get the terminal view in a captured output.
 
 `ck3-tiger --help` lists the rest, and `ck3-tiger update` fetches the latest release.
 

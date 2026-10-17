@@ -14,12 +14,18 @@
 - In a terminal the run shows its stages with their times, then the reports and a closing card in
   plain language with the commands to try next. Locations are relative to the mod and the short format
   is aligned and colored. Tips and untidy reports are folded into a count. Run it with no mod to pick
-  one from your mod folder. Redirected, piped and CI output is unchanged; `XTIGER_FORCE_TTY=1` forces
-  the terminal view.
-- The program calls itself xTiger-CK3 in its banner, help and messages. The executable keeps the
-  name `ck3-tiger`.
+  one from your mod folder. Output with stderr redirected, and CI output, is unchanged;
+  `XTIGER_FORCE_TTY=1` forces the terminal view.
+- The program calls itself xTiger-CK3 in its banner, `--help`, `--version` and usage errors. The
+  executable keeps the name `ck3-tiger`.
 - `--severity` also filters reports that were found before the filter was applied, such as the early
   packaging warnings.
+- Fixes from an audit of the above: Ctrl-C in the mod picker restores the cursor, a failed step no
+  longer leaves its spinner running, redirecting only stdout keeps the closing count line in the file,
+  and a run narrowed to nothing says so instead of "No problems found." `explain` suggests fewer
+  false matches for very short inputs. The MCP server refuses to run when the validator fails to
+  start, ignores control characters in typed keys, and clamps `load_timeout`. The app no longer lets
+  a cancelled check overwrite the next one. `update-versions.sh` also bumps the app and MCP versions.
 
 ## xTiger 1.6.4 alpha
 

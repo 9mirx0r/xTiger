@@ -17,7 +17,10 @@ pub fn explain(key: Option<&str>) -> Result<()> {
     let Ok(key) = ErrorKey::from_str(&name) else {
         let near: Vec<_> = all_keys()
             .map(|k| k.to_string())
-            .filter(|k| k.contains(&name) || name.contains(k.as_str()) || distance(k, &name) <= 2)
+            .filter(|k| {
+                (name.len() >= 3 && (k.contains(&name) || name.contains(k.as_str())))
+                    || distance(k, &name) <= 2
+            })
             .collect();
         if near.is_empty() {
             bail!("`{name}` is not a report key. Run `explain` without a key to list them all.");

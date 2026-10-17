@@ -115,9 +115,12 @@ static HELPER: Mutex<Option<Helper>> = Mutex::new(None);
 /// `view` which part of it to keep and how much to shrink it (`Shot::view`).
 pub fn encode_request(step: &Step, shot: Option<&Path>, view: &str) -> String {
     let shot = shot.map_or_else(String::new, |path| STANDARD.encode(path.display().to_string()));
+    // The line protocol ends at a line break and splits at `|`; neither can be part of a key list.
+    let scancodes: String =
+        step.scancodes.trim().chars().filter(|c| !c.is_control() && *c != '|').collect();
     format!(
         "{}|{}|{}|{}|{}|{}|{}",
-        step.scancodes.trim(),
+        scancodes,
         STANDARD.encode(&step.text),
         shot,
         step.wait_ms,
@@ -158,6 +161,8 @@ pub fn request(
         return Err(Trouble::Unavailable("the input helper is gone".to_owned()));
     };
     let line = encode_request(step, shot, view);
+    // A reply left over from an earlier request would be read as this one's.
+    while helper.replies.try_recv().is_ok() {}
     // A broken pipe means the helper died after the check above.
     let sent = writeln!(helper.stdin, "{line}").and_then(|()| helper.stdin.flush());
     let lost = |slot: &mut Option<Helper>, why: &str| {
