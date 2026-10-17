@@ -9,6 +9,10 @@ Object.assign(icon, {
   add: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>',
 });
 
+Object.assign(icon, {
+  trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg>',
+});
+
 const ps = {
   // What `playsets_overview` answered: { ours: [{ name, notes, mods }], launcher: [...] }; null while it loads.
   overview: null,
@@ -70,11 +74,56 @@ function psEmptyHtml() {
     </div>`;
 }
 
+const NEED_WORDS = { add: 'is not in the playset', late: 'loads after it', missing: 'is not installed' };
+
+function psNeedTag(owed) {
+  if (owed.length === 0) return '';
+  const title = owed.map((need) => `${need.name}: ${NEED_WORDS[need.state]}`).join('\n');
+  const more = owed.length > 1 ? ` +${owed.length - 1}` : '';
+  return `<span class="lo-tag lo-tag-warn ps-need-tag" title="${esc(title)}">Needs ${esc(owed[0].name)}${more}</span>`;
+}
+
+/* One quiet line when the loaded mods are covered, otherwise a short list of what is wrong. */
+function psNeedsHtml(set) {
+  const loaded = set.mods.filter((item) => item.enabled && item.installed).length;
+  if (loaded === 0) return '';
+  const needs = set.needs ?? [];
+  if (needs.length === 0 && !set.suggested) {
+    return '<p class="ps-ok">Dependencies are covered and the order works.</p>';
+  }
+  const rows = needs.map((need) => {
+    const by = need.needed_by.join(', ');
+    const action = need.state === 'add'
+      ? `<button type="button" class="btn btn-sm" data-act="add-need" data-mod="${esc(need.mod)}" aria-label="Add ${esc(need.name)} to the playset">Add</button>`
+      : `<span class="muted">${need.state === 'missing' ? 'Not installed' : 'Loads too late'}</span>`;
+    return `
+      <li class="ps-need" data-state="${need.state}">
+        <span class="ps-need-name" title="${esc(need.name)}">${esc(need.name)}</span>
+        <span class="ps-need-by muted" title="Needed by ${esc(by)}">for ${esc(by)}</span>
+        ${action}
+      </li>`;
+  }).join('');
+  const addable = needs.filter((need) => need.state === 'add').length;
+  const tools = [
+    addable > 1 ? `<button type="button" class="btn btn-sm" data-act="add-all">Add all ${addable}</button>` : '',
+    set.suggested ? '<button type="button" class="btn btn-sm" data-act="fix-order" title="Move each mod after the mods it needs. Nothing else changes.">Fix order</button>' : '',
+  ].join('');
+  return `
+    <div class="ps-needs" role="group" aria-label="Dependencies">
+      <div class="ps-needs-head">
+        <b>${needs.length ? `${esc(plural(needs.length, 'dependency', 'dependencies'))} to look at` : 'The order needs a change'}</b>
+        <span class="spacer"></span>${tools}
+      </div>
+      ${rows ? `<ul class="ps-need-list">${rows}</ul>` : '<p class="muted ps-needs-note">A mod loads before one it needs.</p>'}
+    </div>`;
+}
+
 function psListHtml(set) {
   const items = set.mods;
   if (items.length === 0) {
     return `<div class="lo-empty"><div class="q q-confused" role="img" aria-label="Qubis" style="width:64px;height:64px"></div><p><b>${esc(set.name)} is empty.</b> Tick mods on the right. They load in the order you set here.</p></div>`;
   }
+  const needsOf = (item) => (set.needs ?? []).filter((need) => need.needed_by.includes(item.name));
   const rows = items.map((item, i) => `
     <li class="lo-item ps-item" data-mod="${esc(item.mod)}" ${item.enabled ? '' : 'data-off'} ${item.installed ? '' : 'data-missing'}>
       <button type="button" class="lo-grip" aria-label="Move ${esc(item.name)}, now number ${i + 1} of ${items.length}. Drag, or use the up and down arrow keys." title="Drag to reorder">${icon.grip}</button>
@@ -84,6 +133,7 @@ function psListHtml(set) {
       </label>
       <span class="lo-name" title="${esc(item.name)}">${esc(item.name)}</span>
       ${item.installed ? '' : '<span class="lo-tag lo-tag-warn" title="This mod is not installed here, so a test goes on without it.">Not installed</span>'}
+      ${item.enabled ? psNeedTag(needsOf(item)) : ''}
       <button type="button" class="lo-remove" data-act="remove" aria-label="Remove ${esc(item.name)} from ${esc(set.name)}" title="Remove">${icon.close}</button>
     </li>`).join('');
   return `<ol class="lo-items" aria-label="Mods of ${esc(set.name)}, first to last">${rows}</ol>`;
@@ -97,12 +147,19 @@ function psEditorHtml() {
     <div class="ps-head">
       <label class="sr-only" for="ps-name">Playset name</label>
       <input class="field ps-name" id="ps-name" value="${esc(set.name)}" maxlength="80" spellcheck="false" autocomplete="off">
-      <button type="button" class="btn btn-sm" data-act="duplicate" title="Make a copy to try a variation">Duplicate</button>
-      <button type="button" class="btn btn-sm ${ps.confirmDelete ? 'btn-danger' : ''}" data-act="delete">${ps.confirmDelete ? 'Click again to delete' : 'Delete'}</button>
+      ${ps.confirmDelete ? `
+        <span class="ps-confirm" role="alertdialog" aria-label="Delete ${esc(set.name)}?">
+          <span>Delete this playset?</span>
+          <button type="button" class="btn btn-sm btn-danger" data-act="delete-yes">Delete</button>
+          <button type="button" class="btn btn-sm" data-act="delete-no">Keep</button>
+        </span>` : `
+        <button type="button" class="btn btn-sm" data-act="duplicate" title="Make a copy to try a variation">Duplicate</button>
+        <button type="button" class="btn btn-sm" data-act="delete" title="Delete this playset">${icon.trash}Delete</button>`}
     </div>
     <label class="sr-only" for="ps-notes">What this playset is for</label>
     <input class="field ps-notes" id="ps-notes" value="${esc(set.notes)}" placeholder="What is this playset for? (optional)" maxlength="300" spellcheck="false" autocomplete="off">
-    <p class="ps-count muted">${esc(plural(on, 'mod'))} loaded${set.mods.length > on ? `, ${set.mods.length - on} left out` : ''}. The top of the list loads first.</p>`;
+    <p class="ps-count muted">${esc(plural(on, 'mod'))} loaded${set.mods.length > on ? `, ${set.mods.length - on} left out` : ''}. The top of the list loads first.</p>
+    ${psNeedsHtml(set)}`;
 }
 
 function psPickHtml() {
@@ -192,6 +249,21 @@ function savePlayset(change, { focus = null } = {}) {
 }
 
 const psItems = () => psCurrent()?.mods ?? [];
+
+/* Put the mods a playset needs in it, each just before the first mod that needs it. */
+function addNeeded(files) {
+  const set = psCurrent();
+  if (!set) return;
+  const items = [...set.mods];
+  for (const file of files) {
+    if (items.some((item) => samePath(item.mod, file))) continue;
+    const need = set.needs.find((entry) => entry.mod && samePath(entry.mod, file));
+    const info = state.mods.find((entry) => samePath(entry.modFile, file));
+    const before = items.findIndex((item) => need?.needed_by.includes(item.name));
+    items.splice(before < 0 ? 0 : before, 0, { name: info?.name ?? need?.name ?? file, mod: file, enabled: true, installed: true });
+  }
+  savePlayset({ mods: items });
+}
 
 function moveInSet(mod, offset) {
   const items = [...psItems()];
@@ -397,11 +469,25 @@ SCREENS.playsets = {
       if (act === 'duplicate') {
         await createPlayset(freePlaysetName(`${set.name} copy`), set.name);
       } else if (act === 'delete') {
-        if (!ps.confirmDelete) {
-          ps.confirmDelete = true;
-          paintPlaysets();
-          return;
-        }
+        ps.confirmDelete = true;
+        paintPlaysets();
+        $('[data-act="delete-no"]', editor)?.focus();
+      } else if (act === 'delete-no') {
+        ps.confirmDelete = false;
+        paintPlaysets();
+      } else if (act === 'add-need') {
+        addNeeded([event.target.closest('[data-act]').dataset.mod]);
+      } else if (act === 'add-all') {
+        addNeeded(set.needs.filter((need) => need.state === 'add').map((need) => need.mod));
+      } else if (act === 'fix-order') {
+        const order = (set.suggested ?? []).map((file) => psItems().find((item) => samePath(item.mod, file))).filter(Boolean);
+        // The mods that are switched off or cannot be found keep their places among the others.
+        const loaded = new Set(order);
+        const slots = psItems().map((item, i) => [item, i]).filter(([item]) => loaded.has(item)).map(([, i]) => i);
+        const next = [...psItems()];
+        slots.forEach((slot, n) => { next[slot] = order[n]; });
+        if (order.length === slots.length) savePlayset({ mods: next });
+      } else if (act === 'delete-yes') {
         ps.confirmDelete = false;
         await ps.queue;
         try {
@@ -415,14 +501,11 @@ SCREENS.playsets = {
         paintPlaysets();
       }
     });
-    editor.addEventListener('focusout', () => {
-      if (!ps.confirmDelete) return;
-      // Walking away from the button takes the confirmation back.
-      setTimeout(() => {
-        if (document.activeElement?.closest?.('[data-act="delete"]')) return;
+    editor.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && ps.confirmDelete) {
         ps.confirmDelete = false;
-        if (state.screen === 'playsets') paintPlaysets();
-      }, 0);
+        paintPlaysets();
+      }
     });
     const list = $('#ps-list', root);
     list.addEventListener('pointerdown', (event) => {

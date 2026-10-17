@@ -237,6 +237,132 @@ pub fn find(
     }
 }
 
+/// A mod that the playset needs and that is not right yet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Need {
+    /// The name the descriptors give it.
+    pub name: String,
+    /// The mods of the playset (or pulled in by it) whose descriptors name it.
+    pub needed_by: Vec<String>,
+    /// `add` (installed, but not in the playset), `late` (in the playset, but after a mod that
+    /// needs it) or `missing` (nothing installed has this name).
+    pub state: &'static str,
+    /// The installed mod, for `add` and `late`.
+    #[serde(rename = "mod", skip_serializing_if = "Option::is_none")]
+    pub mod_file: Option<PathBuf>,
+}
+
+/// What the descriptors of the loaded mods of a playset ask for.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Analysis {
+    /// Only what is wrong; a dependency that is loaded in time is not listed.
+    pub needs: Vec<Need>,
+    /// The order of the loaded mods with every mod after the mods it needs, changing as little as
+    /// possible. `None` when the order is fine already.
+    pub suggested: Option<Vec<PathBuf>>,
+}
+
+/// Check the mods of `own` that are switched on against what their descriptors need.
+pub fn analyze(own: &Own, all: &[ModInfo]) -> Analysis {
+    // The loaded mods, in order, as installed mods; one that cannot be found has no descriptor to read.
+    let loaded: Vec<ModInfo> = own
+        .mods
+        .iter()
+        .filter(|item| item.enabled)
+        .filter_map(|item| {
+            let entry = Entry { name: item.name.clone(), mod_file: item.mod_file.clone() };
+            let file = mods::clean(&loadorder::find(&entry, all).ok()?);
+            all.iter().find(|info| mods::clean(&info.mod_file) == file).cloned()
+        })
+        .collect();
+    let position = |file: &Path| {
+        let file = mods::clean(file);
+        loaded.iter().position(|info| mods::clean(&info.mod_file) == file)
+    };
+    let mut needs: Vec<Need> = Vec::new();
+    let mut note = |name: &str, owner: &str, state: &'static str, mod_file: Option<PathBuf>| {
+        let lower = name.to_lowercase();
+        if let Some(found) = needs.iter_mut().find(|need| need.name.to_lowercase() == lower) {
+            if !found.needed_by.iter().any(|by| by == owner) {
+                found.needed_by.push(owner.to_owned());
+            }
+        } else {
+            needs.push(Need {
+                name: name.to_owned(),
+                needed_by: vec![owner.to_owned()],
+                state,
+                mod_file,
+            });
+        }
+    };
+    // The dependencies of the dependencies that have to be added are looked at too.
+    let mut queue: Vec<ModInfo> = loaded.clone();
+    let mut queued: Vec<PathBuf> = loaded.iter().map(|info| mods::clean(&info.mod_file)).collect();
+    let mut next = 0;
+    while next < queue.len() {
+        let owner = queue[next].clone();
+        next += 1;
+        let owner_position = position(&owner.mod_file);
+        for name in &owner.dependencies {
+            let lower = name.to_lowercase();
+            if lower == owner.name.to_lowercase() {
+                continue;
+            }
+            let mut matches: Vec<&ModInfo> = all
+                .iter()
+                .filter(|info| info.name.to_lowercase() == lower && !info.path_missing)
+                .collect();
+            // The copy that is in the playset wins, then the usual order of sources.
+            matches.sort_by_key(|info| {
+                (position(&info.mod_file).is_none(), crate::setup::source_rank(info.source))
+            });
+            let Some(pick) = matches.first() else {
+                note(name, &owner.name, "missing", None);
+                continue;
+            };
+            let file = mods::clean(&pick.mod_file);
+            match (position(&file), owner_position) {
+                (Some(dep), Some(own_at)) if dep > own_at => {
+                    note(name, &owner.name, "late", Some(file));
+                }
+                (Some(_), _) => {}
+                (None, _) => {
+                    note(name, &owner.name, "add", Some(file.clone()));
+                    if !queued.contains(&file) {
+                        queued.push(file);
+                        queue.push((*pick).clone());
+                    }
+                }
+            }
+        }
+    }
+    Analysis { needs, suggested: suggested_order(&loaded) }
+}
+
+/// Every mod after the mods it needs, keeping the given order wherever it already holds.
+fn suggested_order(loaded: &[ModInfo]) -> Option<Vec<PathBuf>> {
+    fn visit(at: usize, loaded: &[ModInfo], placed: &mut Vec<usize>, visiting: &mut Vec<usize>) {
+        if placed.contains(&at) || visiting.contains(&at) {
+            return;
+        }
+        visiting.push(at);
+        for name in &loaded[at].dependencies {
+            let lower = name.to_lowercase();
+            if let Some(dep) = loaded.iter().position(|info| info.name.to_lowercase() == lower) {
+                visit(dep, loaded, placed, visiting);
+            }
+        }
+        visiting.pop();
+        placed.push(at);
+    }
+    let mut placed: Vec<usize> = Vec::new();
+    for at in 0..loaded.len() {
+        visit(at, loaded, &mut placed, &mut Vec::new());
+    }
+    let same = placed.iter().enumerate().all(|(i, at)| i == *at);
+    (!same).then(|| placed.into_iter().map(|at| mods::clean(&loaded[at].mod_file)).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -303,5 +429,57 @@ mod tests {
         assert_eq!(found.name, "Patch test");
         let error = find(&state, &user, &[], "nope").unwrap_err();
         assert!(error.contains("Playsets kept by xTiger: Patch test"), "{error}");
+    }
+
+    fn info(name: &str, deps: &[&str]) -> ModInfo {
+        ModInfo {
+            mod_file: PathBuf::from(format!("/m/{name}.mod")),
+            dir: PathBuf::from(format!("/m/{name}")),
+            name: name.to_owned(),
+            version: None,
+            supported_version: None,
+            source: "local",
+            picture: None,
+            dependencies: deps.iter().map(|d| (*d).to_owned()).collect(),
+            path_missing: false,
+        }
+    }
+
+    #[test]
+    fn what_a_playset_still_needs_is_listed() {
+        let all =
+            [info("Base", &[]), info("Extra", &[]), info("Patch", &["Base", "Extra", "Gone"])];
+        // Patch is first: Base is not in the playset, Extra loads after it, Gone is not installed.
+        let set = own("Mix", &[("Patch", true), ("Extra", true)]);
+        let found = analyze(&set, &all);
+        let state = |name: &str| found.needs.iter().find(|n| n.name == name).map(|n| n.state);
+        assert_eq!(state("Base"), Some("add"));
+        assert_eq!(state("Extra"), Some("late"));
+        assert_eq!(state("Gone"), Some("missing"));
+        assert_eq!(found.needs.len(), 3);
+        assert_eq!(
+            found.suggested,
+            Some(vec![PathBuf::from("/m/Extra.mod"), PathBuf::from("/m/Patch.mod")])
+        );
+    }
+
+    #[test]
+    fn a_playset_in_order_has_nothing_to_report() {
+        let all = [info("Base", &[]), info("Patch", &["base"])];
+        let found = analyze(&own("Ok", &[("Base", true), ("Patch", true)]), &all);
+        assert_eq!(found, Analysis::default());
+        // A mod that is switched off does not count as loaded, so it is still to be added.
+        let found = analyze(&own("Off", &[("Base", false), ("Patch", true)]), &all);
+        assert_eq!(found.needs.len(), 1);
+        assert_eq!(found.needs[0].state, "add");
+    }
+
+    #[test]
+    fn dependencies_of_a_mod_to_add_are_listed_too_and_cycles_end() {
+        let all = [info("A", &["B"]), info("B", &["C"]), info("C", &["B"])];
+        let found = analyze(&own("Chain", &[("A", true)]), &all);
+        let names: Vec<&str> = found.needs.iter().map(|n| n.name.as_str()).collect();
+        assert_eq!(names, ["B", "C"]);
+        assert_eq!(found.needs[1].needed_by, ["B"]);
     }
 }

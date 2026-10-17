@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Playsets
+
+- The Delete button of the Playsets screen works: it asks "Delete this playset?" next to the buttons,
+  with Delete and Keep (Escape also keeps it). The old second click on the same button was undone as
+  soon as the screen repainted.
+- A playset now shows what its mods still need. Mods that need something carry a "Needs ..." tag, and a
+  short box lists the dependencies that are not in the playset (with Add and Add all), not installed,
+  or loaded after the mod that needs them. Fix order puts every mod after the mods it needs and
+  changes nothing else. When all is covered it says so in one line. The same analysis is in the
+  `needs` and `suggested` fields the app reads.
+
 ## xTiger 1.6.3 alpha
 
 A patch, or a mod built on other mods, can now be tested together with the mods it needs. Thanks to

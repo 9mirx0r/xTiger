@@ -1329,6 +1329,16 @@ label.setting { cursor: pointer; }
 .ps-name { flex: 1; min-width: 0; height: 40px; font-size: 16px; font-weight: 600; }
 .ps-notes { height: 36px; font-size: 13px; }
 .ps-count { margin: 0; font-size: 13px; }
+.ps-ok { margin: 0; font-size: 12.5px; color: var(--good); }
+.ps-needs { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 10px; font-size: 13px; }
+.ps-needs-head { display: flex; align-items: center; gap: 8px; color: var(--warn-text); }
+.ps-needs-note { margin: 0; font-size: 12.5px; }
+.ps-need-list { list-style: none; margin: 0; padding: 0; }
+.ps-need { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+.ps-need-name { flex-shrink: 0; max-width: 34ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.ps-need-by { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.ps-need-tag { display: inline-block; max-width: 26ch; overflow: hidden; text-overflow: ellipsis; line-height: 22px; }
+.ps-confirm { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--sev-error); }
 .ps-on { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 32px; cursor: pointer; }
 .ps-on input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .ps-item[data-off] .lo-name, .ps-item[data-off] .lo-pos { opacity: 0.5; text-decoration: line-through; text-decoration-color: var(--faint); }

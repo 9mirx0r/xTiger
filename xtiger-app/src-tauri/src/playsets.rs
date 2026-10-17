@@ -30,6 +30,10 @@ pub struct Edit {
     pub name: String,
     pub notes: String,
     pub mods: Vec<EditMod>,
+    /// What the descriptors of the loaded mods still need: only what is wrong.
+    pub needs: Vec<own_playsets::Need>,
+    /// The loaded mods with each after the mods it needs, when the order is not that already.
+    pub suggested: Option<Vec<PathBuf>>,
 }
 
 /// A playset of the Paradox launcher, to copy from.
@@ -51,6 +55,7 @@ pub struct Overview {
 
 fn edit(own: &Own, all: &[xtiger_mcp::mods::ModInfo]) -> Edit {
     let shown = own_playsets::to_playset(own, all);
+    let checked = own_playsets::analyze(own, all);
     Edit {
         name: own.name.clone(),
         notes: own.notes.clone(),
@@ -65,6 +70,8 @@ fn edit(own: &Own, all: &[xtiger_mcp::mods::ModInfo]) -> Edit {
                 installed: found.mod_file.is_some(),
             })
             .collect(),
+        needs: checked.needs,
+        suggested: checked.suggested,
     }
 }
 
