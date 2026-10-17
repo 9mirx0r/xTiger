@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Succession elections (issue #8)
+
+- `common/succession_election` follows the 1.20 shape. Candidates and electors are now built with
+  `character_sets = { some_key = { type = ... limit = { ... } } }`, so a 1.20 election no longer reports
+  `character_sets`, `priority` or the new `same_faith_clerical_electors` type as unknown. Added the
+  `elector_vote_strength_value` and `candidate_score_value` fields.
+- The old `add = holder` and `add = { type = ... limit = ... }` forms are reported as removed in 1.20,
+  with the new form in the info text, instead of being accepted silently. Thanks to shalola-author.
+
+### Audit tools
+
+- `tools/audit_info.py` compares the structure files the game ships (`common/**/_*.info`) with what the
+  validators accept, and lists names the validator does not know (possible false positives) and names it
+  accepts that the game no longer documents or uses (possible false negatives).
+- `tools/vanilla_selfcheck.py` runs Tiger over the game's own files and groups the reports. The game loads
+  its own files, so each report is a Tiger gap or a flaw of the game. See AUDIT.md.
+
 ### Playsets
 
 - The Delete button of the Playsets screen works: it asks "Delete this playset?" next to the buttons,

@@ -1165,3 +1165,26 @@ fn test_mod19_add_trait_xp_needs_track_for_multi_track_traits() {
     assert!(several.iter().any(|(_, m)| m.contains("trait t19_multi has several tracks")));
     assert!(several.iter().any(|(_, m)| m.contains("trait t19_pair has several tracks")));
 }
+
+#[test]
+fn test_mod20_succession_election_uses_character_sets() {
+    let reports = check_mod_helper("mod20");
+    let mut seen: Vec<(u32, String)> = Vec::new();
+    for (meta, occurrences) in &reports {
+        for p in occurrences {
+            if p[0].loc.pathname().ends_with("t20_election.txt") {
+                seen.push((p[0].loc.line, meta.msg.clone()));
+            }
+        }
+    }
+    seen.sort();
+    // The 1.20 shape, including the new fields and the clerical set, passes without a report
+    // about its fields.
+    assert!(
+        seen.iter().all(|(l, m)| *l > 41 || m.contains("localization")),
+        "the 1.20 shape should pass: {seen:?}"
+    );
+    // The old `add` shape is reported once per use: two for candidates, two for electors.
+    let added: Vec<_> = seen.iter().filter(|(_, m)| m.contains("`add` is not a")).collect();
+    assert_eq!(added.len(), 4, "four old `add` fields: {seen:?}");
+}

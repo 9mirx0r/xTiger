@@ -1,4 +1,4 @@
-use crate::block::{BV, Block};
+use crate::block::Block;
 use crate::context::ScopeContext;
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
@@ -47,15 +47,16 @@ impl DbKind for Election {
         vd.field_validated_block("electors", |block, data| {
             let mut vd = Validator::new(block, data);
             vd.field_integer("max");
-            vd.field_validated_block_sc("priority", &mut sc, validate_modifiers_with_base);
             validate_candidates(&mut vd, &mut sc);
         });
 
         vd.field_validated_block_sc("elector_vote_strength", &mut sc, validate_modifiers_with_base);
+        vd.field_script_value("elector_vote_strength_value", &mut sc);
 
         sc.define_name("candidate", Scopes::Character, key);
         sc.define_name("holder_candidate", Scopes::Character, key);
         vd.field_validated_block_sc("candidate_score", &mut sc, validate_modifiers_with_base);
+        vd.field_script_value("candidate_score_value", &mut sc);
     }
 }
 
@@ -69,23 +70,17 @@ fn validate_candidates(vd: &mut Validator, sc: &mut ScopeContext) {
             vd.field_trigger("limit", Tooltipped::No, sc);
         });
     });
+    vd.field_validated_block_sc("priority", sc, validate_modifiers_with_base);
     vd.field_script_value("priority_value", sc);
     vd.field_choice(
         "candidate_policy",
         &["include_all_candidates", "only_best_candidate", "one_candidate_per_set"],
     );
-    vd.multi_field_validated("add", |bv, data| match bv {
-        BV::Value(token) => {
-            if !CANDIDATE_TYPES.contains(&token.as_str()) {
-                let msg = "unknown candidate category";
-                warn(ErrorKey::Choice).msg(msg).loc(token).push();
-            }
-        }
-        BV::Block(block) => {
-            let mut vd = Validator::new(block, data);
-            vd.field_choice("type", CANDIDATE_TYPES);
-            vd.field_trigger("limit", Tooltipped::No, sc);
-        }
+    // Before 1.20 the sets were `add = holder` and `add = { type = ... limit = ... }`.
+    vd.multi_field_validated_key("add", |key, _, _| {
+        let msg = "`add` is not a candidate or elector field since 1.20";
+        let info = "use `character_sets = { some_key = { type = ... limit = { ... } } }`";
+        warn(ErrorKey::Removed).msg(msg).info(info).loc(key).push();
     });
     vd.field_trigger("limit", Tooltipped::No, sc);
 }
@@ -101,4 +96,5 @@ const CANDIDATE_TYPES: &[&str] = &[
     "holder_dynasty",
     "holder_council_members",
     "holder_tributaries",
+    "same_faith_clerical_electors",
 ];

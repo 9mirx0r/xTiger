@@ -1,0 +1,58 @@
+﻿# The shape of 1.20: character_sets, with `priority` and `priority_value` at either level.
+t20_new_elective = {
+	elector_vote_strength = {
+		base = 1
+	}
+	elector_vote_strength_value = 1
+	electors = {
+		max = 5
+		priority = {
+			base = 1
+		}
+		character_sets = {
+			t20_holder = {
+				type = holder
+			}
+			t20_clergy = {
+				type = same_faith_clerical_electors
+			}
+		}
+	}
+	candidates = {
+		candidate_policy = one_candidate_per_set
+		character_sets = {
+			t20_family = {
+				type = holder_close_family
+				limit = {
+					is_adult = yes
+				}
+			}
+		}
+		priority = {
+			base = 1
+		}
+	}
+	candidate_score = {
+		base = 0
+	}
+	candidate_score_value = 1
+}
+
+# The shape before 1.20, from issue 8: `add` no longer exists.
+t20_old_elective = {
+	candidates = {
+		add = {
+			type = holder_close_family
+		}
+		add = holder
+	}
+	electors = {
+		add = holder
+		add = {
+			type = title_dejure_vassals
+		}
+	}
+	candidate_score = {
+		base = 0
+	}
+}
