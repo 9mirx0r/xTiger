@@ -381,3 +381,73 @@ fn line_spacing(line: &str) -> (&str, usize, usize) {
     spaces = spaces.min(MAX_IDLE_SPACE);
     (&line[remove..], remove, spaces)
 }
+
+/// The place a report points at, for the pretty short format: the path relative to the mod (or the
+/// game, with its name in front) and the line.
+pub fn short_location(errors: &Errors, pointer: &PointedMessage) -> String {
+    let mut path = pointer.loc.pathname().display().to_string().replace('\\', "/");
+    if pointer.loc.kind != FileKind::Mod {
+        path = format!("[{}] {path}", kind_tag(errors, pointer.loc.kind));
+    }
+    if pointer.loc.line > 0 {
+        path = format!("{path}:{}", pointer.loc.line);
+    }
+    path
+}
+
+/// Keep the end of a location (the file name and the line) when it is wider than its column.
+fn fit_location(path: String, width: usize) -> String {
+    let len = path.chars().count();
+    if width < 2 || len <= width {
+        return path;
+    }
+    let tail: String = path.chars().skip(len - (width - 1)).collect();
+    format!("…{tail}")
+}
+
+/// How wide the columns of [`log_report_short_pretty`] are.
+#[derive(Clone, Copy, Debug)]
+pub struct ShortWidths {
+    pub location: usize,
+    pub key: usize,
+}
+
+/// Like [`log_report_short`], for a person reading a terminal: colors from the output styles, the
+/// path relative to the mod (or the game, with its name in front) and aligned columns.
+pub fn log_report_short_pretty<O: Write + Send>(
+    errors: &Errors,
+    output: &mut O,
+    report: &LogReportMetadata,
+    pointers: &LogReportPointers,
+    additional: usize,
+    widths: ShortWidths,
+) {
+    let msg = report.msg.split_whitespace().collect::<Vec<_>>().join(" ");
+    let shown =
+        if report.style == LogReportStyle::Abbreviated { &pointers[..] } else { &pointers[..1] };
+    for pointer in shown {
+        let path = fit_location(short_location(errors, pointer), widths.location);
+        let pad = widths.location.saturating_sub(path.chars().count());
+        let key_width = widths.key;
+        let mut line = vec![
+            errors.styles.style(Styled::Location).paint(path),
+            errors.styles.style(Styled::Default).paint(" ".repeat(pad)),
+            errors.styles.style(Styled::Default).paint("  "),
+            errors
+                .styles
+                .style(Styled::Tag(report.severity, true))
+                .paint(format!("{:<7}", report.severity.to_string())),
+            errors.styles.style(Styled::Default).paint(" "),
+            errors
+                .styles
+                .style(Styled::Tag(report.severity, false))
+                .paint(format!("{:<key_width$}", report.key.to_string())),
+            errors.styles.style(Styled::Default).paint("  "),
+            errors.styles.style(Styled::ErrorMessage).paint(msg.clone()),
+        ];
+        if additional > 0 {
+            line.push(errors.styles.style(Styled::Default).paint(format!(" (+{additional} more)")));
+        }
+        _ = writeln!(output, "{}", ANSIStrings(&line));
+    }
+}

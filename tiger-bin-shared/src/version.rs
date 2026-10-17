@@ -3,11 +3,13 @@
 use anyhow::Result;
 
 /// Compare the game version tiger was built for to the detected game version, and warn
-/// on stderr if tiger is too old or the game is too old.
+/// on stderr if tiger is too old or the game is too old. A match is only announced when
+/// `announce_match` is set.
 pub fn warn_versions(
     tiger_game: &str,
     tiger_game_version: &str,
     launcher_game_version: &str,
+    announce_match: bool,
 ) -> Result<()> {
     let components: Vec<_> = tiger_game_version.split(' ').collect();
     let tiger_version_components: Vec<_> = components[0].split('.').collect();
@@ -49,7 +51,7 @@ pub fn warn_versions(
             "but the slightly older version {launcher_game_version} was detected in the game files."
         );
         eprintln!("This is probably okay, but there may be some erroneous reports.");
-    } else {
+    } else if announce_match {
         eprintln!("Tiger was made for {tiger_game} version {tiger_game_version},");
         eprintln!("which matches the detected game version {launcher_game_version}.");
     }

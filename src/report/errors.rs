@@ -22,8 +22,14 @@ use crate::parse::ignore::IgnoreFilter;
 use crate::report::error_loc::ErrorLoc;
 use crate::report::filter::ReportFilter;
 use crate::report::suppress::{Suppression, SuppressionKey};
-use crate::report::writer::{log_report, log_report_short, log_summary, log_summary_block};
+use crate::report::writer::{
+    ShortWidths, log_report, log_report_short, log_report_short_pretty, log_summary,
+    log_summary_block, short_location,
+};
 use crate::report::writer_json::log_report_json;
+
+/// The pretty short format never pads the location column wider than this.
+const MAX_LOCATION_WIDTH: usize = 72;
 use crate::report::{
     ErrorKey, FilterRule, LogReport, LogReportMetadata, LogReportPointers, LogReportStyle,
     OutputStyle, PointedMessage, Severity,
@@ -200,7 +206,7 @@ impl Errors<'_> {
             format: if json { OutputFormat::Json } else { OutputFormat::Full },
             consolidate,
             summary_last: summary && !json,
-            summary_first: false,
+            ..EmitOptions::default()
         };
         self.emit_reports_with(output, options).total() > 0
     }
@@ -216,11 +222,53 @@ impl Errors<'_> {
         output: &mut O,
         options: EmitOptions,
     ) -> ReportStats {
-        let reports = self.flatten_reports(options.consolidate);
+        let mut reports = self.flatten_reports(options.consolidate);
         let mut stats = ReportStats::default();
-        for (report, _, additional) in &reports {
-            stats.counts[report.severity as usize] += 1 + additional;
+        if let Some(min) = options.hide_below {
+            reports.retain(|(report, _, additional)| {
+                let keep = report.severity >= min;
+                if !keep {
+                    stats.hidden += 1 + additional;
+                }
+                keep
+            });
         }
+        let mut by_key: TigerHashMap<ErrorKey, (usize, Severity)> = TigerHashMap::default();
+        let mut by_file: TigerHashMap<String, usize> = TigerHashMap::default();
+        for (report, pointers, additional) in &reports {
+            let n = 1 + additional;
+            stats.counts[report.severity as usize] += n;
+            let entry = by_key.entry(report.key).or_insert((0, report.severity));
+            entry.0 += n;
+            entry.1 = entry.1.max(report.severity);
+            if let Some(first) = pointers.first() {
+                *by_file
+                    .entry(first.loc.pathname().display().to_string().replace('\\', "/"))
+                    .or_default() += n;
+            }
+        }
+        stats.keys = by_key
+            .into_iter()
+            .map(|(key, (count, severity))| KeyCount { key, severity, count })
+            .collect();
+        stats.keys.sort_unstable_by(|a, b| {
+            b.count.cmp(&a.count).then_with(|| a.key.to_string().cmp(&b.key.to_string()))
+        });
+        stats.files = by_file.into_iter().collect();
+        stats.files.sort_unstable_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let key_width = stats.keys.iter().map(|k| k.key.to_string().len()).max().unwrap_or(0);
+        let location_width = if options.format == OutputFormat::Short && options.pretty {
+            reports
+                .iter()
+                .flat_map(|(_, pointers, _)| pointers.iter().take(1))
+                .map(|p| short_location(self, p).chars().count())
+                .max()
+                .unwrap_or(0)
+                .min(MAX_LOCATION_WIDTH)
+        } else {
+            0
+        };
+        let widths = ShortWidths { location: location_width, key: key_width };
         match options.format {
             OutputFormat::Json => {
                 _ = writeln!(output, "[");
@@ -246,7 +294,16 @@ impl Errors<'_> {
                     log_summary_block(output, &reports);
                 }
                 for (report, pointers, additional) in &reports {
-                    if options.format == OutputFormat::Short {
+                    if options.format == OutputFormat::Short && options.pretty {
+                        log_report_short_pretty(
+                            self,
+                            output,
+                            report,
+                            pointers,
+                            *additional,
+                            widths,
+                        );
+                    } else if options.format == OutputFormat::Short {
                         log_report_short(output, report, pointers, *additional);
                     } else {
                         log_report(self, output, report, pointers, *additional);
@@ -439,12 +496,28 @@ pub struct EmitOptions {
     pub summary_first: bool,
     /// Print the one-line severity counts after the reports. Only for [`OutputFormat::Full`].
     pub summary_last: bool,
+    /// For [`OutputFormat::Short`]: colors, paths relative to the mod and aligned columns,
+    /// meant for a person reading a terminal. Without it the lines are plain, for tools.
+    pub pretty: bool,
+    /// Do not print reports below this severity. They are only counted in [`ReportStats::hidden`].
+    pub hide_below: Option<Severity>,
 }
 
 /// Number of printed reports for each severity.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ReportStats {
     counts: [usize; Severity::COUNT],
+    hidden: usize,
+    keys: Vec<KeyCount>,
+    files: Vec<(String, usize)>,
+}
+
+/// How many printed reports have one key, and the worst severity among them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyCount {
+    pub key: ErrorKey,
+    pub severity: Severity,
+    pub count: usize,
 }
 
 impl ReportStats {
@@ -461,6 +534,21 @@ impl ReportStats {
     /// The printed reports of this severity or a worse one.
     pub fn at_least(&self, severity: Severity) -> usize {
         self.counts[severity as usize..].iter().sum()
+    }
+
+    /// Reports left out because of [`EmitOptions::hide_below`].
+    pub fn hidden(&self) -> usize {
+        self.hidden
+    }
+
+    /// The printed reports by key, the most frequent first.
+    pub fn keys(&self) -> &[KeyCount] {
+        &self.keys
+    }
+
+    /// The printed reports by file (first place each report points at), the most frequent first.
+    pub fn files(&self) -> &[(String, usize)] {
+        &self.files
     }
 }
 
@@ -511,6 +599,14 @@ pub fn restrict_reports(filter: &CliFilter) -> Result<(), String> {
     let existing = take(&mut errors.filter.predicate);
     errors.filter.predicate =
         FilterRule::Conjunction(vec![existing, FilterRule::Conjunction(rules)]);
+    // Reports stored before this call, such as the ones about the mod's dependencies, were not
+    // seen by the new rules.
+    let errors = &mut *errors;
+    let filter = &errors.filter;
+    errors.storage.retain(|report, occurrences| {
+        occurrences.retain(|pointers| filter.should_print_report(report, pointers));
+        !occurrences.is_empty()
+    });
     Ok(())
 }
 

@@ -27,7 +27,7 @@ pub fn run(game_consts: &GameConsts) -> Result<()> {
     });
 
     // Colors are off by default but ANSI is on, so the banner is the one place that may use them.
-    crate::brand::banner("ck3-tiger", env!("CARGO_PKG_VERSION"), true);
+    crate::brand::banner(env!("CARGO_PKG_VERSION"), true);
 
     eprintln!("This validator was made for {name} version {version}.");
     eprintln!("If you are using a newer version of {name}, it may be inaccurate.");

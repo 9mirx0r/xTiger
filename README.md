@@ -65,6 +65,14 @@ knowing:
 - `ck3-tiger explain missing-item` says what a key means, how to fix it and how to silence it. Without
   a key it lists them all.
 
+In a terminal xTiger-CK3 is made to be read by a person: Qubis and the game and mod it found, a line
+per stage with how long it took, then the reports and a short card at the end (counts, what to look at
+first, which files hold most of them and the commands to try next). Tips and untidy reports are folded
+into a count; `--severity tips` shows everything. Run `ck3-tiger` with no mod and it lists the mods in
+your mod folder to choose from. When the output is redirected, piped or run in CI nothing of this
+appears and the output is the same as before. Set `XTIGER_FORCE_TTY=1` to get the terminal view in a
+captured output.
+
 `ck3-tiger --help` lists the rest, and `ck3-tiger update` fetches the latest release.
 
 To choose languages, load parent mods for a submod or silence reports you don't care about, put a

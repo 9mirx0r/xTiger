@@ -24,12 +24,8 @@ fn key_severity_and_path_filters_combine() {
     everything.load_all();
     everything.validate_all();
     let mut out = Vec::new();
-    let options = EmitOptions {
-        format: OutputFormat::Short,
-        consolidate: false,
-        summary_first: false,
-        summary_last: false,
-    };
+    let options =
+        EmitOptions { format: OutputFormat::Short, consolidate: false, ..EmitOptions::default() };
     let stats = emit_reports_with(&mut out, options);
     let text = String::from_utf8(out).unwrap();
 

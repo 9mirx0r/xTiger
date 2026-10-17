@@ -1,4 +1,4 @@
-use std::io::{Write, stdout};
+use std::io::{IsTerminal, Write, stderr, stdin, stdout};
 use std::{mem::forget, path::PathBuf};
 
 use std::str::FromStr;
@@ -18,6 +18,9 @@ use crate::explain::explain;
 use crate::gamedir::{
     find_game_directory_steam, find_paradox_directory, find_workshop_directory_steam,
 };
+use crate::guide::{self, Guide};
+use crate::pick::{choose, local_mods};
+use crate::progress::{Stage, forced, header};
 use crate::update::update;
 use crate::version::warn_versions;
 
@@ -104,10 +107,27 @@ fn parse_key(s: &str) -> Result<ErrorKey, String> {
 /// Status 2 is for runs that could not be done at all (bad arguments, no game, invalid config).
 const EXIT_PROBLEMS: i32 = 1;
 
+/// A step of the run with a spinner, when a person is watching the terminal.
+fn step(human: bool, label: &str) -> Option<Stage> {
+    human.then(|| Stage::start(label))
+}
+
+fn done(stage: Option<Stage>) {
+    if let Some(stage) = stage {
+        stage.finish("");
+    }
+}
+
+/// The mod as the user can type it again in a command.
+fn quoted(path: &std::path::Path) -> String {
+    let text = path.display().to_string();
+    if text.contains(' ') { format!("\"{text}\"") } else { text }
+}
+
 #[derive(Args)]
 struct ValidateArgs {
-    /// Path to .mod file of mod to check.
-    modpath: PathBuf,
+    /// Path to .mod file of mod to check. Without it you can choose from your mod folder.
+    modpath: Option<PathBuf>,
     #[clap(visible_alias = "ck3")]
     #[clap(long)]
     /// Path to game main directory.
@@ -175,7 +195,7 @@ struct ValidateArgs {
 /// Run the main tiger application.
 ///
 /// It provides a number of command line arguments, as well as self-updating capability with the `update` subcommand.
-#[allow(clippy::missing_panics_doc)] // it thinks we can panic on cli.validate_args.unwrap()
+#[allow(clippy::missing_panics_doc)] // it thinks the argument parsing can panic
 pub fn run(
     game_consts: &GameConsts,
     current_version: &'static str,
@@ -188,7 +208,7 @@ pub fn run(
 
     let matches = Cli::command()
         .version(current_version)
-        .name(bin_name)
+        .name(crate::brand::NAME)
         .display_name("xTiger")
         .about("xTiger: Tiger, the Crusader Kings III mod validator, updated for CK3 1.20")
         .after_help(
@@ -205,7 +225,11 @@ pub fn run(
         }
         Some(Commands::Explain { key }) => explain(key.as_deref()),
         None => {
-            let mut args = cli.validate_args.unwrap();
+            // Without any argument the optional flattened struct comes back empty.
+            let mut args = match cli.validate_args {
+                Some(args) => args,
+                None => ValidateArgs::from_arg_matches(&matches).map_err(|err| err.exit()).unwrap(),
+            };
 
             if args.json {
                 if args.format != Format::Full && args.format != Format::Json {
@@ -224,13 +248,29 @@ pub fn run(
                     .exit();
             }
 
+            // A person at a terminal gets the friendly version: a header, steps with a spinner,
+            // a card with what to do next. Anything redirected gets the plain lines it always had.
+            let human = stderr().is_terminal() || forced();
+            let can_choose = human && stdin().is_terminal();
+            if args.modpath.is_none() && !can_choose {
+                Cli::command()
+                    .error(
+                        ErrorKind::MissingRequiredArgument,
+                        "the path of a .mod file is required (it can only be chosen from a list in a terminal)",
+                    )
+                    .exit();
+            }
+            if args.no_color {
+                console::set_colors_enabled_stderr(false);
+            }
+
             #[cfg(windows)]
             if !args.no_color {
                 let _ = ansiterm::enable_ansi_support()
                     .map_err(|_| eprintln!("Failed to enable ANSI support for Windows10 users. Continuing probably without colored output."));
             }
 
-            crate::brand::banner(bin_name, current_version, !args.no_color);
+            crate::brand::banner(current_version, !args.no_color);
 
             if args.game.is_none() {
                 args.game = find_game_directory_steam(app_id).ok();
@@ -242,7 +282,9 @@ pub fn run(
                 args.paradox = find_paradox_directory(&PathBuf::from(paradox_dir));
             }
             if let Some(ref mut game) = args.game {
-                eprintln!("Using {name_short} directory: {}", game.display());
+                if !human {
+                    eprintln!("Using {name_short} directory: {}", game.display());
+                }
                 let mut sig = game.clone();
                 sig.push(signature_file);
                 if !sig.is_file() {
@@ -263,9 +305,11 @@ pub fn run(
                 bail!("Cannot find {name_short} directory. Please supply it as the --game option.");
             }
 
+            let mut game_version = None;
             if let Some(ref game_dir) = args.game {
                 if let Ok(launcher_game_version) = get_version_from_launcher(game_dir) {
-                    if warn_versions(name, version, &launcher_game_version).is_err() {
+                    game_version = Some(launcher_game_version.clone());
+                    if warn_versions(name, version, &launcher_game_version, !human).is_err() {
                         eprintln!("Tiger was made for {name} version {version}.");
                         eprintln!(
                             "Comparing this to the game's version {launcher_game_version} failed."
@@ -313,20 +357,53 @@ pub fn run(
             }
 
             let mut everything;
+            let modarg: String;
 
             {
-                if args.modpath.is_dir() {
-                    args.modpath.push("descriptor.mod");
+                let mut modfile_path = match args.modpath.take() {
+                    Some(path) => path,
+                    None => {
+                        let paradox = args.paradox.as_deref();
+                        let mods = paradox.map(local_mods).unwrap_or_default();
+                        choose(&mods)?
+                    }
+                };
+                modarg = quoted(&modfile_path);
+                if modfile_path.is_dir() {
+                    modfile_path.push("descriptor.mod");
                 }
 
-                let modfile = ModFile::read(&args.modpath)?;
+                let modfile = ModFile::read(&modfile_path)?;
                 let modpath = modfile.modpath();
                 if !modpath.exists() {
                     eprintln!("Looking for mod in {}", modpath.display());
                     bail!("Cannot find mod directory. Please make sure the .mod file is correct.");
                 }
-                eprintln!("Using mod directory: {}", modpath.display());
+                if human {
+                    let mut rows = vec![(
+                        "Game",
+                        match &game_version {
+                            Some(v) => format!("{name} {v}"),
+                            None => name.to_string(),
+                        },
+                    )];
+                    let id = modpath.file_name().map(|n| n.to_string_lossy().to_string());
+                    rows.push((
+                        "Mod",
+                        match (modfile.display_name(), id) {
+                            (Some(n), Some(id)) if n != id => format!("{n}  ({id})"),
+                            (Some(n), _) => n,
+                            (None, Some(id)) => id,
+                            (None, None) => String::new(),
+                        },
+                    ));
+                    rows.push(("Folder", modpath.display().to_string()));
+                    header(&rows);
+                } else {
+                    eprintln!("Using mod directory: {}", modpath.display());
+                }
 
+                let reading = step(human, "Reading the game files and your mod");
                 everything = Everything::new(
                     args.config.as_deref(),
                     args.game.as_deref(),
@@ -336,10 +413,13 @@ pub fn run(
                     modfile.replace_paths(),
                 )?;
                 everything.check_dependencies(&modfile);
+                done(reading);
             }
 
             // Print a blank line between the preamble and the first report:
-            eprintln!();
+            if !human {
+                eprintln!();
+            }
 
             everything.load_output_settings(true);
             everything.load_config_filtering_rules();
@@ -376,7 +456,10 @@ pub fn run(
                 Cli::command().error(ErrorKind::ValueValidation, e).exit();
             }
 
+            let loading = step(human, "Understanding your scripts");
             everything.load_all();
+            done(loading);
+            let checking = step(human, "Checking everything");
             everything.validate_all();
             everything.check_rivers();
 
@@ -387,6 +470,20 @@ pub fn run(
             if args.unused {
                 everything.check_unused();
             }
+            done(checking);
+
+            // At a terminal the small stuff is folded into a count, unless the user asked
+            // for something specific. Redirected output always has everything.
+            let tty_out = stdout().is_terminal() || forced();
+            let narrowed = args.severity.is_some()
+                || !args.only_key.is_empty()
+                || !args.skip_key.is_empty()
+                || !args.path.is_empty();
+            let fold = tty_out
+                && matches!(args.format, Format::Full | Format::Short)
+                && args.severity.is_none()
+                && args.only_key.is_empty()
+                && !matches!(args.fail_on, FailOn::Untidy | FailOn::Tips);
 
             let options = EmitOptions {
                 format: match args.format {
@@ -397,12 +494,31 @@ pub fn run(
                 },
                 consolidate: args.consolidate,
                 summary_first: args.summary,
-                summary_last: args.format == Format::Full,
+                summary_last: args.format == Format::Full && !human,
+                pretty: tty_out,
+                hide_below: fold.then_some(Severity::Warning),
             };
+            if human {
+                eprintln!();
+            }
             let stats = emit_reports_with(&mut output, options);
             _ = output.flush();
 
-            if args.format != Format::Json && stats.total() == 0 {
+            if human && matches!(args.format, Format::Full | Format::Short) {
+                // The commands in the card are typed as they are called, whatever the file is named.
+                let command = std::env::current_exe()
+                    .ok()
+                    .and_then(|exe| exe.file_stem().map(|s| s.to_string_lossy().to_string()))
+                    .unwrap_or_else(|| bin_name.to_string());
+                guide::print(&Guide {
+                    stats: &stats,
+                    command: &command,
+                    modarg: &modarg,
+                    hidden_below: fold.then_some(Severity::Warning),
+                    filtered: narrowed,
+                    has_fail_on: args.fail_on != FailOn::Never,
+                });
+            } else if args.format != Format::Json && stats.total() == 0 {
                 eprintln!("No problems found.");
             }
 

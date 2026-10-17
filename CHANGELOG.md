@@ -11,6 +11,15 @@
 - `--fail-on <severity>` sets the exit status to 1 when reports at that severity or worse are printed.
   The default is unchanged (always 0). Other failures, such as bad arguments, now exit with 2.
 - `explain <key>` describes every report key, with how to fix and silence it.
+- In a terminal the run shows its stages with their times, then the reports and a closing card in
+  plain language with the commands to try next. Locations are relative to the mod and the short format
+  is aligned and colored. Tips and untidy reports are folded into a count. Run it with no mod to pick
+  one from your mod folder. Redirected, piped and CI output is unchanged; `XTIGER_FORCE_TTY=1` forces
+  the terminal view.
+- The program calls itself xTiger-CK3 in its banner, help and messages. The executable keeps the
+  name `ck3-tiger`.
+- `--severity` also filters reports that were found before the filter was applied, such as the early
+  packaging warnings.
 
 ## xTiger 1.6.4 alpha
 
