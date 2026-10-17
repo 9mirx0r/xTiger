@@ -20,9 +20,13 @@ use crate::mods;
 use crate::runs::{self, RunMeta};
 use crate::triage::{self, Annotation, Triage};
 
-/// File types whose bytes decide what a mod does or how it is validated.
-const MANIFEST_EXTENSIONS: [&str; 10] =
-    ["txt", "yml", "gui", "json", "mod", "font", "settings", "asset", "gfx", "shader"];
+/// File types whose bytes decide what a mod does or how it is validated: script, localization and
+/// descriptors, the `ck3-tiger.conf` that filters the reports, and the images the validator checks
+/// (its DDS format and size reports depend on their bytes).
+const MANIFEST_EXTENSIONS: [&str; 15] = [
+    "txt", "yml", "gui", "json", "mod", "font", "settings", "asset", "gfx", "shader", "conf",
+    "dds", "png", "tga", "jpg",
+];
 
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
@@ -32,10 +36,19 @@ fn hex(bytes: &[u8]) -> String {
     })
 }
 
-/// The SHA-256 of a file, as lower-case hex.
+/// The SHA-256 of a file, as lower-case hex. The file is read in chunks: an image can be big.
 fn file_hash(path: &Path) -> Option<String> {
+    use std::io::Read as _;
+    let mut file = fs::File::open(path).ok()?;
     let mut hasher = Sha256::new();
-    hasher.update(fs::read(path).ok()?);
+    let mut buffer = vec![0_u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buffer).ok()?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
     Some(hex(&hasher.finalize()))
 }
 
@@ -585,6 +598,7 @@ pub fn status(loc: &Locations, project: &Project) -> Result<Status, String> {
         notes: vec![
             "A run marked stale was made for other files than the ones on disk now: check again before using its result.",
             "The baseline is the mod as it was when the project began. xtiger_project with action ledger lists what changed since, and what still needs a decision.",
+            "A run counts as current when the mod's own files (script, localization, descriptor, ck3-tiger.conf and images) are the same. A change in the game, the validator or a dependency mod is not in that check: see game_changed and validator_changed, and validate again after such a change.",
         ],
     })
 }
@@ -867,6 +881,22 @@ mod tests {
         fs::write(tmp.join("b/events/x.txt"), "ev.1 = { }\n").unwrap();
         assert_ne!(manifest_hash(&tmp.join("a")), manifest_hash(&tmp.join("b")));
         assert_eq!(manifest_hash(&tmp.join("missing")), None);
+    }
+
+    #[test]
+    fn the_manifest_sees_the_config_and_the_images() {
+        let tmp = TempDir::new();
+        make_mod(&tmp.join("a"), EVENT);
+        let plain = manifest_hash(&tmp.join("a"));
+        fs::write(tmp.join("a/ck3-tiger.conf"), "filter = {}\n").unwrap();
+        let with_conf = manifest_hash(&tmp.join("a"));
+        assert_ne!(plain, with_conf);
+        fs::create_dir_all(tmp.join("a/gfx")).unwrap();
+        fs::write(tmp.join("a/gfx/icon.dds"), [1_u8, 2, 3]).unwrap();
+        let with_image = manifest_hash(&tmp.join("a"));
+        assert_ne!(with_conf, with_image);
+        fs::write(tmp.join("a/gfx/icon.dds"), [1_u8, 2, 4]).unwrap();
+        assert_ne!(with_image, manifest_hash(&tmp.join("a")));
     }
 
     #[test]

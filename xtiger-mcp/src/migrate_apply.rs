@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::journal::now_ms;
-use crate::migrate::{rewrite, rule_names, script_files};
+use crate::migrate::{needs_edit, rewrite, rule_names, script_files};
 
 #[derive(Debug)]
 pub struct Request<'a> {
@@ -60,10 +60,11 @@ fn rewrite_file(text: &str) -> (String, usize, Vec<usize>) {
     out.push_str(bom);
     let mut edits = 0;
     let mut used = Vec::new();
+    let mut in_string = false;
     for piece in body.split_inclusive('\n') {
         let ending = if piece.ends_with("\r\n") { 2 } else { usize::from(piece.ends_with('\n')) };
         let (line, end) = piece.split_at(piece.len() - ending);
-        match rewrite(line) {
+        match rewrite(line, &mut in_string) {
             Some((after, hit)) => {
                 edits += 1;
                 for n in hit {
@@ -124,7 +125,7 @@ pub fn apply(req: &Request) -> Result<Report, String> {
     for (rel, path) in &found {
         let Ok(bytes) = fs::read(path) else { continue };
         let Ok(text) = std::str::from_utf8(&bytes) else {
-            if String::from_utf8_lossy(&bytes).lines().any(|line| rewrite(line).is_some()) {
+            if needs_edit(&String::from_utf8_lossy(&bytes)) {
                 skipped.push(Skipped {
                     file: rel.clone(),
                     reason: "not UTF-8; the game reads script as UTF-8".to_owned(),
@@ -248,6 +249,31 @@ mod tests {
         })
         .unwrap();
         assert_eq!(plan.total_edits, 0);
+    }
+
+    #[test]
+    fn leaves_saved_names_and_multi_line_strings_alone() {
+        let tmp = TempDir::new();
+        let mod_dir = tmp.join("silk");
+        let effects = mod_dir.join("common/scripted_effects");
+        fs::create_dir_all(&effects).unwrap();
+        let text = "x = {\n\tsave_scope_as = create_holy_order_effect\n\
+                    \tscope:create_holy_order_effect = { add_gold = 1 }\n\
+                    \tdesc = \"two lines\n\tevery_character = { is_created = yes }\n\tend\"\n\
+                    \tcreate_holy_order_effect = { X = 1 }\n}\n";
+        fs::write(effects.join("a.txt"), text).unwrap();
+        let backups = tmp.join("backups");
+        let report =
+            apply(&Request { mod_dir: &mod_dir, path: "", backup_root: &backups }).unwrap();
+        assert_eq!(report.total_edits, 1);
+        let written = fs::read_to_string(effects.join("a.txt")).unwrap();
+        assert_eq!(
+            written,
+            text.replace(
+                "\tcreate_holy_order_effect = {",
+                "\tcreate_holy_order_accompanying_effect = {"
+            )
+        );
     }
 
     #[test]

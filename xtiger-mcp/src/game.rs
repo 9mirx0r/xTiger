@@ -146,6 +146,9 @@ pub fn recover_dlc_load(user_dir: &Path) -> bool {
     let backup = user_dir.join(DLC_BACKUP);
     if let Ok(raw) = fs::read_to_string(&backup) {
         let target = user_dir.join("dlc_load.json");
+        // The backup goes only when it has nothing left to give: restored, or not ours to restore.
+        // If the restore itself failed, it stays, so a later call (or the user) can try again.
+        let mut restore_failed = false;
         if let Some((written, original)) = raw.split_once('\n') {
             let current = fs::read_to_string(&target).unwrap_or_default();
             if written.trim().starts_with(current.trim()) {
@@ -154,9 +157,12 @@ pub fn recover_dlc_load(user_dir: &Path) -> bool {
                 } else {
                     fs::write(&target, original).is_ok()
                 };
+                restore_failed = !restored;
             }
         }
-        let _ = fs::remove_file(&backup);
+        if !restore_failed {
+            let _ = fs::remove_file(&backup);
+        }
     }
     // The temporary mod files, recognised by name and marker so nothing of the user's is removed.
     // They are written before the backup, so they are looked for even when there is none.
@@ -219,7 +225,7 @@ const LOCK_MAX_AGE: Duration = Duration::from_secs(3 * 60 * 60);
 /// A lock with no readable id yet was only just created by another server.
 const LOCK_GRACE: Duration = Duration::from_secs(10);
 
-struct RunLock(PathBuf);
+pub(crate) struct RunLock(PathBuf);
 
 impl Drop for RunLock {
     fn drop(&mut self) {
@@ -232,7 +238,7 @@ impl Drop for RunLock {
     }
 }
 
-fn pid_alive(pid: u32) -> bool {
+pub(crate) fn pid_alive(pid: u32) -> bool {
     no_window(Command::new("tasklist").args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"]))
         .stdin(Stdio::null())
         .stderr(Stdio::null())
@@ -242,7 +248,18 @@ fn pid_alive(pid: u32) -> bool {
 
 /// Take the run lock, or say who holds it. A lock whose owner is gone is taken over.
 fn take_run_lock(user_dir: &Path, alive: &dyn Fn(u32) -> bool) -> Result<RunLock, String> {
-    let path = user_dir.join(LOCK_FILE);
+    take_lock(&user_dir.join(LOCK_FILE), "running a game", alive)
+}
+
+/// Take the lock file at `path`, or say who holds it (`doing` says what they are busy with). A
+/// lock whose owner is gone is taken over. The same file is also refused to a second caller in
+/// this process, since the owner is then alive.
+pub(crate) fn take_lock(
+    path: &Path,
+    doing: &str,
+    alive: &dyn Fn(u32) -> bool,
+) -> Result<RunLock, String> {
+    let path = path.to_path_buf();
     for _ in 0..3 {
         match fs::OpenOptions::new().write(true).create_new(true).open(&path) {
             Ok(mut file) => {
@@ -265,8 +282,8 @@ fn take_run_lock(user_dir: &Path, alive: &dyn Fn(u32) -> bool) -> Result<RunLock
                 if busy {
                     let who = owner.map_or_else(String::new, |pid| format!(" (process {pid})"));
                     return Err(format!(
-                        "Another xTiger server{who} is running a game right now; wait for it to \
-                         finish. If no run is going, delete {}.",
+                        "Another xTiger server{who} is {doing} right now; wait for it to \
+                         finish. If nothing is going on, delete {}.",
                         path.display()
                     ));
                 }
@@ -1142,6 +1159,21 @@ mod tests {
         fs::write(tmp.join("dlc_load.json"), "{\"enabled_mods\":[\"mod/theirs.mod\"]}").unwrap();
         assert!(!recover_dlc_load(&tmp));
         assert!(fs::read_to_string(tmp.join("dlc_load.json")).unwrap().contains("theirs"));
+        assert!(!tmp.join(DLC_BACKUP).exists());
+    }
+
+    #[test]
+    fn a_failed_restore_keeps_the_backup() {
+        let tmp = killed_run("{}");
+        // A folder where the file should be: the restore cannot write it.
+        fs::remove_file(tmp.join("dlc_load.json")).unwrap();
+        fs::create_dir(tmp.join("dlc_load.json")).unwrap();
+        assert!(!recover_dlc_load(&tmp));
+        assert!(tmp.join(DLC_BACKUP).exists());
+        // Once the way is clear, the same backup restores the list.
+        fs::remove_dir(tmp.join("dlc_load.json")).unwrap();
+        fs::write(tmp.join("dlc_load.json"), WRITTEN).unwrap();
+        assert!(recover_dlc_load(&tmp));
         assert!(!tmp.join(DLC_BACKUP).exists());
     }
 

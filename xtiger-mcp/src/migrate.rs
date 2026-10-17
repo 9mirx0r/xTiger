@@ -44,14 +44,16 @@ const RULES: [Rule; 7] = [
     },
     Rule {
         name: "create_holy_order_effect",
-        pattern: r"\bcreate_holy_order_effect\b",
-        replacement: "create_holy_order_accompanying_effect",
+        // Only as a key, like every_character: `save_scope_as = create_holy_order_effect` is the
+        // mod's own word.
+        pattern: r"(^|[^\w:.$@])create_holy_order_effect(\s*=)",
+        replacement: "${1}create_holy_order_accompanying_effect${2}",
         note: "renamed in 1.20; check its arguments against the game's scripted effect",
     },
     Rule {
         name: "has_doctrine = tenet_",
-        pattern: r"\bhas_doctrine(\s*=\s*)(tenet_\w+)",
-        replacement: "has_tenet${1}${2}",
+        pattern: r"(^|[^\w:.$@])has_doctrine(\s*=\s*)(tenet_\w+)",
+        replacement: "${1}has_tenet${2}${3}",
         note: "tenets are tested with has_tenet in 1.20",
     },
     Rule {
@@ -62,14 +64,14 @@ const RULES: [Rule; 7] = [
     },
     Rule {
         name: "guardian_or_court_tutor_trigger_event",
-        pattern: r"\bguardian_or_court_tutor_trigger_event\b",
-        replacement: "guardian_or_court_tutor_trigger_event_effect",
+        pattern: r"(^|[^\w:.$@])guardian_or_court_tutor_trigger_event(\s*=)",
+        replacement: "${1}guardian_or_court_tutor_trigger_event_effect${2}",
         note: "the scripted effect has the _effect suffix in 1.20",
     },
     Rule {
         name: "guardian_or_court_tutor_trait",
-        pattern: r"\bguardian_or_court_tutor_trait\b",
-        replacement: "guardian_or_court_tutor_trait_trigger",
+        pattern: r"(^|[^\w:.$@])guardian_or_court_tutor_trait(\s*=)",
+        replacement: "${1}guardian_or_court_tutor_trait_trigger${2}",
         note: "the scripted trigger has the _trigger suffix in 1.20",
     },
 ];
@@ -147,23 +149,23 @@ pub struct Report {
     pub edits: Vec<Edit>,
 }
 
-/// Where the comment of a script line starts, outside quotes.
-fn comment_start(line: &str) -> usize {
-    let mut quoted = false;
+/// Where the comment of a script line starts, outside quotes, and whether a string is still open at
+/// the end of the code. `quoted` says whether the line starts inside a string left open by an
+/// earlier line.
+fn comment_start(line: &str, mut quoted: bool) -> (usize, bool) {
     for (i, c) in line.char_indices() {
         match c {
             '"' => quoted = !quoted,
-            '#' if !quoted => return i,
+            '#' if !quoted => return (i, quoted),
             _ => {}
         }
     }
-    line.len()
+    (line.len(), quoted)
 }
 
 /// The code with everything inside quotes blanked out (same byte length), so that a rule cannot
-/// match text that is only a string.
-fn without_quoted(code: &str) -> String {
-    let mut quoted = false;
+/// match text that is only a string. `quoted` says whether the line starts inside a string.
+fn without_quoted(code: &str, mut quoted: bool) -> String {
     let mut out = String::with_capacity(code.len());
     for c in code.chars() {
         if c == '"' {
@@ -206,10 +208,14 @@ pub(crate) fn script_files(mod_dir: &Path, filter: &str) -> Vec<(String, std::pa
 }
 
 /// One script line (without its line ending) with every rule applied, and the indexes in `COMPILED`
-/// of the rules that changed it; `None` when no rule matches.
-pub(crate) fn rewrite(line: &str) -> Option<(String, Vec<usize>)> {
-    let (code, comment) = line.split_at(comment_start(line));
-    let masked = without_quoted(code);
+/// of the rules that changed it; `None` when no rule matches. `in_string` is carried from line to
+/// line: it is true when an earlier line left a string open, and the text of a string that spans
+/// lines is never changed.
+pub(crate) fn rewrite(line: &str, in_string: &mut bool) -> Option<(String, Vec<usize>)> {
+    let (split, open) = comment_start(line, *in_string);
+    let (code, comment) = line.split_at(split);
+    let masked = without_quoted(code, *in_string);
+    *in_string = open;
     // (start, end, replacement) of every match of every rule, outside quotes.
     let mut changes: Vec<(usize, usize, String)> = Vec::new();
     let mut hit = Vec::new();
@@ -244,6 +250,17 @@ pub(crate) fn rewrite(line: &str) -> Option<(String, Vec<usize>)> {
     Some((after, hit))
 }
 
+/// Whether any rule changes a line of this text.
+pub(crate) fn needs_edit(text: &str) -> bool {
+    let mut in_string = false;
+    // Every line is scanned, so that the string state stays right: no short-circuit.
+    let mut found = false;
+    for line in text.lines() {
+        found |= rewrite(line, &mut in_string).is_some();
+    }
+    found
+}
+
 /// The names of the rules at these indexes in `COMPILED`.
 pub(crate) fn rule_names(indexes: &[usize]) -> Vec<&'static str> {
     indexes.iter().map(|&n| COMPILED[n].name).collect()
@@ -265,8 +282,9 @@ pub fn plan(req: &Request) -> Result<Report, String> {
     for (rel, path) in &found {
         let Ok(bytes) = fs::read(path) else { continue };
         let text = String::from_utf8_lossy(&bytes);
+        let mut in_string = false;
         for (i, line) in text.trim_start_matches('\u{feff}').lines().enumerate() {
-            let Some((after, hit)) = rewrite(line) else { continue };
+            let Some((after, hit)) = rewrite(line, &mut in_string) else { continue };
             for &n in &hit {
                 counts[n] += 1;
             }
@@ -308,13 +326,21 @@ mod tests {
              \tguardian_or_court_tutor_trait = { TRAIT = craven }\n\
              \tNOT = { doctrine:tenet_pacifism = { is_in_list = x } }\n\
              \tsave_scope_as = every_character\n\
-             \tscope:every_character = { add_gold = 1 }\n}\n",
+             \tscope:every_character = { add_gold = 1 }\n\
+             \tcreate_holy_order_effect = { X = 1 }\n\
+             \tsave_scope_as = create_holy_order_effect\n\
+             \tscope:create_holy_order_effect = { add_gold = 1 }\n\
+             \tsave_scope_as = guardian_or_court_tutor_trait\n\
+             \tdesc = \"a string that\n\
+             \tevery_character = { is_created = yes }\n\
+             \tspans lines\" every_character = {\n}\n",
         )
         .unwrap();
         fs::write(tmp.join("readme.txt"), "every_character = yes\n").unwrap();
         let report = plan(&Request { mod_dir: &tmp, path: "", limit: 10 }).unwrap();
         assert_eq!(report.files_scanned, 1);
-        assert_eq!(report.total_edits, 4);
+        // The last edit is the key after the closing quote of the multi-line string.
+        assert_eq!(report.total_edits, 6);
         let afters: Vec<&str> = report.edits.iter().map(|e| e.after.as_str()).collect();
         assert_eq!(
             afters,
@@ -323,13 +349,15 @@ mod tests {
                 "has_tenet = tenet_pacifism",
                 "guardian_or_court_tutor_trait_trigger = { TRAIT = craven }",
                 "NOT = { tenet:tenet_pacifism = { is_in_list = x } }",
+                "create_holy_order_accompanying_effect = { X = 1 }",
+                "spans lines\" every_living_character = {",
             ]
         );
         assert_eq!(report.edits[0].rules.len(), 2);
         assert_eq!(report.edits[1].line, 3);
         assert_eq!(
             report.rules.iter().take(RULES.len()).map(|r| r.edits).collect::<Vec<_>>(),
-            [1, 1, 0, 1, 1, 0, 1]
+            [2, 1, 1, 1, 1, 0, 1]
         );
         assert!(report.rules.iter().skip(RULES.len()).all(|r| r.edits == 0));
         let limited = plan(&Request { mod_dir: &tmp, path: "nothing", limit: 10 }).unwrap();

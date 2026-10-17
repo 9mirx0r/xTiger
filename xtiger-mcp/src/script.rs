@@ -21,6 +21,8 @@ use crate::locate::Locations;
 
 /// The file the game's console `run` command reads, in the `run` folder of the user folder.
 const SCRIPT_FILE: &str = "xtiger_script.txt";
+/// Held while a script is written and run, so two servers do not share `SCRIPT_FILE` at once.
+const SCRIPT_LOCK: &str = "xtiger_script.lock";
 /// The most an effect script may hold: a console line is no place for a whole mod.
 const MAX_SCRIPT_BYTES: usize = 64 * 1024;
 /// The most cases in one call: each takes a few seconds in the game, and a client may give up waiting.
@@ -371,6 +373,14 @@ pub fn execute(
     let text = script_file_text(&effects, &marker)?;
     let folder = loc.user_dir.join("run");
     fs::create_dir_all(&folder).map_err(|e| format!("cannot create {}: {e}", folder.display()))?;
+    // The script file is one fixed name, and the console is one console: another server (or call)
+    // writing its own script between ours and the `run` would make the game run the wrong one. The
+    // lock is held until the script has run, and goes when this function returns.
+    let _script_lock = crate::game::take_lock(
+        &folder.join(SCRIPT_LOCK),
+        "driving the game console with a script",
+        &crate::game::pid_alive,
+    )?;
     let file = folder.join(SCRIPT_FILE);
     // With the byte order mark: without it the game logs a warning about the file's encoding every run.
     fs::write(&file, format!("\u{feff}{text}"))
@@ -763,7 +773,7 @@ pub fn run_events(
         with_fixtures(with, &format!("trigger_event = {id}"))
             .map_err(|why| format!("event {id}: {why}"))?;
     }
-    let (mut clean, mut silent, mut broken, mut unfinished) = (0, 0, 0, 0);
+    let (mut clean, mut guessed, mut silent, mut broken, mut unfinished) = (0, 0, 0, 0, 0);
     let mut body = String::new();
     let mut shot = None;
     for (index, id) in events.iter().enumerate() {
@@ -811,6 +821,11 @@ pub fn run_events(
         } else if outcome.printed.is_empty() {
             silent += 1;
             "silent"
+        } else if !learned.is_empty() {
+            // It passed only with scopes this tool made up from their names: not the same as an
+            // event that ran with the scopes the mod's own flow gives it.
+            guessed += 1;
+            "ok with guessed scopes"
         } else {
             clean += 1;
             "ok"
@@ -839,16 +854,23 @@ pub fn run_events(
             break;
         }
     }
+    let guessed_part = if guessed > 0 {
+        format!(", {guessed} ok only with guessed scopes")
+    } else {
+        String::new()
+    };
     let summary = format!(
-        "{} of {} events fired: {clean} ok, {silent} silent, {broken} with errors, {unfinished} not finished.",
-        clean + silent + broken + unfinished,
+        "{} of {} events fired: {clean} ok{guessed_part}, {silent} silent, {broken} with errors, {unfinished} not finished.",
+        clean + guessed + silent + broken + unfinished,
         events.len()
     );
-    let note = if silent > 0 {
-        "\n(silent: no error and nothing logged. The event may print nothing, or its trigger was false and it did not run. A visible event opens its window: ck3_keys with no keys shows it, ck3_click picks an option.)"
-    } else {
-        ""
-    };
+    let mut note = String::new();
+    if guessed > 0 {
+        note.push_str("\n(ok with guessed scopes: the event passed only after this tool made the scopes the game asked for from their names, shown as (added ...). A scope made that way may not be what the mod's own flow gives the event: check those events with the real scopes. The game logs each error once, so a repeat run can look cleaner than the first.)");
+    }
+    if silent > 0 {
+        note.push_str("\n(silent: no error and nothing logged. The event may print nothing, or its trigger was false and it did not run. A visible event opens its window: ck3_keys with no keys shows it, ck3_click picks an option.)");
+    }
     let text = format!("{summary}\n{}{note}", body.trim_end());
     if unfinished > 0 { Err(text) } else { Ok((text, shot)) }
 }
