@@ -27,7 +27,8 @@ impl DbKind for PoolSelector {
         let mut vd = Validator::new(block, data);
         let mut sc = ScopeContext::new(Scopes::Character, key);
         sc.define_name("base", Scopes::Character, key);
-        if key.is("auto_generated_baron") {
+        // The info file documents only the baron, but vanilla uses it for the local title holder too
+        if key.is("auto_generated_baron") || key.is("auto_generated_local_title_holder") {
             sc.define_name("province", Scopes::Province, key);
         }
 

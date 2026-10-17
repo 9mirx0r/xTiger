@@ -344,10 +344,15 @@ impl Asset {
         });
         vd.multi_field_validated_block("attach", |block, data| {
             let mut vd = Validator::new(block, data);
-            vd.unknown_value_fields(|_, token| {
-                // TODO: what are the keys here?
-                data.verify_exists(Item::Asset, token);
-            });
+            // Either `locator = entity` or `name = locator root = entity`
+            if block.has_key("root") {
+                vd.field_value("name");
+                vd.field_item("root", Item::Asset);
+            } else {
+                vd.unknown_value_fields(|_, token| {
+                    data.verify_exists(Item::Asset, token);
+                });
+            }
         });
     }
 

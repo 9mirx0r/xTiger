@@ -1,4 +1,4 @@
-use crate::block::Block;
+use crate::block::{BV, Block};
 use crate::db::{Db, DbKind};
 use crate::everything::Everything;
 use crate::item::{Item, ItemLoader};
@@ -155,9 +155,19 @@ impl DbKind for AccessoryVariationLayout {
         vd.req_field("offset");
         vd.field_validated_block("offset", |block, data| {
             let mut vd = Validator::new(block, data);
-            vd.field_validated_block("x", validate_minmax);
-            vd.field_validated_block("y", validate_minmax);
+            // Vanilla gives a plain number as well as a { min max } range
+            vd.field_validated("x", validate_number_or_minmax);
+            vd.field_validated("y", validate_number_or_minmax);
         });
+    }
+}
+
+fn validate_number_or_minmax(bv: &BV, data: &Everything) {
+    match bv {
+        BV::Value(token) => {
+            token.expect_number();
+        }
+        BV::Block(block) => validate_minmax(block, data),
     }
 }
 

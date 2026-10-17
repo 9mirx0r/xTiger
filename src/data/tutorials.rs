@@ -25,14 +25,13 @@ impl TutorialLesson {
 
 impl DbKind for TutorialLesson {
     fn add_subitems(&self, _key: &Token, block: &Block, db: &mut Db) {
-        let chain = block.get_field_value("chain");
         for (key, block) in block.iter_definitions() {
             if !key.is("trigger") && !key.is("trigger_transition") {
                 db.add(
                     Item::TutorialLessonStep,
                     key.clone(),
                     block.clone(),
-                    Box::new(TutorialLessonStep { chain: chain.cloned() }),
+                    Box::new(TutorialLessonStep {}),
                 );
             }
         }
@@ -124,9 +123,7 @@ impl DbKind for TutorialLessonChain {
 
 /// These are added by the [`TutorialLesson`] item loader
 #[derive(Clone, Debug)]
-pub struct TutorialLessonStep {
-    chain: Option<Token>,
-}
+pub struct TutorialLessonStep {}
 
 impl DbKind for TutorialLessonStep {
     fn validate(&self, key: &Token, block: &Block, data: &Everything) {
@@ -176,15 +173,9 @@ impl DbKind for TutorialLessonStep {
         // TODO: need a general way to restrict effects to interface effects only
         vd.field_effect_rooted("interface_effect", Tooltipped::No, Scopes::None);
 
-        if self.chain.as_ref().is_some_and(|t| {
-            data.item_has_property(Item::TutorialLessonChain, t.as_str(), "gamestate_tutorial")
-        }) {
-            vd.field_bool("pause_game");
-            vd.field_bool("force_pause_game");
-        } else {
-            vd.ban_field("pause_game", || "gamestate tutorial chains");
-            vd.ban_field("force_pause_game", || "gamestate tutorial chains");
-        }
+        // Vanilla uses `pause_game` in the reactive advice chain, which is not a gamestate chain
+        vd.field_bool("pause_game");
+        vd.field_bool("force_pause_game");
         // Vanilla uses `effect` in lessons of non-gamestate chains too (close_all_views).
         vd.field_effect_rooted("effect", Tooltipped::No, game_tutorial_scope());
 

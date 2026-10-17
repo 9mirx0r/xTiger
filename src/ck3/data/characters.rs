@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering;
 
 use atomic_enum::atomic_enum;
 
-use crate::block::{BV, Block, Comparator, Eq::*};
+use crate::block::{BV, Block, BlockItem, Comparator};
 use crate::ck3::data::houses::House;
 use crate::ck3::validate::{validate_portrait_colors, validate_portrait_modifier_overrides};
 use crate::context::ScopeContext;
@@ -336,6 +336,7 @@ impl Character {
         date: Date,
         gender: Gender,
         key: &Token,
+        cmp: Comparator,
         bv: &BV,
         data: &Everything,
         sc: &mut ScopeContext,
@@ -467,7 +468,7 @@ impl Character {
         validate_effect_field(
             Lowercase::empty(),
             key,
-            Comparator::Equals(Single),
+            cmp,
             bv,
             data,
             sc,
@@ -637,9 +638,21 @@ impl Character {
         let mut life_events = Vec::new();
         let gender = Gender::from_female_bool(self.block.get_field_bool("female").unwrap_or(false));
         vd.validate_history_blocks(|date, _key, block, data| {
-            for (index, (key, bv)) in block.iter_assignments_and_definitions_warn().enumerate() {
+            // `?=` is accepted so that a scope link like `domicile ?= { ... }` can be used
+            let fields = block.iter_items().filter_map(|item| {
+                item.expect_field();
+                let BlockItem::Field(field) = item else { return None };
+                if field.is_eq_qeq() {
+                    Some(field)
+                } else {
+                    field.expect_eq();
+                    None
+                }
+            });
+            for (index, field) in fields.enumerate() {
+                let (key, cmp, bv) = (field.key(), field.cmp(), field.bv());
                 if let Some((life_event_type, token)) =
-                    Self::validate_life_event(date, gender, key, bv, data, &mut sc)
+                    Self::validate_life_event(date, gender, key, cmp, bv, data, &mut sc)
                 {
                     life_events.push(LifeEvent { date, index, event: life_event_type, token });
                 }

@@ -1,0 +1,3 @@
+﻿NStruggle = {
+	NOTIFICATION_MESSAGE_RELATIONS = { "friend", "rival", "nemesis" }
+}

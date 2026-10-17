@@ -1,0 +1,8 @@
+﻿t23_char = {
+	name = "T23"
+	history_override_priority = 1
+	1000.1.1 = { birth = yes }
+	1066.9.15 = {
+		domicile ?= { move_domicile = root.top_liege.capital_province }
+	}
+}

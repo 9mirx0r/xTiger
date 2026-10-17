@@ -52,6 +52,18 @@ fn validate_inner(
     let mut saved_value = false;
 
     validate_ifelse_sequence(block, "if", "else_if", "else");
+    // An `if` or `else_if` that does nothing is deliberate when an `else_if` or `else` follows it:
+    // it stops the later branches from applying.
+    let mut followed_by_else = Vec::new();
+    let mut previous: Option<&Token> = None;
+    for (key, _) in block.iter_definitions() {
+        if let Some(prev) = previous
+            && (key.is("else_if") || key.is("else"))
+        {
+            followed_by_else.push(prev.loc);
+        }
+        previous = (key.is("if") || key.is("else_if")).then_some(key);
+    }
     vd.set_allow_questionmark_equals(true);
     vd.unknown_fields_cmp(|token, cmp, bv| {
         if token.is("save_temporary_scope_as") {
@@ -118,7 +130,14 @@ fn validate_inner(
             have_value = TriBool::True;
         } else if token.is("if") || token.is("else_if") {
             if let Some(block) = bv.expect_block() {
-                validate_if(token, block, data, sc, check_desc);
+                validate_if(
+                    token,
+                    block,
+                    data,
+                    sc,
+                    check_desc,
+                    followed_by_else.contains(&token.loc),
+                );
                 made_changes = true;
             }
             have_value = TriBool::Maybe;
@@ -256,6 +275,7 @@ fn validate_if(
     data: &Everything,
     sc: &mut ScopeContext,
     check_desc: bool,
+    followed_by_else: bool,
 ) {
     let mut side_effects = false;
     let mut vd = Validator::new(block, data);
@@ -265,10 +285,9 @@ fn validate_if(
     });
     side_effects |= validate_inner(vd, block, data, sc, TriBool::Maybe, check_desc);
 
-    if !side_effects {
+    if !side_effects && !followed_by_else {
         let msg = format!("this `{key}` does not change the script value");
         // weak because in an if-if_else sequence you might want some that deliberately do nothing
-        // TODO: make this smarter so that it does not warn if followed by an else or else_if
         err(ErrorKey::Logic).weak().msg(msg).loc(key).push();
     }
 }

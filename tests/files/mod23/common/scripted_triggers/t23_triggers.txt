@@ -1,0 +1,11 @@
+﻿t23_tenet_trigger = {
+	scope:actor.rite = { rite_has_tenet = scope:t23_tenet }
+}
+
+t23_doctrine_trigger = {
+	scope:actor.rite = {
+		rite_can_choose_doctrine = doctrine:t23_doctrine
+		rite_has_doctrine = scope:t23_doctrine
+	}
+	knows_doctrine = scope:t23_doctrine
+}

@@ -326,7 +326,11 @@ pub(crate) const SCOPE_EFFECT: &[(Scopes, &str, Effect)] = &[
     (Scopes::Faith, "change_fervor", ScriptValue),
     (Scopes::Character, "change_first_name", Vbv(validate_change_first_name)),
     (Scopes::None, "change_global_variable", Vb(validate_change_variable)),
-    (Scopes::Character, "change_government", Item(Item::GovernmentType)),
+    (
+        Scopes::Character,
+        "change_government",
+        ScopeOrItem(Scopes::GovernmentType, Item::GovernmentType),
+    ),
     (Scopes::Domicile, "change_herd", ScriptValue),
     (Scopes::HouseRelation, "change_house_relation_level", Vb(validate_house_relation_level)),
     (Scopes::Character, "change_influence", ScriptValue),

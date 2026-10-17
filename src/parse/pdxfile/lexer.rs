@@ -653,6 +653,10 @@ impl Iterator for Lexer<'_> {
                     }
                     return None;
                 }
+                // The defines hold lists written as `{ "a", "b" }` and the game reads them
+                ',' if self.loc.pathname().starts_with("common/defines") => {
+                    self.consume();
+                }
                 _ => {
                     self.apply_line_ignores();
                     let msg = format!("unrecognized character `{c}`");

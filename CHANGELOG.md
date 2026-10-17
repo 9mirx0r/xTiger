@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## xTiger 1.6.4 alpha
+
+Elections written in the 1.20 shape are accepted, and the first run of Tiger over the game's own files
+removed about 800 false reports. Thanks to shalola-author for issue #8.
 
 ### Succession elections (issue #8)
 
@@ -42,6 +45,19 @@ false positives are fixed, 2,735 reports down to 2,180 so far, with no new group
   of a portrait modifier see `scope:weight_for_portrait`, `scope:prowess` and the rest; artifact visuals
   see `scope:owner`, and scripted animations and artifact visuals no longer insist on a fixed set of
   names because the caller supplies the others.
+- More formats the game accepts (2,180 reports down to 1,940): `common/defines` lists written with commas
+  (`{ "friend", "rival" }`), a plain number for the `x` and `y` of an accessory layout `offset`,
+  `adjacencies.csv` lines with a tenth field, `rite_has_tenet`, `rite_can_choose_tenet` and
+  `change_government` with a `scope:` reference, an empty `if` or `else_if` in a script value that an
+  `else_if` or `else` follows (deliberate, it stops the later branches), and a chained call such as
+  `scope.GetScriptValueBreakdown( 'x' )` in a gui file is no longer mistaken for the data binding macro of
+  the same name. `rite_has_doctrine`, `rite_can_choose_doctrine` and `knows_doctrine` accept `scope:` and
+  `doctrine:` references, `scope:province` is known in the local title holder pool selector, and
+  `pause_game` is accepted in any tutorial lesson chain (the reactive advice chain uses it).
+  `culture = { ... }` and `faith = { ... }` inside `every_ruler` and `random_ruler` are scope links again
+  (they were taken for the filters of the same name), `domicile ?= { ... }` works in character history,
+  an asset `attach = { name = locator root = entity }` is accepted, and a data binding macro that is only a
+  typed literal (`'(CVector2f)0.0,0.04'`) is no longer a parse error.
 
 ### Audit tools
 

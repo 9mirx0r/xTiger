@@ -1258,6 +1258,35 @@ impl<'a> Validator<'a> {
         found
     }
 
+    /// Like [`Validator::multi_field_validated_any_cmp`], but only for `name = value` fields.
+    /// If any `name` field is a block, nothing is claimed and the block stays with the caller's
+    /// unknown-field handling, for keys that double as scope links (`culture = { ... }`).
+    pub fn multi_field_value_any_cmp<F>(&mut self, name: &str, mut f: F) -> bool
+    where
+        F: FnMut(&Token, &Everything),
+    {
+        let mut found = false;
+        for Field(key, _, bv) in self.block.iter_fields() {
+            if self.key_matches(key, name) {
+                if bv.get_block().is_some() {
+                    return false;
+                }
+                found = true;
+            }
+        }
+        if found {
+            for Field(key, _, bv) in self.block.iter_fields() {
+                if self.key_matches(key, name) {
+                    self.known_fields.push(key.as_str());
+                    if let Some(token) = bv.get_value() {
+                        f(token, self.data);
+                    }
+                }
+            }
+        }
+        found
+    }
+
     /// Expect field `name`, if present, to be either an assignment (`= value`) or a definition (`= { block }`).
     /// Expect no more than one `name` field in the block.
     /// Calls the closure `f(bv, data)` for every matching field.

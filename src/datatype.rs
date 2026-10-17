@@ -213,7 +213,10 @@ pub fn validate_datatypes(
     // Have to loop with `while` instead of `for` because the array can mutate during the loop because of macro substitution
     let mut i = 0;
     while i < codes.len() {
-        while let Some(binding) = data.data_bindings.get(codes[i].name.as_str()) {
+        // Macros are global functions: a chained call such as `scope.GetScriptValueBreakdown( 'x' )`
+        // is the method of the same name, not the macro.
+        while let Some(binding) = data.data_bindings.get(codes[i].name.as_str()).filter(|_| i == 0)
+        {
             if let Some(replacement) = binding.replace(&codes[i]) {
                 macro_count += 1;
                 if macro_count > 255 {

@@ -1,0 +1,6 @@
+﻿pattern_layout = {
+	name = "t23_layout"
+	scale = { min = 0.25 max = 0.25 }
+	rotation = { min = 0 max = 0 }
+	offset = { x = 0 y = { min = 0 max = 0 } }
+}

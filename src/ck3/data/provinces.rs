@@ -412,7 +412,8 @@ impl Adjacency {
 
         let line = csv[0].loc;
 
-        if csv.len() != 9 {
+        // Vanilla has lines with a tenth field (a stray `-1` before the comment) and the game loads them
+        if csv.len() < 9 {
             let msg = "wrong number of fields for this line, expected 9";
             err(ErrorKey::ParseError).msg(msg).loc(&csv[0]).push();
             return None;

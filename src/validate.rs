@@ -548,10 +548,9 @@ pub fn validate_inside_iterator(
             ("faith", Scopes::Faith),
             ("culture", Scopes::Culture),
         ] {
-            vd.multi_field_validated_any_cmp(field, |bv, data| {
-                if let Some(token) = bv.expect_value() {
-                    validate_target(token, data, sc, scope);
-                }
+            // A block is the scope link of the same name: `culture = { save_scope_as = x }`
+            vd.multi_field_value_any_cmp(field, |token, data| {
+                validate_target(token, data, sc, scope);
             });
         }
         vd.field_bool("only_independent");

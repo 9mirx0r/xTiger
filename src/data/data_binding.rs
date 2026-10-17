@@ -97,15 +97,21 @@ impl DataBinding {
         }
         let mut body = None;
         if let Some(rep) = block.get_field_value("replace_with") {
+            // A macro that is only a literal, like `'(CVector2f)0.0,0.04'`, is valid but can't
+            // be a chain; it has no body, so using it ends the checking of that expression.
+            let is_literal = rep.as_str().len() > 1
+                && rep.as_str().starts_with('\'')
+                && rep.as_str().ends_with('\'');
             // TODO: restructure ValueParser to have a separate DatafunctionParser,
             // so that we don't have to synthesize these brackets.
             let open_bracket = Token::from_static_str("[", rep.loc);
             let close_bracket = Token::from_static_str("]", rep.loc);
             let to_parse = vec![&open_bracket, rep, &close_bracket];
-            let value = ValueParser::new(to_parse).parse();
+            let value =
+                if is_literal { LocaValue::Error } else { ValueParser::new(to_parse).parse() };
             if let LocaValue::Code(mut chain, _) = value {
                 body = Some(take(&mut chain));
-            } else {
+            } else if !is_literal {
                 let msg = "could not parse macro replacement";
                 err(ErrorKey::Datafunctions).msg(msg).loc(rep).push();
             }

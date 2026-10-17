@@ -1,0 +1,5 @@
+﻿macro = {
+	description = "A macro that is only a typed literal"
+	definition = "T23Offset"
+	replace_with = "'(CVector2f)0.0,0.04'"
+}

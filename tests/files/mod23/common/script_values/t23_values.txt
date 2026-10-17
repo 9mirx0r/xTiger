@@ -1,0 +1,10 @@
+﻿t23_value = {
+	value = 1
+	if = {
+		limit = { always = no }
+	}
+	else_if = {
+		limit = { always = yes }
+		add = 2
+	}
+}

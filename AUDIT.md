@@ -43,18 +43,23 @@ updated mod that loads cleanly in the game are false positives.
 
 ## Backlog from the vanilla self-check (1.20, error and fatal)
 
-Counts are from the runs of 2026-10-16: 2,735 error reports at the start, 2,180 after the fixes (the
+Counts are from the runs of 2026-10-16: 2,735 error reports at the start, 1,940 after the fixes (the
 changelog lists them). What is left:
 
 - 332 `strict-scopes`, almost all in events (`events/dlc`, `events/activities`, ...): the scopes of an
   event depend on who fires it, and Tiger follows the call only through the paths it understands. These are
   inference limits, not gaps, except where a caller is still missing its own scopes: check a group by
   looking for the common caller (the 134 `scope:target` reports were scheme effects and are fixed).
-- About 30 `unknown-list`: lists that vanilla fills in a way Tiger cannot follow (inference limits).
-- 30 `dynamic script values are not allowed here` in some script values.
-- Rites (PAM): missing items (`rite_has_doctrine`, `rite_can_choose_tenet` and the DLC's own items).
-- Small format gaps still open: `look_at = { 0 0 }` with two numbers in the ep3 portrait environments,
-  `adjacencies.csv` with 9 fields, `faith = scope:x.faith` as a filter inside a script value iterator,
-  `value < script_value` inside a `piety = { }` trigger, `is_target_in_variable_list` without `target`,
-  `domicile ?= { }` in character history, the tutorial and flavorization typos that vanilla has.
+- Looked at and left as they are, because vanilla itself is wrong or the report is useful: `unknown-list`
+  where a list is checked before it is built (a typo check is worth more than the 31 reports);
+  `temporary-scope` (vanilla uses `scope:x` after a `save_temporary_scope_as`, which the game fails
+  on too); `scope:province` in the survey events and the hike background; empty `if` blocks and
+  iterators in PAM and FP3 script values; `house.house_power` (removed in 1.19, still used by the
+  scheme values); `faith = x` and `religion = { x }` in flavorization (the fields are `faiths` and
+  `religions`); `gunpowder_limit_1` as a loose value; `death = Yes`; `look_at = { 0 0 }`.
+- Small format gaps still open, one report each, all of them look like flaws of the vanilla files:
+  `faith = scope:x.faith` as a loose filter inside a script value iterator, `value < script_value`
+  inside a `piety = { }` trigger (tutorial decision), `gold = { }` as a field of `remove_short_term_gold`,
+  `size { 5 0 }` without the `=` in a gui file, the unknown gui type `icon_button_small_round`, and a
+  stray `}` in `artifact_lecterns.asset`.
 - Reports about history, bookmarks and map data are mostly flaws of the data, not of Tiger.

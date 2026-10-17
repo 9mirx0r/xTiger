@@ -1,0 +1,20 @@
+﻿namespace = t23
+t23.1 = {
+	type = character_event
+	hidden = yes
+	immediate = {
+		random_ruler = {
+			limit = { is_ai = yes }
+			culture = {
+				save_scope_as = t23_culture
+			}
+			faith = {
+				save_scope_as = t23_faith
+			}
+		}
+		every_ruler = {
+			faith = root.faith
+			culture = root.culture
+		}
+	}
+}

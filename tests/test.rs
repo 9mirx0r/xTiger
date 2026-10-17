@@ -1241,3 +1241,40 @@ fn test_mod22_vanilla_self_check_scopes() {
         "unexpected scope reports: {unknown:?}"
     );
 }
+
+#[test]
+fn test_mod23_vanilla_self_check_round3() {
+    let reports = check_mod_helper("mod23");
+    let mut found: Vec<(String, String)> = Vec::new();
+    for (meta, occurrences) in &reports {
+        for p in occurrences {
+            let name = p[0].loc.pathname().to_string_lossy().to_string();
+            if name.contains("t23_") {
+                found.push((name, meta.msg.clone()));
+            }
+        }
+    }
+    found.sort();
+    // A plain number in an accessory layout offset, a comma in a defines list, an empty `if`
+    // before an `else_if`, `scope:` references for a tenet, a government and a doctrine, and
+    // `scope:province` in the local title holder pool selector are all fine. A `doctrine:` reference
+    // is still checked against the doctrines, and the report names the doctrine, not the prefix.
+    // `culture = { }` and `faith = { }` are scope links inside `every_ruler`, `domicile ?= { }` is
+    // fine in character history, and a macro that is only a typed literal is not a parse error.
+    // The character without a faith is the fixture's own gap, not part of what is tested.
+    assert_eq!(
+        found,
+        vec![
+            (
+                "common/scripted_triggers/t23_triggers.txt"
+                    .replace('/', std::path::MAIN_SEPARATOR_STR),
+                "doctrine t23_doctrine not defined in common/religion/doctrine_types/".to_string()
+            ),
+            (
+                "history/characters/t23_hist.txt".replace('/', std::path::MAIN_SEPARATOR_STR),
+                "character has no faith, religion or rite".to_string()
+            ),
+        ],
+        "unexpected reports: {found:?}"
+    );
+}
