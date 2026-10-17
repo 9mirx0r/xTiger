@@ -34,7 +34,7 @@ xTiger comes in two forms, and both do the same validation:
   The AI assistants below are optional extras.
 
 <p align="center">
-  <img src="assets/cli/validate.png" alt="The command line checking a real mod: Qubis, the game and the mod it found, one line per stage, the first reports and a closing card with what to look at first and the commands to try next" width="62%">
+  <img src="assets/cli/validate.png" alt="The command line checking a real mod: Qubis, the game and the mod it found, one line per stage, the first reports and a closing card with what to look at first and the commands to try next" width="100%">
 </p>
 <p align="center"><sub><b>The command line.</b> A real run over a Workshop mod.</sub></p>
 
@@ -102,7 +102,7 @@ program, showing each step as it goes and the release notes when it is done. Not
 until the download has been checked.
 
 <p align="center">
-  <img src="assets/cli/update.png" alt="Updating from the command line: the new-version line at the end of a validation, ck3-tiger update --check, and a full ck3-tiger update with its stages and what is new" width="62%">
+  <img src="assets/cli/update.png" alt="Updating from the command line: the new-version line at the end of a validation, ck3-tiger update --check, and a full ck3-tiger update with its stages and what is new" width="86%">
 </p>
 
 - `ck3-tiger update --check` only says whether a newer version exists.

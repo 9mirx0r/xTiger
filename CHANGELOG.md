@@ -1,5 +1,43 @@
 # Changelog
 
+## xTiger 1.6.7 alpha
+
+A hardening release: an outside audit of 1.6.6 found six problems, all of them real, and all are fixed
+here. There is also a round of smaller fixes, and the pictures in the README were redone.
+
+### Fixes from the audit
+
+- **Migrator.** `xtiger_migrate_apply` changed text that came after an escaped quote inside a string.
+  It now reads backslash escapes the way the game does.
+- **Very deep files.** A file with thousands of nested blocks could overflow the stack and crash the
+  validator. Nesting past 200 levels is now reported as an ordinary error and the rest of the mod is
+  still checked.
+- **Updaters.** Both updaters (`ck3-tiger update` and the app) used to carry on when GitHub published
+  no checksum for a download. A checksum is now required, and a download without one is not offered.
+- **Installer.** It removed every `*.old` file in the install folder. It now removes only the copies
+  it moved aside itself, `<program>.<n>.old` for xTiger's own programs.
+- **Releases.** A release could be published even if the tests failed. The release workflow now waits
+  for the full test run, which also covers the app and the setup.
+- **Dependencies.** `self_update` moved to 1.x and `zip` to 9. `cargo audit` reports no vulnerabilities
+  in any of the three lockfiles.
+
+### Smaller fixes
+
+- Report columns count wide characters (Japanese, Chinese, Korean) as two columns, so a long path no
+  longer breaks the layout.
+- A file of the game and a file of the mod with the same path are labelled apart (`[CK3]` in front of
+  the game's).
+- `--path` ignores upper and lower case on Windows.
+- Two xTiger programs starting at the same moment no longer race for the game lock.
+- A byte-order mark at the start of a file is tolerated in more places.
+- A file the migrator cannot read is reported and skipped instead of stopping the whole run.
+
+### Documents
+
+- The command-line pictures in the README are wider and shorter, with larger text, and show the same
+  content as before.
+- The AI activity and Settings pictures are captures of the real app instead of the old mock-ups.
+
 ## xTiger 1.6.6 alpha
 
 `ck3-tiger update` works again, and it now looks like the rest of the validator: a line per step with
