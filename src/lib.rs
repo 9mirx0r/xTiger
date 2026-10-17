@@ -11,9 +11,11 @@ pub use crate::item::Item;
 pub use crate::launcher_settings::get_version_from_launcher;
 pub use crate::modfile::ModFile;
 pub use crate::report::{
-    Confidence, LogReportMetadata, LogReportPointers, PointedMessage, Severity,
-    add_loaded_mod_root, disable_ansi_colors, emit_reports, log, set_output_style,
-    set_show_loaded_mods, set_show_vanilla, suppress_from_json, take_reports,
+    CliFilter, Confidence, EmitOptions, ErrorKey, KeyInfo, LogReportMetadata, LogReportPointers,
+    OutputFormat, PointedMessage, ReportStats, Severity, add_loaded_mod_root, all_keys,
+    config_reports_pending, disable_ansi_colors, emit_reports, emit_reports_with, key_info, log,
+    restrict_reports, set_output_style, set_show_loaded_mods, set_show_vanilla, suppress_from_json,
+    take_reports,
 };
 pub use crate::token::{Loc, Token};
 

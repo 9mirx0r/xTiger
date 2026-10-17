@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
-use strum_macros::{Display, EnumString};
+use strum_macros::{Display, EnumIter, EnumString};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Display, EnumString, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Display, EnumString, EnumIter, Hash, Serialize, Deserialize,
+)]
 #[strum(use_phf)]
 #[strum(serialize_all = "kebab-case")]
 #[serde(rename_all = "kebab-case")]

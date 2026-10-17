@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use console::Term;
 use tiger_lib::ModFile;
-use tiger_lib::{Everything, emit_reports};
+use tiger_lib::{Everything, config_reports_pending, emit_reports};
 
 use crate::GameConsts;
 use crate::gamedir::{
@@ -150,7 +150,8 @@ fn validate_mod(
     // The colors can be enabled again in the config file.
     everything.load_output_settings(false);
     everything.load_config_filtering_rules();
-    if emit_reports(&mut output, false, false, false) {
+    if config_reports_pending() {
+        emit_reports(&mut output, false, false, false);
         bail!("Invalid config");
     }
 

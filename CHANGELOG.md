@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Command line for working by hand
+
+- `--format short|full|json|summary` and `--summary`: one line per report, and counts by severity, key
+  and file before the reports.
+- `--severity`, `--only-key`, `--skip-key` and `--path` filter on the command line. They apply on top
+  of the `filter` block in the config file.
+- `--fail-on <severity>` sets the exit status to 1 when reports at that severity or worse are printed.
+  The default is unchanged (always 0). Other failures, such as bad arguments, now exit with 2.
+- `explain <key>` describes every report key, with how to fix and silence it.
+
 ## xTiger 1.6.4 alpha
 
 Elections written in the 1.20 shape are accepted, and the first run of Tiger over the game's own files

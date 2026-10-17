@@ -7,10 +7,14 @@ use strum::{EnumCount as _, IntoEnumIterator};
 use unicode_width::UnicodeWidthChar;
 
 use crate::fileset::{FileKind, FileStage};
+use crate::helpers::TigerHashMap;
 use crate::report::errors::Errors;
 use crate::report::output_style::Styled;
 use crate::report::report_struct::pointer_indentation;
-use crate::report::{LogReportMetadata, LogReportPointers, OutputStyle, PointedMessage, Severity};
+use crate::report::{
+    ErrorKey, LogReportMetadata, LogReportPointers, LogReportStyle, OutputStyle, PointedMessage,
+    Severity,
+};
 
 /// Source lines printed in the output have leading tab characters replaced by this number of spaces.
 const SPACES_PER_TAB: usize = 4;
@@ -77,6 +81,92 @@ pub fn log_summary<O: Write + Send>(
         })
         .collect_vec();
     _ = writeln!(output, "{}", ANSIStrings(&line[..line.len() - 1]));
+}
+
+/// How many entries the summary lists for keys and for files.
+const SUMMARY_TOP: usize = 10;
+
+/// Log the report as lines of the form `file:line: severity key: message`, the shape editors and
+/// other tools already know how to jump from. No colors, so the output can be piped.
+/// The line is the first place the report points at; an abbreviated report, which is a list of
+/// places, gets one line per place.
+pub fn log_report_short<O: Write + Send>(
+    output: &mut O,
+    report: &LogReportMetadata,
+    pointers: &LogReportPointers,
+    additional: usize,
+) {
+    let msg = report.msg.split_whitespace().collect::<Vec<_>>().join(" ");
+    let extra = if additional > 0 { format!(" (+{additional} more)") } else { String::new() };
+    let shown =
+        if report.style == LogReportStyle::Abbreviated { &pointers[..] } else { &pointers[..1] };
+    for pointer in shown {
+        let path = pointer.loc.fullpath().display().to_string().replace('\\', "/");
+        if pointer.loc.line == 0 {
+            _ = writeln!(output, "{path}: {} {}: {msg}{extra}", report.severity, report.key);
+        } else {
+            _ = writeln!(
+                output,
+                "{path}:{}: {} {}: {msg}{extra}",
+                pointer.loc.line, report.severity, report.key
+            );
+        }
+    }
+}
+
+/// Log the counts by severity, and the keys and files with the most reports.
+/// This is the first thing to look at in a mod with thousands of reports, since a single cause
+/// often accounts for most of them.
+pub fn log_summary_block<O: Write + Send>(
+    output: &mut O,
+    reports: &Vec<(&LogReportMetadata, Cow<'_, LogReportPointers>, usize)>,
+) {
+    let mut by_severity = [0usize; Severity::COUNT];
+    let mut by_key: TigerHashMap<ErrorKey, (usize, Severity)> = TigerHashMap::default();
+    let mut by_file: TigerHashMap<String, usize> = TigerHashMap::default();
+    let mut total = 0;
+    for (metadata, pointers, additional) in reports {
+        let n = 1 + additional;
+        total += n;
+        by_severity[metadata.severity as usize] += n;
+        let entry = by_key.entry(metadata.key).or_insert((0, metadata.severity));
+        entry.0 += n;
+        entry.1 = entry.1.max(metadata.severity);
+        if let Some(first) = pointers.first() {
+            *by_file
+                .entry(first.loc.pathname().display().to_string().replace('\\', "/"))
+                .or_default() += n;
+        }
+    }
+
+    let counts = Severity::iter()
+        .rev()
+        .map(|sev| format!("{sev}: {}", by_severity[sev as usize]))
+        .join(", ");
+    _ = writeln!(output, "Summary: {total} reports ({counts})");
+
+    let mut keys: Vec<_> = by_key.into_iter().collect();
+    keys.sort_unstable_by(|a, b| {
+        b.1.0.cmp(&a.1.0).then_with(|| a.0.to_string().cmp(&b.0.to_string()))
+    });
+    _ = writeln!(output, "Most reports by key:");
+    for (key, (count, severity)) in keys.iter().take(SUMMARY_TOP) {
+        _ = writeln!(output, "  {count:>8}  {key} ({severity})");
+    }
+    if keys.len() > SUMMARY_TOP {
+        _ = writeln!(output, "  ... and {} more keys", keys.len() - SUMMARY_TOP);
+    }
+
+    let mut files: Vec<_> = by_file.into_iter().collect();
+    files.sort_unstable_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    _ = writeln!(output, "Most reports by file:");
+    for (file, count) in files.iter().take(SUMMARY_TOP) {
+        _ = writeln!(output, "  {count:>8}  {file}");
+    }
+    if files.len() > SUMMARY_TOP {
+        _ = writeln!(output, "  ... and {} more files", files.len() - SUMMARY_TOP);
+    }
+    _ = writeln!(output);
 }
 
 fn log_pointer<O: Write + Send>(

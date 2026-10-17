@@ -55,6 +55,15 @@ knowing:
 - `--suppress old.json` hides everything already in an earlier `--json` output, so you only see
   what's new. xTiger gives the same reports for the same files every time, so this stays reliable.
 - `--show-vanilla` also reports problems in the base game.
+- `--summary` prints the counts by severity, key and file first. Start there on a mod with thousands
+  of reports. `--format short` prints one line per report (`file:line: severity key: message`), easy to
+  grep or to open from an editor.
+- `--severity error`, `--only-key missing-item`, `--skip-key unknown-field` and `--path events` narrow
+  the output without editing a config file. They combine, and a narrowed run is faster.
+- `--fail-on error` makes the exit status 1 when a report at that severity or worse is printed, for CI
+  or a pre-commit check. Without it the status stays 0. Status 2 means the run could not be done.
+- `ck3-tiger explain missing-item` says what a key means, how to fix it and how to silence it. Without
+  a key it lists them all.
 
 `ck3-tiger --help` lists the rest, and `ck3-tiger update` fetches the latest release.
 

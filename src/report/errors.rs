@@ -11,19 +11,22 @@ use std::ops::{Bound, RangeBounds};
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex, MutexGuard};
 
+use strum::EnumCount as _;
+
 use encoding_rs::{UTF_8, WINDOWS_1252};
 
+use crate::block::Comparator;
 use crate::helpers::{TigerHashMap, TigerHashSet};
 use crate::macros::MACRO_MAP;
 use crate::parse::ignore::IgnoreFilter;
 use crate::report::error_loc::ErrorLoc;
 use crate::report::filter::ReportFilter;
 use crate::report::suppress::{Suppression, SuppressionKey};
-use crate::report::writer::{log_report, log_summary};
+use crate::report::writer::{log_report, log_report_short, log_summary, log_summary_block};
 use crate::report::writer_json::log_report_json;
 use crate::report::{
     ErrorKey, FilterRule, LogReport, LogReportMetadata, LogReportPointers, LogReportStyle,
-    OutputStyle, PointedMessage,
+    OutputStyle, PointedMessage, Severity,
 };
 use crate::set;
 use crate::token::Loc;
@@ -182,14 +185,8 @@ impl Errors<'_> {
         reports
     }
 
-    /// Print the stored reports.
-    /// Set `json` if they should be printed as a JSON array. Otherwise they are printed in the
-    /// default output format.
-    ///
-    /// Note that the default output format is not stable across versions. It is meant for human
-    /// readability and occasionally gets changed to improve that.
-    ///
-    /// Reports matched by `#tiger-ignore` directives will not be printed.
+    /// Print the stored reports as the legacy two-flag API did: `json` selects a JSON array,
+    /// otherwise the default format is used, and `summary` adds the severity counts at the end.
     ///
     /// Returns true iff any reports were printed.
     pub fn emit_reports<O: Write + Send>(
@@ -199,29 +196,69 @@ impl Errors<'_> {
         consolidate: bool,
         summary: bool,
     ) -> bool {
-        let reports = self.flatten_reports(consolidate);
-        let result = !reports.is_empty();
-        if json {
-            _ = writeln!(output, "[");
-            let mut first = true;
-            for (report, pointers, _) in &reports {
-                if !first {
-                    _ = writeln!(output, ",");
+        let options = EmitOptions {
+            format: if json { OutputFormat::Json } else { OutputFormat::Full },
+            consolidate,
+            summary_last: summary && !json,
+            summary_first: false,
+        };
+        self.emit_reports_with(output, options).total() > 0
+    }
+
+    /// Print the stored reports as `options` says, and return how many of each severity there were.
+    ///
+    /// Note that the default output format is not stable across versions. It is meant for human
+    /// readability and occasionally gets changed to improve that.
+    ///
+    /// Reports matched by `#tiger-ignore` directives will not be printed.
+    pub fn emit_reports_with<O: Write + Send>(
+        &mut self,
+        output: &mut O,
+        options: EmitOptions,
+    ) -> ReportStats {
+        let reports = self.flatten_reports(options.consolidate);
+        let mut stats = ReportStats::default();
+        for (report, _, additional) in &reports {
+            stats.counts[report.severity as usize] += 1 + additional;
+        }
+        match options.format {
+            OutputFormat::Json => {
+                _ = writeln!(output, "[");
+                let mut first = true;
+                for (report, pointers, _) in &reports {
+                    if !first {
+                        _ = writeln!(output, ",");
+                    }
+                    first = false;
+                    log_report_json(self, output, report, pointers);
                 }
-                first = false;
-                log_report_json(self, output, report, pointers);
+                _ = writeln!(
+                    output,
+                    "
+]"
+                );
             }
-            _ = writeln!(output, "\n]");
-        } else {
-            for (report, pointers, additional) in &reports {
-                log_report(self, output, report, pointers, *additional);
+            OutputFormat::SummaryOnly => {
+                log_summary_block(output, &reports);
             }
-            if summary {
-                log_summary(output, &self.styles, &reports);
+            OutputFormat::Full | OutputFormat::Short => {
+                if options.summary_first && !reports.is_empty() {
+                    log_summary_block(output, &reports);
+                }
+                for (report, pointers, additional) in &reports {
+                    if options.format == OutputFormat::Short {
+                        log_report_short(output, report, pointers, *additional);
+                    } else {
+                        log_report(self, output, report, pointers, *additional);
+                    }
+                }
+                if options.summary_last {
+                    log_summary(output, &self.styles, &reports);
+                }
             }
         }
         self.storage.clear();
-        result
+        stats
     }
 
     pub fn store_source_file(&mut self, fullpath: PathBuf, source: &'static str) {
@@ -369,6 +406,120 @@ pub fn emit_reports<O: Write + Send>(
     summary: bool,
 ) -> bool {
     Errors::get_mut().emit_reports(output, json, consolidate, summary)
+}
+
+/// Print all the stored reports to the error output, as `options` says.
+///
+/// Returns how many reports of each severity were printed.
+pub fn emit_reports_with<O: Write + Send>(output: &mut O, options: EmitOptions) -> ReportStats {
+    Errors::get_mut().emit_reports_with(output, options)
+}
+
+/// How reports are written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutputFormat {
+    /// Each report with its source lines and carets. The default.
+    #[default]
+    Full,
+    /// One line per report: `file:line: severity key: message`.
+    Short,
+    /// A JSON array with all the details.
+    Json,
+    /// Only the counts, no individual reports.
+    SummaryOnly,
+}
+
+/// Options for [`emit_reports_with`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EmitOptions {
+    pub format: OutputFormat,
+    /// Print repeated reports of some keys only once, with a count.
+    pub consolidate: bool,
+    /// Print the summary (counts by severity, key and file) before the reports.
+    pub summary_first: bool,
+    /// Print the one-line severity counts after the reports. Only for [`OutputFormat::Full`].
+    pub summary_last: bool,
+}
+
+/// Number of printed reports for each severity.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReportStats {
+    counts: [usize; Severity::COUNT],
+}
+
+impl ReportStats {
+    /// All the printed reports.
+    pub fn total(&self) -> usize {
+        self.counts.iter().sum()
+    }
+
+    /// The printed reports of this severity.
+    pub fn count(&self, severity: Severity) -> usize {
+        self.counts[severity as usize]
+    }
+
+    /// The printed reports of this severity or a worse one.
+    pub fn at_least(&self, severity: Severity) -> usize {
+        self.counts[severity as usize..].iter().sum()
+    }
+}
+
+/// Restrictions from the command line, applied on top of whatever the config file allows.
+#[derive(Debug, Clone, Default)]
+pub struct CliFilter {
+    /// Only this severity or worse.
+    pub min_severity: Option<Severity>,
+    /// Only these keys. Empty means all.
+    pub only_keys: Vec<ErrorKey>,
+    /// Never these keys.
+    pub skip_keys: Vec<ErrorKey>,
+    /// Only reports pointing into these paths or globs (relative to the mod or game root).
+    pub paths: Vec<String>,
+}
+
+/// Narrow the printed reports down with `filter`, in addition to the config file's rules.
+///
+/// # Errors
+/// Returns a message when a path is not a valid glob pattern.
+pub fn restrict_reports(filter: &CliFilter) -> Result<(), String> {
+    let mut rules = Vec::new();
+    if let Some(severity) = filter.min_severity {
+        rules.push(FilterRule::Severity(Comparator::AtLeast, severity));
+    }
+    if !filter.only_keys.is_empty() {
+        rules.push(FilterRule::Disjunction(
+            filter.only_keys.iter().map(|key| FilterRule::Key(*key)).collect(),
+        ));
+    }
+    for key in &filter.skip_keys {
+        rules.push(FilterRule::Negation(Box::new(FilterRule::Key(*key))));
+    }
+    if !filter.paths.is_empty() {
+        let mut patterns = Vec::new();
+        for path in &filter.paths {
+            let path = path.replace(std::path::MAIN_SEPARATOR, "/");
+            let pattern = glob::Pattern::new(path.trim_end_matches('/'))
+                .map_err(|e| format!("`{path}` is not a valid path or glob: {}", e.msg))?;
+            patterns.push(FilterRule::File(pattern));
+        }
+        rules.push(FilterRule::Disjunction(patterns));
+    }
+    if rules.is_empty() {
+        return Ok(());
+    }
+    let mut errors = Errors::get_mut();
+    let existing = take(&mut errors.filter.predicate);
+    errors.filter.predicate =
+        FilterRule::Conjunction(vec![existing, FilterRule::Conjunction(rules)]);
+    Ok(())
+}
+
+/// Whether a report about the configuration (`ck3-tiger.conf`) is waiting to be printed.
+///
+/// Other stored reports, such as notes about the `.mod` file, do not make the config invalid:
+/// they are printed with the rest.
+pub fn config_reports_pending() -> bool {
+    Errors::get_mut().storage.keys().any(|report| report.key == ErrorKey::Config)
 }
 
 /// Extract the stored reports, sort them, and return them as a hashmap with the occurrences for

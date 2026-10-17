@@ -2,7 +2,8 @@ use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
 
 use tiger_lib::{
-    Everything, LogReportMetadata, LogReportPointers, TigerHashMap, TigerHashSet, take_reports,
+    Everything, LogReportMetadata, LogReportPointers, ModFile, TigerHashMap, TigerHashSet,
+    config_reports_pending, take_reports,
 };
 
 static TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -1277,4 +1278,25 @@ fn test_mod23_vanilla_self_check_round3() {
         ],
         "unexpected reports: {found:?}"
     );
+}
+
+#[test]
+fn test_mod24_descriptor_notes_are_not_config_errors() {
+    // A total conversion descriptor like Elder Kings 2: `replace_path = "history"` next to the
+    // paths under it, and a picture that Steam ignores. Both get a report, but neither is a
+    // config error, so the run must go on and print them with the other reports.
+    let _guard = TEST_MUTEX.lock().unwrap();
+    take_reports();
+
+    let modfile = ModFile::read(&PathBuf::from("tests/files/mod24/descriptor.mod")).unwrap();
+    assert_eq!(modfile.replace_paths().len(), 4);
+    assert!(!config_reports_pending(), "notes about the .mod file stopped the run");
+
+    let mut reports = take_reports();
+    let descriptor = "tests/files/mod24/descriptor.mod".replace('/', std::path::MAIN_SEPARATOR_STR);
+    assert!(
+        take_report_contains(&mut reports, &descriptor, "replace_path only replaces").is_some()
+    );
+    assert!(take_report_contains(&mut reports, &descriptor, "Steam ignores picture").is_some());
+    assert!(reports.is_empty(), "unexpected reports: {reports:?}");
 }
