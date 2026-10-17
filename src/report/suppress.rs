@@ -36,13 +36,19 @@ struct JsonReport {
 /// order mark, and editors add a UTF-8 one, so a `--json` output saved either way still reads.
 fn json_text(bytes: &[u8]) -> Result<String> {
     if let Some(rest) = bytes.strip_prefix(&[0xff, 0xfe]) {
-        let units: Vec<u16> =
-            rest.chunks_exact(2).map(|p| u16::from_le_bytes([p[0], p[1]])).collect();
+        let units: Vec<u16> = rest
+            .chunks(2)
+            .filter(|p| p.len() == 2)
+            .map(|p| u16::from_le_bytes([p[0], p[1]]))
+            .collect();
         return Ok(String::from_utf16(&units)?);
     }
     if let Some(rest) = bytes.strip_prefix(&[0xfe, 0xff]) {
-        let units: Vec<u16> =
-            rest.chunks_exact(2).map(|p| u16::from_be_bytes([p[0], p[1]])).collect();
+        let units: Vec<u16> = rest
+            .chunks(2)
+            .filter(|p| p.len() == 2)
+            .map(|p| u16::from_be_bytes([p[0], p[1]]))
+            .collect();
         return Ok(String::from_utf16(&units)?);
     }
     let text = std::str::from_utf8(bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(bytes))?;
