@@ -1,4 +1,4 @@
-use glob::Pattern;
+use glob::{MatchOptions, Pattern};
 use std::path::Path;
 
 use crate::block::Comparator;
@@ -91,6 +91,9 @@ pub enum FilterRule {
     Key(ErrorKey),
     /// The report's pointers must contain the given file for the report to match the rule.
     File(Pattern),
+    /// Like `File`, but capitals do not matter. This is for paths typed on the command line,
+    /// where `Events` should find `events`, as it does in the game's own folders on Windows.
+    FileAnyCase(Pattern),
     /// The report's msg must contain the given text for the report to match the rule.
     Text(String),
 }
@@ -128,6 +131,19 @@ impl FilterRule {
                 pattern.matches_path(pointer.loc.pathname())
                     || pointer.loc.pathname().starts_with(Path::new(pattern.as_str()))
             }),
+            FilterRule::FileAnyCase(pattern) => {
+                let options = MatchOptions {
+                    case_sensitive: false,
+                    require_literal_separator: false,
+                    require_literal_leading_dot: false,
+                };
+                let folder = pattern.as_str().to_lowercase();
+                pointers.iter().any(|pointer| {
+                    let path = pointer.loc.pathname().to_string_lossy().replace('\\', "/");
+                    pattern.matches_with(&path, options)
+                        || Path::new(&path.to_lowercase()).starts_with(Path::new(&folder))
+                })
+            }
             FilterRule::Text(s) => {
                 report.msg.to_ascii_lowercase().contains(&s.to_ascii_lowercase())
             }

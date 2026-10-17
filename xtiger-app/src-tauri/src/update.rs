@@ -72,7 +72,15 @@ pub struct Update {
 pub struct SetupAsset {
     url: String,
     size: u64,
-    sha256: Option<String>,
+    /// The checksum GitHub published for the setup. A setup without one is never offered: the
+    /// download cannot be checked, so the release page is opened instead.
+    sha256: String,
+}
+
+/// The hex digest in a GitHub `sha256:<hex>` asset digest, when it is a whole SHA-256.
+fn published_sha256(digest: Option<&str>) -> Option<String> {
+    let hex = digest?.strip_prefix("sha256:")?;
+    (hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit())).then(|| hex.to_lowercase())
 }
 
 #[derive(Clone, Serialize)]
@@ -215,14 +223,12 @@ fn newer_than(releases: Vec<GhRelease>, current: &Version, portable: bool) -> Op
         .iter()
         .find(|asset| asset.name.starts_with("xTiger_") && asset.name.ends_with("-setup.exe"))
         .filter(|asset| asset.size <= MAX_SETUP_SIZE)
-        .map(|asset| SetupAsset {
-            url: asset.browser_download_url.clone(),
-            size: asset.size,
-            sha256: asset
-                .digest
-                .as_deref()
-                .and_then(|d| d.strip_prefix("sha256:"))
-                .map(str::to_lowercase),
+        .and_then(|asset| {
+            Some(SetupAsset {
+                url: asset.browser_download_url.clone(),
+                size: asset.size,
+                sha256: published_sha256(asset.digest.as_deref())?,
+            })
         });
 
     Some(Update {
@@ -254,6 +260,9 @@ pub fn download_and_start(
 ) -> Result<(), String> {
     if !setup.url.starts_with("https://github.com/9mirx0r/xTiger/releases/download/") {
         return Err("That download is not an xTiger release.".to_owned());
+    }
+    if published_sha256(Some(&format!("sha256:{}", setup.sha256))).is_none() {
+        return Err("The release has no checksum to check the download against.".to_owned());
     }
     let dir = std::env::temp_dir().join("xtiger-update");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -298,14 +307,10 @@ pub fn download_and_start(
             setup.size
         ));
     }
-    if let Some(expected) = &setup.sha256 {
-        let actual: String = hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect();
-        if &actual != expected {
-            let _ = fs::remove_file(&path);
-            return Err(
-                "The download is damaged (its checksum does not match). Try again.".to_owned()
-            );
-        }
+    let actual: String = hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect();
+    if !actual.eq_ignore_ascii_case(&setup.sha256) {
+        let _ = fs::remove_file(&path);
+        return Err("The download is damaged (its checksum does not match). Try again.".to_owned());
     }
 
     start_setup(path)
@@ -350,7 +355,7 @@ mod tests {
                 name: format!("xTiger_{}_x64-setup.exe", tag.trim_start_matches('v')),
                 size: 10,
                 browser_download_url: format!("{RELEASE_PAGE_PREFIX}/download/{tag}/setup.exe"),
-                digest: Some("sha256:ABCD".to_owned()),
+                digest: Some(format!("sha256:{}", "AB".repeat(32))),
             }],
         }
     }
@@ -371,7 +376,24 @@ mod tests {
         let versions: Vec<_> = update.releases.iter().map(|r| r.version.as_str()).collect();
         assert_eq!(versions, ["1.0.0", "1.0.0-alpha.2"]);
         let setup = update.setup.unwrap();
-        assert_eq!(setup.sha256.as_deref(), Some("abcd"));
+        assert_eq!(setup.sha256, "ab".repeat(32));
+    }
+
+    #[test]
+    fn a_setup_without_a_whole_checksum_is_not_offered() {
+        let current = Version::parse("1.0.0").unwrap();
+        for digest in [None, Some("sha256:ABCD".to_owned()), Some("md5:abcd".to_owned())] {
+            let mut newest = release("v1.1.0", false);
+            newest.assets[0].digest = digest;
+            let update = newer_than(vec![newest], &current, false).unwrap();
+            assert!(update.setup.is_none());
+            assert_eq!(update.version, "1.1.0", "the update itself is still announced");
+        }
+        assert_eq!(
+            published_sha256(Some(&format!("sha256:{}", "0f".repeat(32)))).unwrap().len(),
+            64
+        );
+        assert_eq!(published_sha256(Some(&format!("sha256:{}", "zz".repeat(32)))), None);
     }
 
     /// Asks the real GitHub twice; the second answer is a 304. Run with `cargo test -- --ignored`.

@@ -5,6 +5,8 @@ on:
   pull_request:
     branches:
       - main
+  # The release workflow runs the same checks before it builds anything.
+  workflow_call:
 
 name: Quality Assurance
 
@@ -128,3 +130,9 @@ jobs:
 
       - name: Check the app
         run: cargo check --manifest-path xtiger-app/src-tauri/Cargo.toml --locked
+
+      - name: Test the app
+        run: cargo test --manifest-path xtiger-app/src-tauri/Cargo.toml --locked
+
+      - name: Test the setup
+        run: cargo test --manifest-path xtiger-app/setup/Cargo.toml --locked

@@ -80,8 +80,13 @@ fn settings_file(app: &AppHandle) -> Option<PathBuf> {
 pub fn load(app: &AppHandle) -> Settings {
     settings_file(app)
         .and_then(|path| fs::read_to_string(path).ok())
-        .and_then(|text| serde_json::from_str(&text).ok())
+        .and_then(|text| parse(&text))
         .unwrap_or_default()
+}
+
+/// The settings in a file's text. An editor on Windows may have put a byte order mark in front.
+fn parse(text: &str) -> Option<Settings> {
+    serde_json::from_str(text.trim_start_matches('\u{feff}')).ok()
 }
 
 pub fn save(app: &AppHandle, settings: &Settings) -> Result<(), String> {
@@ -91,4 +96,17 @@ pub fn save(app: &AppHandle, settings: &Settings) -> Result<(), String> {
     }
     let text = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
     fs::write(path, text).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_saved_with_a_byte_order_mark_are_not_lost() {
+        let marked = parse("\u{feff}{\"theme\":\"dark\",\"open_in_editor\":false}").unwrap();
+        assert_eq!((marked.theme.as_str(), marked.open_in_editor), ("dark", false));
+        assert_eq!(parse("{\"theme\":\"dark\"}").unwrap().theme, "dark");
+        assert!(parse("not json").is_none());
+    }
 }

@@ -123,7 +123,7 @@ impl AppSettings {
     pub fn load(data_dir: &Path) -> Self {
         fs::read_to_string(data_dir.join("settings.json"))
             .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
+            .and_then(|text| serde_json::from_str(text.trim_start_matches('\u{feff}')).ok())
             .unwrap_or_default()
     }
 }
@@ -549,5 +549,8 @@ mod tests {
         assert!(!AppSettings::load(&tmp).game_tests_background);
         fs::write(tmp.join("settings.json"), "not json").unwrap();
         assert!(AppSettings::load(&tmp).game_dir.is_none());
+        // A byte order mark, as an editor on Windows may add, does not hide the settings.
+        fs::write(tmp.join("settings.json"), "\u{feff}{\"game_dir\": \"C:/Games/CK3\"}").unwrap();
+        assert_eq!(AppSettings::load(&tmp).game_dir, Some(PathBuf::from("C:/Games/CK3")));
     }
 }

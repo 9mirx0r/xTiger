@@ -507,10 +507,24 @@ pub fn remove_old_copies() {
     };
     let Ok(entries) = fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
-        if entry.file_name().to_string_lossy().ends_with(".old") {
+        if is_aside_copy(&entry.file_name().to_string_lossy()) {
             let _ = fs::remove_file(entry.path());
         }
     }
+}
+
+/// Is this file name one of the copies the setup moves aside, `<program>.<n>.old` for one of
+/// xTiger's own programs? Any other `.old` file in the folder belongs to somebody else.
+fn is_aside_copy(file_name: &str) -> bool {
+    let Some((program, n)) = file_name.strip_suffix(".old").and_then(|rest| rest.rsplit_once('.'))
+    else {
+        return false;
+    };
+    !n.is_empty()
+        && n.bytes().all(|b| b.is_ascii_digit())
+        && ["xTiger.exe", "ck3-tiger.exe", SERVER_EXE]
+            .iter()
+            .any(|exe| exe.eq_ignore_ascii_case(program))
 }
 
 #[derive(Debug, Serialize)]
@@ -634,6 +648,29 @@ mod tests {
     impl Drop for Temp {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn only_copies_the_setup_moved_aside_count_as_old() {
+        for name in [
+            "xTiger.exe.0.old",
+            "XTIGER.EXE.12.old",
+            "ck3-tiger.exe.3.old",
+            &format!("{SERVER_EXE}.7.old"),
+        ] {
+            assert!(is_aside_copy(name), "{name}");
+        }
+        for name in [
+            "notes.old",
+            "backup.1.old",
+            "xTiger.exe.old",
+            "xTiger.exe.x.old",
+            "xTiger.exe..old",
+            "other.exe.0.old",
+            "xTiger.exe.0",
+        ] {
+            assert!(!is_aside_copy(name), "{name}");
         }
     }
 

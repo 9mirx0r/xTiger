@@ -153,8 +153,16 @@ pub struct Report {
 /// the end of the code. `quoted` says whether the line starts inside a string left open by an
 /// earlier line.
 fn comment_start(line: &str, mut quoted: bool) -> (usize, bool) {
+    // As in the game's script lexer, a backslash inside a string escapes the next character, so
+    // `\"` does not end the string.
+    let mut escaped = false;
     for (i, c) in line.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
         match c {
+            '\\' if quoted => escaped = true,
             '"' => quoted = !quoted,
             '#' if !quoted => return (i, quoted),
             _ => {}
@@ -167,8 +175,15 @@ fn comment_start(line: &str, mut quoted: bool) -> (usize, bool) {
 /// match text that is only a string. `quoted` says whether the line starts inside a string.
 fn without_quoted(code: &str, mut quoted: bool) -> String {
     let mut out = String::with_capacity(code.len());
+    let mut escaped = false;
     for c in code.chars() {
-        if c == '"' {
+        if escaped {
+            escaped = false;
+            out.extend(std::iter::repeat_n('_', c.len_utf8()));
+        } else if c == '\\' && quoted {
+            escaped = true;
+            out.push('_');
+        } else if c == '"' {
             quoted = !quoted;
             out.push(c);
         } else if quoted {
@@ -397,5 +412,28 @@ mod tests {
         unique.sort_unstable();
         unique.dedup();
         assert_eq!(unique.len(), names.len());
+    }
+
+    #[test]
+    fn an_escaped_quote_does_not_end_a_string() {
+        let mut open = false;
+        // The text between the escaped quotes is still inside the string.
+        assert_eq!(rewrite(r#"debug_log = "say \" is_created = yes \" end""#, &mut open), None);
+        assert!(!open);
+        // A backslash that is itself escaped does not escape the quote after it.
+        let mut open = false;
+        let (after, _) = rewrite(r#"a = "x\\" is_created = yes"#, &mut open).unwrap();
+        assert_eq!(after, r#"a = "x\\" is_title_created = yes"#);
+        // A `#` after an escaped quote is still inside the string, so it starts no comment.
+        let mut open = false;
+        assert_eq!(rewrite(r#"a = "\" # is_created = yes""#, &mut open), None);
+        // A string left open at the end of the line, with an escaped quote in it, stays open.
+        let mut open = false;
+        assert_eq!(rewrite(r#"a = "two \" lines"#, &mut open), None);
+        assert!(open);
+        // Outside a string a backslash means nothing.
+        let mut open = false;
+        let (after, _) = rewrite(r"a = \ is_created = yes", &mut open).unwrap();
+        assert_eq!(after, r"a = \ is_title_created = yes");
     }
 }

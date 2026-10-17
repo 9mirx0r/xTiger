@@ -4,7 +4,7 @@ use std::io::Write;
 use ansiterm::{ANSIString, ANSIStrings};
 use itertools::Itertools;
 use strum::{EnumCount as _, IntoEnumIterator};
-use unicode_width::UnicodeWidthChar;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::fileset::{FileKind, FileStage};
 use crate::helpers::TigerHashMap;
@@ -118,6 +118,7 @@ pub fn log_report_short<O: Write + Send>(
 /// This is the first thing to look at in a mod with thousands of reports, since a single cause
 /// often accounts for most of them.
 pub fn log_summary_block<O: Write + Send>(
+    errors: &Errors,
     output: &mut O,
     reports: &Vec<(&LogReportMetadata, Cow<'_, LogReportPointers>, usize)>,
     hidden: usize,
@@ -134,9 +135,7 @@ pub fn log_summary_block<O: Write + Send>(
         entry.0 += n;
         entry.1 = entry.1.max(metadata.severity);
         if let Some(first) = pointers.first() {
-            *by_file
-                .entry(first.loc.pathname().display().to_string().replace('\\', "/"))
-                .or_default() += n;
+            *by_file.entry(file_label(errors, first)).or_default() += n;
         }
     }
 
@@ -387,27 +386,49 @@ fn line_spacing(line: &str) -> (&str, usize, usize) {
     (&line[remove..], remove, spaces)
 }
 
+/// The file a report points at: the path relative to the mod, or to the game, a DLC or another mod
+/// with its name in front. The summaries count by this, so that a game file and a mod file with the
+/// same path are not counted as one.
+pub(crate) fn file_label(errors: &Errors, pointer: &PointedMessage) -> String {
+    let path = pointer.loc.pathname().display().to_string().replace('\\', "/");
+    if pointer.loc.kind == FileKind::Mod {
+        path
+    } else {
+        format!("[{}] {path}", kind_tag(errors, pointer.loc.kind))
+    }
+}
+
 /// The place a report points at, for the pretty short format: the path relative to the mod (or the
 /// game, with its name in front) and the line.
 pub fn short_location(errors: &Errors, pointer: &PointedMessage) -> String {
-    let mut path = pointer.loc.pathname().display().to_string().replace('\\', "/");
-    if pointer.loc.kind != FileKind::Mod {
-        path = format!("[{}] {path}", kind_tag(errors, pointer.loc.kind));
-    }
+    let mut path = file_label(errors, pointer);
     if pointer.loc.line > 0 {
         path = format!("{path}:{}", pointer.loc.line);
     }
     path
 }
 
+/// How many terminal columns a text takes. Wide characters (Chinese, Japanese, Korean) take two.
+pub(crate) fn display_width(text: &str) -> usize {
+    text.width()
+}
+
 /// Keep the end of a location (the file name and the line) when it is wider than its column.
 fn fit_location(path: String, width: usize) -> String {
-    let len = path.chars().count();
-    if width < 2 || len <= width {
+    if width < 2 || display_width(&path) <= width {
         return path;
     }
-    let tail: String = path.chars().skip(len - (width - 1)).collect();
-    format!("…{tail}")
+    let mut taken = 0;
+    let mut start = path.len();
+    for (index, ch) in path.char_indices().rev() {
+        let columns = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if taken + columns > width - 1 {
+            break;
+        }
+        taken += columns;
+        start = index;
+    }
+    format!("…{}", &path[start..])
 }
 
 /// How wide the columns of [`log_report_short_pretty`] are.
@@ -432,7 +453,7 @@ pub fn log_report_short_pretty<O: Write + Send>(
         if report.style == LogReportStyle::Abbreviated { &pointers[..] } else { &pointers[..1] };
     for pointer in shown {
         let path = fit_location(short_location(errors, pointer), widths.location);
-        let pad = widths.location.saturating_sub(path.chars().count());
+        let pad = widths.location.saturating_sub(display_width(&path));
         let key_width = widths.key;
         let mut line = vec![
             errors.styles.style(Styled::Location).paint(path),
@@ -454,5 +475,59 @@ pub fn log_report_short_pretty<O: Write + Send>(
             line.push(errors.styles.style(Styled::Default).paint(format!(" (+{additional} more)")));
         }
         _ = writeln!(output, "{}", ANSIStrings(&line));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::token::Loc;
+
+    const WIDE: &str = "\u{65e5}\u{672c}\u{8a9e}";
+
+    #[test]
+    fn wide_characters_take_two_columns() {
+        assert_eq!(display_width("events/abc.txt"), 14);
+        assert_eq!(display_width(WIDE), 6);
+        assert_eq!(display_width("a\u{65e5}b"), 4);
+    }
+
+    #[test]
+    fn a_long_location_keeps_its_end_within_the_column() {
+        let short = "common/a.txt:3".to_string();
+        assert_eq!(fit_location(short.clone(), 40), short);
+        let cut =
+            fit_location("common/scripted_effects/a_rather_long_name.txt:123".to_string(), 20);
+        assert_eq!(display_width(&cut), 20);
+        assert!(cut.starts_with('\u{2026}') && cut.ends_with("name.txt:123"), "{cut}");
+        // Wide characters are never split and never push the text past the column.
+        let wide = format!("events/{WIDE}{WIDE}.txt:7");
+        for width in 7..25 {
+            let cut = fit_location(wide.clone(), width);
+            assert!(display_width(&cut) <= width, "{width}: {cut}");
+            assert!(cut.starts_with('\u{2026}') && cut.ends_with(".txt:7"), "{width}: {cut}");
+        }
+        assert_eq!(fit_location("abc".to_string(), 1), "abc", "too narrow to cut");
+    }
+
+    #[test]
+    fn game_and_mod_files_with_the_same_path_are_labelled_apart() {
+        let errors = Errors::get();
+        let pointer = |kind| {
+            let loc = Loc::for_file(
+                PathBuf::from("events\\clash.txt"),
+                FileStage::NoStage,
+                kind,
+                PathBuf::from("C:/somewhere/events/clash.txt"),
+            );
+            PointedMessage::new(loc)
+        };
+        let mod_file = file_label(&errors, &pointer(FileKind::Mod));
+        let game_file = file_label(&errors, &pointer(FileKind::Vanilla));
+        assert_eq!(mod_file, "events/clash.txt");
+        assert_eq!(game_file, "[CK3] events/clash.txt");
+        assert_ne!(mod_file, game_file);
     }
 }

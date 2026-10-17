@@ -23,8 +23,8 @@ use crate::report::error_loc::ErrorLoc;
 use crate::report::filter::ReportFilter;
 use crate::report::suppress::{Suppression, SuppressionKey};
 use crate::report::writer::{
-    ShortWidths, log_report, log_report_short, log_report_short_pretty, log_summary,
-    log_summary_block, short_location,
+    ShortWidths, display_width, file_label, log_report, log_report_short, log_report_short_pretty,
+    log_summary, log_summary_block, short_location,
 };
 use crate::report::writer_json::log_report_json;
 
@@ -247,9 +247,7 @@ impl Errors<'_> {
             entry.0 += n;
             entry.1 = entry.1.max(report.severity);
             if let Some(first) = pointers.first() {
-                *by_file
-                    .entry(first.loc.pathname().display().to_string().replace('\\', "/"))
-                    .or_default() += n;
+                *by_file.entry(file_label(self, first)).or_default() += n;
             }
         }
         stats.keys = by_key
@@ -266,7 +264,7 @@ impl Errors<'_> {
             reports
                 .iter()
                 .flat_map(|(_, pointers, _)| pointers.iter().take(1))
-                .map(|p| short_location(self, p).chars().count())
+                .map(|p| display_width(&short_location(self, p)))
                 .max()
                 .unwrap_or(0)
                 .min(MAX_LOCATION_WIDTH)
@@ -292,11 +290,11 @@ impl Errors<'_> {
                 );
             }
             OutputFormat::SummaryOnly => {
-                log_summary_block(output, &reports, stats.hidden);
+                log_summary_block(self, output, &reports, stats.hidden);
             }
             OutputFormat::Full | OutputFormat::Short => {
                 if options.summary_first && !reports.is_empty() {
-                    log_summary_block(output, &reports, stats.hidden);
+                    log_summary_block(self, output, &reports, stats.hidden);
                 }
                 for (report, pointers, additional) in &reports {
                     if options.format == OutputFormat::Short && options.pretty {
@@ -600,7 +598,7 @@ pub fn restrict_reports(filter: &CliFilter) -> Result<(), String> {
             let path = if bare_file { format!("**/{path}") } else { path.to_string() };
             let pattern = glob::Pattern::new(&path)
                 .map_err(|e| format!("`{path}` is not a valid path or glob: {}", e.msg))?;
-            patterns.push(FilterRule::File(pattern));
+            patterns.push(FilterRule::FileAnyCase(pattern));
         }
         rules.push(FilterRule::Disjunction(patterns));
     }

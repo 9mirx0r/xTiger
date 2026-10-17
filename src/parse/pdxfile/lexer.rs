@@ -126,6 +126,11 @@ impl Display for LexError {
     }
 }
 
+/// How many blocks may be nested. Real script stays far below this; a file that goes past it is
+/// not parsed any further, because the validators walk the blocks recursively and a deeper tree
+/// would overflow the stack and end the whole run.
+const MAX_BLOCK_DEPTH: usize = 200;
+
 /// An iterator that produces [`Lexeme`] values on demand.
 pub struct Lexer<'input> {
     /// The input is in most cases a single token (a whole file), but when processing macros it can
@@ -141,6 +146,8 @@ pub struct Lexer<'input> {
     /// How many nested braces are around the current char.
     /// This is only used to warn about misaligned braces.
     brace_depth: usize,
+    /// Set when the nesting went past [`MAX_BLOCK_DEPTH`]; the rest of the input is ignored.
+    too_deep: bool,
     /// Is the lexer inside a `@[` calculation?
     /// This restricts the chars allowed in identifiers.
     in_calc: bool,
@@ -165,6 +172,7 @@ impl<'input> Lexer<'input> {
             loc: inputs[0].loc,
             iter: inputs[0].as_str().char_indices().peekable(),
             brace_depth: 0,
+            too_deep: false,
             in_calc: false,
             pending_line_ignores: Vec::new(),
             pending_block_ignores: Vec::new(),
@@ -264,6 +272,9 @@ impl Iterator for Lexer<'_> {
     type Item = Result<(usize, Lexeme, usize), LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.too_deep {
+            return None;
+        }
         while let Some((i, c)) = self.peek() {
             match c {
                 _ if c.is_ascii_whitespace() => self.consume(),
@@ -566,6 +577,14 @@ impl Iterator for Lexer<'_> {
                     return Some(Ok((start_i, Lexeme::General(token), self.eof_offset())));
                 }
                 '{' => {
+                    if self.brace_depth >= MAX_BLOCK_DEPTH {
+                        let msg =
+                            format!("blocks are nested more than {MAX_BLOCK_DEPTH} levels deep");
+                        let info = "The rest of this file is not checked.";
+                        err(ErrorKey::ParseError).msg(msg).info(info).loc(self.loc).push();
+                        self.too_deep = true;
+                        return None;
+                    }
                     self.brace_depth += 1;
                     self.apply_line_ignores();
                     self.apply_block_ignores();

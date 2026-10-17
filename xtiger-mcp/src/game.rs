@@ -260,7 +260,7 @@ pub(crate) fn take_lock(
     alive: &dyn Fn(u32) -> bool,
 ) -> Result<RunLock, String> {
     let path = path.to_path_buf();
-    for _ in 0..3 {
+    for _ in 0..TAKE_ATTEMPTS {
         match fs::OpenOptions::new().write(true).create_new(true).open(&path) {
             Ok(mut file) => {
                 use std::io::Write as _;
@@ -268,17 +268,7 @@ pub(crate) fn take_lock(
                 return Ok(RunLock(path));
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                let age = fs::metadata(&path)
-                    .and_then(|meta| meta.modified())
-                    .ok()
-                    .and_then(|time| time.elapsed().ok())
-                    .unwrap_or_default();
-                let owner =
-                    fs::read_to_string(&path).ok().and_then(|text| text.trim().parse().ok());
-                let busy = match owner {
-                    Some(pid) => age < LOCK_MAX_AGE && alive(pid),
-                    None => age < LOCK_GRACE,
-                };
+                let (busy, owner) = lock_state(&path, alive);
                 if busy {
                     let who = owner.map_or_else(String::new, |pid| format!(" (process {pid})"));
                     return Err(format!(
@@ -287,12 +277,60 @@ pub(crate) fn take_lock(
                         path.display()
                     ));
                 }
-                let _ = fs::remove_file(&path);
+                clear_stale_lock(&path, alive);
             }
             Err(e) => return Err(format!("cannot create {}: {e}", path.display())),
         }
     }
     Err(format!("cannot take the run lock {}", path.display()))
+}
+
+/// How many times to try before giving up; a try that finds another server clearing the same stale
+/// lock waits a moment.
+const TAKE_ATTEMPTS: usize = 100;
+
+/// Whether the lock at `path` is held by a live server, and by whom if that is known.
+fn lock_state(path: &Path, alive: &dyn Fn(u32) -> bool) -> (bool, Option<u32>) {
+    let age = fs::metadata(path)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|time| time.elapsed().ok())
+        .unwrap_or_default();
+    let owner = fs::read_to_string(path).ok().and_then(|text| text.trim().parse().ok());
+    let busy = match owner {
+        Some(pid) => age < LOCK_MAX_AGE && alive(pid),
+        None => age < LOCK_GRACE,
+    };
+    (busy, owner)
+}
+
+/// Remove the lock at `path` if it is stale. Several servers can find the same stale lock at once;
+/// if each just deleted it, a slow one could delete the fresh lock a fast one had created in the
+/// meantime, and both would think they hold it. So the check and the removal happen while holding
+/// a second file, `<lock>.takeover`, that only one server can create, and the lock is looked at
+/// again once it is held. A server that finds the file taken waits and tries again.
+fn clear_stale_lock(path: &Path, alive: &dyn Fn(u32) -> bool) {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(".takeover");
+    let guard = PathBuf::from(name);
+    if fs::OpenOptions::new().write(true).create_new(true).open(&guard).is_err() {
+        // Someone else is clearing it, or crashed while doing so a moment ago.
+        let abandoned = fs::metadata(&guard)
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|time| time.elapsed().ok())
+            .is_some_and(|age| age > LOCK_GRACE);
+        if abandoned {
+            let _ = fs::remove_file(&guard);
+        } else {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        return;
+    }
+    if path.exists() && !lock_state(path, alive).0 {
+        let _ = fs::remove_file(path);
+    }
+    let _ = fs::remove_file(&guard);
 }
 
 /// Stop a script and everything it started (the game too). Killing only the script would leave
@@ -1283,6 +1321,31 @@ mod tests {
         // A lock with no readable owner was only just created by someone else.
         fs::write(tmp.join(LOCK_FILE), "").unwrap();
         assert!(take_run_lock(&tmp, &|_| false).is_err());
+    }
+
+    #[test]
+    fn many_servers_racing_for_a_stale_lock_never_both_get_it() {
+        let me = std::process::id();
+        for round in 0..120 {
+            let tmp = TempDir::new();
+            // A lock left by a server that was killed: nobody is alive but us.
+            fs::write(tmp.join(LOCK_FILE), "4000000").unwrap();
+            let start = std::sync::Barrier::new(16);
+            let winners = std::thread::scope(|scope| {
+                let handles: Vec<_> = (0..16)
+                    .map(|_| {
+                        scope.spawn(|| {
+                            start.wait();
+                            take_run_lock(&tmp, &|pid| pid == me)
+                        })
+                    })
+                    .collect();
+                // Keep every winner's lock alive until all have tried.
+                let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+                results.iter().filter(|r| r.is_ok()).count()
+            });
+            assert_eq!(winners, 1, "round {round}: {winners} servers took the same lock");
+        }
     }
 
     #[test]

@@ -46,7 +46,7 @@ pub struct Report {
     /// changed.
     pub backup: Option<PathBuf>,
     pub changed: Vec<Changed>,
-    /// Files with edits that were not written.
+    /// Files that could not be read, or whose edits were not written.
     pub skipped: Vec<Skipped>,
 }
 
@@ -80,6 +80,13 @@ fn rewrite_file(text: &str) -> (String, usize, Vec<usize>) {
     }
     used.sort_unstable();
     (out, edits, used)
+}
+
+/// Where a file's new text is written before it is moved over the file.
+fn temp_path(path: &Path) -> PathBuf {
+    let mut temp = path.as_os_str().to_owned();
+    temp.push(".xtiger-tmp");
+    PathBuf::from(temp)
 }
 
 /// A new, empty folder in `root` for this call's backup.
@@ -123,7 +130,16 @@ pub fn apply(req: &Request) -> Result<Report, String> {
     let mut pending = Vec::new();
     let mut skipped = Vec::new();
     for (rel, path) in &found {
-        let Ok(bytes) = fs::read(path) else { continue };
+        // A copy left by a write that was cut short; the mod must not carry it.
+        let _ = fs::remove_file(temp_path(path));
+        let bytes = match fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                skipped
+                    .push(Skipped { file: rel.clone(), reason: format!("cannot be read: {err}") });
+                continue;
+            }
+        };
         let Ok(text) = std::str::from_utf8(&bytes) else {
             if needs_edit(&String::from_utf8_lossy(&bytes)) {
                 skipped.push(Skipped {
@@ -168,9 +184,7 @@ pub fn apply(req: &Request) -> Result<Report, String> {
     let mut total_edits = 0;
     for (rel, path, _, after, edits, used) in pending {
         // Written next to the file and moved over it, so a failed write cannot leave half a file.
-        let mut temp = path.clone().into_os_string();
-        temp.push(".xtiger-tmp");
-        let temp = PathBuf::from(temp);
+        let temp = temp_path(path);
         match fs::write(&temp, after.as_bytes()).and_then(|()| fs::rename(&temp, path)) {
             Ok(()) => {
                 total_edits += edits;
@@ -293,6 +307,88 @@ mod tests {
         let missing =
             apply(&Request { mod_dir: &tmp.join("nope"), path: "", backup_root: &backups });
         assert!(missing.is_err());
+    }
+
+    /// Holds a file so that it cannot be read, until the returned guard is dropped.
+    #[cfg(windows)]
+    fn lock_out_readers(path: &Path) -> fs::File {
+        use std::os::windows::fs::OpenOptionsExt;
+        fs::OpenOptions::new().read(true).share_mode(0).open(path).unwrap()
+    }
+
+    #[cfg(unix)]
+    fn lock_out_readers(path: &Path) -> fs::File {
+        use std::os::unix::fs::PermissionsExt;
+        let file = fs::File::open(path).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o000)).unwrap();
+        file
+    }
+
+    #[test]
+    fn says_which_files_could_not_be_read_and_still_fixes_the_others() {
+        let tmp = TempDir::new();
+        let mod_dir = tmp.join("silk");
+        fs::create_dir_all(mod_dir.join("events")).unwrap();
+        fs::write(
+            mod_dir.join("events/locked.txt"),
+            "e = { is_created = yes }
+",
+        )
+        .unwrap();
+        fs::write(
+            mod_dir.join("events/open.txt"),
+            "e = { is_created = yes }
+",
+        )
+        .unwrap();
+        let held = lock_out_readers(&mod_dir.join("events/locked.txt"));
+        let backups = tmp.join("backups");
+        let report =
+            apply(&Request { mod_dir: &mod_dir, path: "", backup_root: &backups }).unwrap();
+        // On Unix a root user can read a file with no permissions; then there is nothing to check.
+        if cfg!(unix) && report.skipped.is_empty() {
+            return;
+        }
+        assert_eq!(report.skipped.len(), 1);
+        assert_eq!(report.skipped[0].file, "events/locked.txt");
+        assert!(report.skipped[0].reason.starts_with("cannot be read"), "{:?}", report.skipped);
+        assert_eq!(report.total_edits, 1);
+        assert_eq!(
+            fs::read_to_string(mod_dir.join("events/open.txt")).unwrap(),
+            "e = { is_title_created = yes }
+"
+        );
+        drop(held);
+    }
+
+    #[test]
+    fn a_copy_left_by_a_cut_short_write_is_removed() {
+        let tmp = TempDir::new();
+        let mod_dir = tmp.join("silk");
+        fs::create_dir_all(mod_dir.join("events")).unwrap();
+        fs::write(
+            mod_dir.join("events/a.txt"),
+            "e = { is_created = yes }
+",
+        )
+        .unwrap();
+        fs::write(
+            mod_dir.join("events/clean.txt"),
+            "y = { add_gold = 1 }
+",
+        )
+        .unwrap();
+        fs::write(mod_dir.join("events/a.txt.xtiger-tmp"), "half a fi").unwrap();
+        fs::write(mod_dir.join("events/clean.txt.xtiger-tmp"), "half a fi").unwrap();
+        let backups = tmp.join("backups");
+        apply(&Request { mod_dir: &mod_dir, path: "", backup_root: &backups }).unwrap();
+        assert!(!mod_dir.join("events/a.txt.xtiger-tmp").exists());
+        assert!(!mod_dir.join("events/clean.txt.xtiger-tmp").exists());
+        assert_eq!(
+            fs::read_to_string(mod_dir.join("events/a.txt")).unwrap(),
+            "e = { is_title_created = yes }
+"
+        );
     }
 
     #[test]

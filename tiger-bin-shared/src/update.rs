@@ -383,9 +383,17 @@ mod imp {
 
     fn verify(asset: &GhAsset, file: &Path) -> Result<(), UpdateError> {
         let stage = Stage::start("Checking the download");
-        let Some(expected) = asset.digest.as_deref().and_then(|d| d.strip_prefix("sha256:")) else {
-            stage.finish("no checksum published, size matches");
-            return Ok(());
+        let Some(expected) = asset
+            .digest
+            .as_deref()
+            .and_then(|d| d.strip_prefix("sha256:"))
+            .filter(|hex| hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+        else {
+            return Err(UpdateError::Download(
+                "This release has no checksum to check the download against, so it was not \
+                 installed. Download it by hand from the release page."
+                    .to_owned(),
+            ));
         };
         let read_error =
             |e: std::io::Error| UpdateError::Download(format!("Cannot read the download: {e}"));
@@ -445,7 +453,7 @@ mod imp {
         let exe = std::env::current_exe().map_err(|e| {
             UpdateError::Install(format!("Cannot tell where xTiger runs from: {e}"))
         })?;
-        self_update::self_replace::self_replace(&new.validator).map_err(|e| {
+        self_replace::self_replace(&new.validator).map_err(|e| {
             UpdateError::Install(format!(
                 "Cannot replace {}: {e}\nIf it is in a protected folder, run the update from a terminal with the rights to write there.",
                 exe.display()
@@ -673,6 +681,79 @@ mod imp {
             assert_eq!(parse_version("v1.6.5-alpha").unwrap(), v("1.6.5-alpha"));
             assert_eq!(parse_version("1.6.5-alpha").unwrap(), v("1.6.5-alpha"));
             assert!(parse_version("latest").is_err());
+        }
+
+        #[test]
+        fn a_download_is_installed_only_when_its_checksum_is_published_and_matches() {
+            let dir = std::env::temp_dir().join(format!("xtiger-verify-{}", std::process::id()));
+            fs::create_dir_all(&dir).unwrap();
+            let file = dir.join("asset.zip");
+            fs::write(&file, b"abc").unwrap();
+            // The SHA-256 of "abc".
+            let good = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+            let asset = |digest: Option<String>| GhAsset {
+                name: "asset.zip".to_owned(),
+                size: 3,
+                browser_download_url: String::new(),
+                digest,
+            };
+            let digest = |hex: &str| Some(format!("sha256:{hex}"));
+            assert!(verify(&asset(digest(good)), &file).is_ok());
+            assert!(verify(&asset(digest(&good.to_uppercase())), &file).is_ok());
+            let wrong = "0".repeat(64);
+            for bad in
+                [digest(&wrong), digest(&good[..40]), digest("zz"), Some("md5:abc".into()), None]
+            {
+                let result = verify(&asset(bad.clone()), &file);
+                assert!(result.is_err(), "{bad:?} must not pass");
+            }
+            let message = verify(&asset(None), &file).unwrap_err().to_string();
+            assert!(message.contains("no checksum"), "{message}");
+            let message = verify(&asset(digest(&wrong)), &file).unwrap_err().to_string();
+            assert!(message.contains("does not match"), "{message}");
+            fs::remove_dir_all(&dir).unwrap();
+        }
+
+        /// The archive reader is a dependency that has changed hands before: this checks it still
+        /// takes the validator out of a release archive, and only the files asked for.
+        #[cfg(target_os = "windows")]
+        #[test]
+        fn the_validator_comes_out_of_a_release_archive() {
+            use zip::write::SimpleFileOptions;
+            let dir = std::env::temp_dir().join(format!("xtiger-unpack-{}", std::process::id()));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+            let version = v("1.2.3-alpha");
+            let make = |name: &str, files: &[(&str, &[u8])]| {
+                let path = dir.join(name);
+                let mut writer = zip::ZipWriter::new(File::create(&path).unwrap());
+                for (file, bytes) in files {
+                    writer.start_file(*file, SimpleFileOptions::default()).unwrap();
+                    writer.write_all(bytes).unwrap();
+                }
+                writer.finish().unwrap();
+                path
+            };
+            let inside = |file: &str| path_in_archive(&version, file);
+            let both = make(
+                "both.zip",
+                &[
+                    (&inside(BIN_NAME), b"validator"),
+                    (&inside(AUTO_NAME), b"launcher"),
+                    ("ck3-tiger.conf", b"not wanted"),
+                ],
+            );
+            let unpacked = unpack(&version, &both, &dir.join("work-both")).unwrap();
+            assert_eq!(fs::read(&unpacked.validator).unwrap(), b"validator");
+            assert_eq!(fs::read(unpacked.auto.unwrap()).unwrap(), b"launcher");
+            assert!(!dir.join("work-both").join("new").join("ck3-tiger.conf").exists());
+
+            let only = make("only.zip", &[(&inside(BIN_NAME), b"validator")]);
+            assert!(unpack(&version, &only, &dir.join("work-only")).unwrap().auto.is_none());
+
+            let neither = make("neither.zip", &[("readme.txt", b"hi")]);
+            assert!(unpack(&version, &neither, &dir.join("work-neither")).is_err());
+            fs::remove_dir_all(&dir).unwrap();
         }
 
         #[test]

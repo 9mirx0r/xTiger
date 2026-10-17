@@ -2,7 +2,7 @@
 //! It is written for someone who does not know the report keys yet. It goes to stderr, so the
 //! reports on stdout stay clean for pipes and files.
 
-use console::Term;
+use console::{Term, measure_text_width, truncate_str};
 use tiger_lib::{KeyCount, ReportStats, Severity, key_info};
 
 use crate::progress::{fancy_glyphs, style, tick};
@@ -48,10 +48,10 @@ fn width() -> usize {
 }
 
 fn cut(text: &str, max: usize) -> String {
-    if text.chars().count() <= max {
+    if measure_text_width(text) <= max {
         return text.to_string();
     }
-    let kept: String = text.chars().take(max.saturating_sub(1)).collect();
+    let kept = truncate_str(text, max.saturating_sub(1), "");
     format!("{}…", kept.trim_end())
 }
 
@@ -207,5 +207,25 @@ fn print_hidden(g: &Guide) {
             ))
             .dim()
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use console::measure_text_width;
+
+    use super::cut;
+
+    #[test]
+    fn text_is_cut_by_columns_not_characters() {
+        assert_eq!(cut("short", 10), "short");
+        let ascii = cut("a message that is too long for its place", 12);
+        assert_eq!(measure_text_width(&ascii), 12);
+        assert!(ascii.ends_with('\u{2026}'));
+        // Wide characters take two columns each, so fewer of them fit.
+        let wide =
+            cut("\u{65e5}\u{672c}\u{8a9e}\u{65e5}\u{672c}\u{8a9e}\u{65e5}\u{672c}\u{8a9e}", 9);
+        assert!(measure_text_width(&wide) <= 9, "{wide}");
+        assert!(wide.ends_with('\u{2026}') && wide.starts_with('\u{65e5}'), "{wide}");
     }
 }

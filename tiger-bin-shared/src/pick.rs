@@ -4,7 +4,7 @@ use std::fs::{read_dir, read_to_string};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
-use console::{Key, Term};
+use console::{Alignment, Key, Term, measure_text_width, pad_str, truncate_str};
 use regex::Regex;
 
 use crate::progress::{fancy_glyphs, style};
@@ -59,7 +59,7 @@ pub fn choose(mods: &[LocalMod]) -> Result<PathBuf> {
         return Ok(mods[0].path.clone());
     }
     let term = Term::stderr();
-    let name_width = mods.iter().map(|m| m.name.chars().count()).max().unwrap_or(0).min(48);
+    let name_width = mods.iter().map(|m| measure_text_width(&m.name)).max().unwrap_or(0).min(48);
     let (pointer, bar) = if fancy_glyphs() { ("❯", "─") } else { (">", "-") };
 
     eprintln!("{}", style("Which mod do you want to check?").bold());
@@ -76,8 +76,9 @@ pub fn choose(mods: &[LocalMod]) -> Result<PathBuf> {
         let first = selected.saturating_sub(VISIBLE - 1).min(mods.len().saturating_sub(VISIBLE));
         let last = (first + VISIBLE).min(mods.len());
         for (i, m) in mods.iter().enumerate().take(last).skip(first) {
-            let name: String = m.name.chars().take(name_width).collect();
-            let line = format!("{name:<name_width$}  {}", style(&m.id).dim());
+            let name = truncate_str(&m.name, name_width, "…");
+            let name = pad_str(&name, name_width, Alignment::Left, None);
+            let line = format!("{name}  {}", style(&m.id).dim());
             if i == selected {
                 eprintln!(" {} {}", style(pointer).cyan().bold(), style(line).cyan().bold());
             } else {

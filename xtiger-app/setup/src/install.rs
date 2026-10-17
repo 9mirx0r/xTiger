@@ -170,12 +170,12 @@ pub fn clean_up_after_exit(uninstalled: Option<&Path>, webview_data: &Path) {
     let mut script = String::from("/d /c ping -n 3 127.0.0.1 >nul");
     script += &format!(r#" & rmdir /s /q "{}""#, webview_data.display());
     if let Some(dir) = uninstalled {
-        script += &format!(
-            r#" & del /f /q "{}" "{}" & rmdir "{}""#,
-            dir.join(UNINSTALLER).display(),
-            dir.join("*.old").display(),
-            dir.display()
-        );
+        script += &format!(r#" & del /f /q "{}""#, dir.join(UNINSTALLER).display());
+        // Only the copies this setup moved aside, never other `.old` files in the folder.
+        for aside in aside_copies(dir) {
+            script += &format!(r#" "{}""#, aside.display());
+        }
+        script += &format!(r#" & rmdir "{}""#, dir.display());
     }
     let _ = Command::new("cmd.exe")
         .raw_arg(script)
@@ -248,13 +248,32 @@ fn make_room(path: &Path) -> Result<(), String> {
     Err(format!("Cannot replace {}: it is in use. Close your AI assistants and try again.", path.display()))
 }
 
+/// Is this file name one of the copies [`make_room`] moves aside, `<program>.<n>.old` for one of
+/// xTiger's own programs? Any other `.old` file in the folder belongs to somebody else.
+fn is_aside_copy(file_name: &str) -> bool {
+    let Some((program, n)) = file_name.strip_suffix(".old").and_then(|rest| rest.rsplit_once('.'))
+    else {
+        return false;
+    };
+    !n.is_empty()
+        && n.bytes().all(|b| b.is_ascii_digit())
+        && [APP_EXE, VALIDATOR_EXE, MCP_EXE].iter().any(|exe| exe.eq_ignore_ascii_case(program))
+}
+
+/// The copies that [`make_room`] moved aside in `dir`.
+fn aside_copies(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(dir) else { return Vec::new() };
+    entries
+        .flatten()
+        .filter(|entry| is_aside_copy(&entry.file_name().to_string_lossy()))
+        .map(|entry| entry.path())
+        .collect()
+}
+
 /// Removes the copies that [`make_room`] moved aside, unless they are still running.
 fn remove_old(dir: &Path) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
-    for entry in entries.flatten() {
-        if entry.file_name().to_string_lossy().ends_with(".old") {
-            let _ = fs::remove_file(entry.path());
-        }
+    for path in aside_copies(dir) {
+        let _ = fs::remove_file(path);
     }
 }
 
@@ -274,4 +293,37 @@ fn same_file(a: &Path, b: &Path) -> bool {
 
 fn failed(what: &str, path: &Path, error: &io::Error) -> String {
     format!("Cannot {what} {}: {error}", path.display())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_copies_moved_aside_are_removed() {
+        let dir = std::env::temp_dir().join(format!("xtiger-old-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let ours = ["xtiger-mcp.exe.0.old", "xTiger.exe.12.old", "ck3-tiger.exe.3.old"];
+        let theirs = ["notes.old", "backup.1.old", "xtiger-mcp.exe.old", "xTiger.exe.x.old", "other.exe.0.old"];
+        for name in ours.iter().chain(&theirs) {
+            fs::write(dir.join(name), b"x").unwrap();
+        }
+        let mut found: Vec<String> = aside_copies(&dir)
+            .iter()
+            .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        found.sort();
+        let mut expected = ours.map(String::from).to_vec();
+        expected.sort();
+        assert_eq!(found, expected);
+        remove_old(&dir);
+        for name in ours {
+            assert!(!dir.join(name).exists(), "{name} should be gone");
+        }
+        for name in theirs {
+            assert!(dir.join(name).exists(), "{name} is not ours and must stay");
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }
