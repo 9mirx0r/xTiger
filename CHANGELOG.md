@@ -1,36 +1,92 @@
 # Changelog
 
-## Unreleased
+## xTiger 1.6.5 alpha
 
-### Command line for working by hand
+The validator is now the front door: it is easier to read at a terminal, easier to use in a script or a
+pre-commit check, and the repository and release files are organised around it. An audit of the whole
+repository on top of that fixed a batch of smaller bugs in the validator, the MCP server and the app.
 
-- `--format short|full|json|summary` and `--summary`: one line per report, and counts by severity, key
-  and file before the reports.
-- `--severity`, `--only-key`, `--skip-key` and `--path` filter on the command line. They apply on top
-  of the `filter` block in the config file.
-- `--fail-on <severity>` sets the exit status to 1 when reports at that severity or worse are printed.
-  The default is unchanged (always 0). Other failures, such as bad arguments, now exit with 2.
-- `explain <key>` describes every report key, with how to fix and silence it.
-- In a terminal the run shows its stages with their times, then the reports and a closing card in
-  plain language with the commands to try next. Locations are relative to the mod and the short format
-  is aligned and colored. Tips and untidy reports are folded into a count. Run it with no mod to pick
-  one from your mod folder. Output with stderr redirected, and CI output, is unchanged;
-  `XTIGER_FORCE_TTY=1` forces the terminal view.
-- The program calls itself xTiger-CK3 in its banner, `--help`, `--version` and usage errors. The
-  executable keeps the name `ck3-tiger`.
-- `--severity` also filters reports that were found before the filter was applied, such as the early
-  packaging warnings.
-- Fixes from an audit of the above: Ctrl-C in the mod picker restores the cursor, a failed step no
-  longer leaves its spinner running, redirecting only stdout keeps the closing count line in the file,
-  and a run narrowed to nothing says so instead of "No problems found." `explain` suggests fewer
-  false matches for very short inputs. The MCP server refuses to run when the validator fails to
-  start, ignores control characters in typed keys, and clamps `load_timeout`. The app no longer lets
-  a cancelled check overwrite the next one. `update-versions.sh` also bumps the app and MCP versions.
-- More audit fixes: the next-step commands on the card keep the `--game`, `--paradox` and `--config`
-  you gave; `--path` accepts `./events` and a bare file name; `--summary` says how many reports are
-  not shown; the card and spinner colors follow `--no-color` and `NO_COLOR`; a crash in the validator
-  exits with status 2; a report whose occurrences are all ignored by `#tiger-ignore` is no longer
-  counted. The app refuses to start a second check while one runs.
+### The validator at a terminal
+
+- The program calls itself xTiger-CK3 in its banner, `--help`, `--version` and usage errors. A banner
+  with Qubis is shown at a terminal and one plain line otherwise. The executable keeps the name
+  `ck3-tiger`, so `ck3-tiger update` and existing scripts keep working.
+- The run shows its stages with their times: reading the game and the mod, understanding the scripts,
+  checking everything. A card at the end says in plain language what was found, what to look at first,
+  which files hold most of the reports and the commands to try next. Those commands keep the `--game`,
+  `--paradox` and `--config` you gave.
+- Locations are relative to the mod, and the short format is aligned and colored. Tips and untidy
+  reports are folded into a count; `--severity tips` shows everything.
+- Run it with no mod at a terminal and it lists the mods in your mod folder to choose from.
+- All of this is written to stderr. With stderr redirected, and in CI, none of it appears and the
+  reports are the same as before. `XTIGER_FORCE_TTY=1` forces the terminal view in a captured output.
+  The colors follow `--no-color` and `NO_COLOR`.
+
+### The validator in scripts and by hand
+
+- `--format short|full|json|summary` and `--summary`: one line per report (`file:line: severity key:
+  message`), and counts by severity, key and file before the reports. When the terminal folds reports,
+  the summary says how many are not shown.
+- `--severity`, `--only-key`, `--skip-key` and `--path` narrow the output without editing a config
+  file. They apply on top of the `filter` block of `ck3-tiger.conf`, and they also filter the early
+  reports, such as the packaging warnings. `--path` takes `events`, `./events`, a glob, or a bare file
+  name such as `db_duel_events.txt`.
+- `--fail-on <severity>` makes the exit status 1 when a report at that severity or worse is printed.
+  Without it the status stays 0. Status 2 means the run could not be done: bad arguments, a mod that
+  does not load, or a crash inside the validator.
+- `ck3-tiger explain <key>` says what a report key means, how to fix it and how to silence it. Without
+  a key it lists them all.
+- A note about the `.mod` file, such as a `replace_path` that is not needed, no longer stops the run.
+  Only reports about `ck3-tiger.conf` do.
+- The validator has the xTiger icon and file properties on Windows.
+- The `ck3-tiger.conf` template no longer contradicts itself: `check` and `skip` language lines are
+  explained correctly, and the output colors use the right severity names.
+
+### Release files and documents
+
+- The README is written around the command-line validator. The desktop app and the AI assistants have
+  their own pages: `docs/app.md` and `docs/ai-assistants.md`.
+- The release has one archive for the validator (`ck3-tiger-windows-*.zip`, `ck3-tiger-linux-*.tar.gz`),
+  which keeps its layout because `ck3-tiger update` depends on it, one for the MCP server
+  (`xtiger-mcp-*`) and the app installer. The release notes start with a "Which file?" note, and the
+  build now refuses to publish a release whose CHANGELOG section is still called "Unreleased" or whose
+  app version does not match the tag.
+- `update-versions.sh` also bumps the versions of the app, its installer and the MCP server.
+- `CONTRIBUTING.md` and issue templates for bugs and false positives were added.
+
+### The assistants (MCP server)
+
+- The migrator (`xtiger_migrate`, `xtiger_migrate_apply`) renames `create_holy_order_effect`,
+  `guardian_or_court_tutor_*` and `has_doctrine` only where they are keys, and never rewrites inside
+  a string that spans several lines. The dry run and the real run share the same code.
+- The fingerprint of a run includes `ck3-tiger.conf` and the images, and the project status says what
+  the fingerprint does not cover.
+- `recover_dlc_load` keeps its backup when writing the restored file fails.
+- `ck3_events` counts separately the events that only pass with guessed scopes. Test scripts hold a
+  lock (`xtiger_script.lock`) that the run lock shares.
+- A validator that cannot start is reported as an error instead of an empty result, the validator's
+  messages are no longer lost, typed keys cannot carry control characters or `|` into the helper's
+  line protocol, a stale reply cannot be taken for the answer to the next request, and `load_timeout`
+  is kept between 30 and 3600 seconds.
+
+### The app
+
+- A check cancelled while it starts no longer slips through, and a second check is refused while one is
+  running, so a cancelled run cannot overwrite the next one.
+- The estimate of the duration and the mod pictures no longer break the screen when they fail to load.
+
+### Fixes from the audit
+
+- Ctrl-C in the mod picker restores the cursor, and a key the terminal cannot read ends the picker
+  instead of looping.
+- A step that fails no longer leaves its spinner running over the error message.
+- With only stdout redirected, the file keeps the closing count line.
+- A run narrowed to nothing says "Nothing to show with these filters" instead of "No problems found.",
+  and the card says "No errors or warnings" when only tips are hidden.
+- A report whose occurrences are all silenced by `#tiger-ignore` is no longer counted.
+- `explain` gives fewer false suggestions for very short inputs.
+- Several wrong statements in the README and the filter guide were corrected, among them the claim
+  that a narrowed run is faster (it is not: the filters only choose what is printed).
 
 ## xTiger 1.6.4 alpha
 

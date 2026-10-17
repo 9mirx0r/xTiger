@@ -7,7 +7,7 @@ body:
     attributes:
       label: Versions
       description: Output of `ck3-tiger --version`, and your CK3 version
-      placeholder: xTiger 1.6.4-alpha, CK3 1.20.0.4
+      placeholder: xTiger 1.6.5-alpha, CK3 1.20.0.4
     validations:
       required: true
   - type: textarea
