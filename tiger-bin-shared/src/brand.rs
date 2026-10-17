@@ -16,7 +16,7 @@ pub fn banner(version: &str, color: bool) {
         && (stderr().is_terminal() || crate::progress::forced())
         && std::env::var_os("NO_COLOR").is_none();
     if !color {
-        eprintln!("{NAME} {version}, powered by xTiger (based on Tiger by amtep)");
+        eprintln!("{NAME} {version}, based on Tiger by amtep");
         return;
     }
     let text = [

@@ -106,6 +106,7 @@ fn parse_key(s: &str) -> Result<ErrorKey, String> {
 /// Exit status when reports at or above `--fail-on` were printed.
 /// Status 2 is for runs that could not be done at all (bad arguments, no game, invalid config).
 const EXIT_PROBLEMS: i32 = 1;
+const EXIT_FAILURE: i32 = 2;
 
 /// A step of the run with a spinner, when a person is watching the terminal.
 fn step(human: bool, label: &str) -> Option<Stage> {
@@ -236,6 +237,14 @@ pub fn run(
                 None => ValidateArgs::from_arg_matches(&matches).map_err(|err| err.exit()).unwrap(),
             };
 
+            // A crash inside the validator is a failed run (status 2), not a status that could be
+            // mistaken for a result.
+            let default_hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                default_hook(info);
+                std::process::exit(EXIT_FAILURE);
+            }));
+
             if args.json {
                 if args.format != Format::Full && args.format != Format::Json {
                     command(current_version)
@@ -256,6 +265,18 @@ pub fn run(
             // A person at a terminal gets the friendly version: a header, steps with a spinner,
             // a card with what to do next. Anything redirected gets the plain lines it always had.
             let human = stderr().is_terminal() || forced();
+            // The folders the user gave have to be in the commands the card suggests.
+            let mut given = String::new();
+            for (flag, value) in [
+                ("--game", &args.game),
+                ("--workshop", &args.workshop),
+                ("--paradox", &args.paradox),
+                ("--config", &args.config),
+            ] {
+                if let Some(path) = value {
+                    given.push_str(&format!(" {flag} {}", quoted(path)));
+                }
+            }
             let can_choose = stderr().is_terminal() && stdin().is_terminal();
             if args.modpath.is_none() && !can_choose {
                 command(current_version)
@@ -265,7 +286,7 @@ pub fn run(
                     )
                     .exit();
             }
-            if args.no_color {
+            if args.no_color || std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty()) {
                 console::set_colors_enabled_stderr(false);
             }
 
@@ -368,12 +389,16 @@ pub fn run(
                 let mut modfile_path = match args.modpath.take() {
                     Some(path) => path,
                     None => {
-                        let paradox = args.paradox.as_deref();
-                        let mods = paradox.map(local_mods).unwrap_or_default();
+                        let Some(paradox) = args.paradox.as_deref() else {
+                            bail!(
+                                "Could not find your Paradox folder to list the mods. Use --paradox <folder>, or give the path of a .mod file."
+                            );
+                        };
+                        let mods = local_mods(paradox);
                         choose(&mods)?
                     }
                 };
-                modarg = quoted(&modfile_path);
+                modarg = format!("{}{given}", quoted(&modfile_path));
                 if modfile_path.is_dir() {
                     modfile_path.push("descriptor.mod");
                 }
@@ -523,6 +548,7 @@ pub fn run(
                     hidden_below: fold.then_some(Severity::Warning),
                     filtered: narrowed,
                     has_fail_on: args.fail_on != FailOn::Never,
+                    only_keys: &args.only_key.iter().map(ToString::to_string).collect::<Vec<_>>(),
                 });
             } else if args.format != Format::Json && stats.total() == 0 {
                 if narrowed {

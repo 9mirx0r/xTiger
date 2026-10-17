@@ -26,6 +26,16 @@ pub const BY: &str = "xTiger app";
 pub struct Runner {
     child: Mutex<Option<Child>>,
     cancelled: AtomicBool,
+    running: AtomicBool,
+}
+
+/// Marks a check as running until it ends, whatever way it ends.
+struct Running<'a>(&'a AtomicBool);
+
+impl Drop for Running<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -81,6 +91,16 @@ pub struct RunArgs<'a> {
 
 impl Runner {
     pub fn run(&self, app: &AppHandle, args: &RunArgs) -> Result<RunResult, String> {
+        // One check at a time: a second would share the child and the cancel flag with the first.
+        if self.running.swap(true, Ordering::SeqCst) {
+            return Err("another check is already running".to_owned());
+        }
+        let _running = Running(&self.running);
+        self.cancelled.store(false, Ordering::SeqCst);
+        self.run_checked(app, args)
+    }
+
+    fn run_checked(&self, app: &AppHandle, args: &RunArgs) -> Result<RunResult, String> {
         let validator = validator_path()?;
         let mut command = Command::new(&validator);
         command.arg("--json").arg("--game").arg(args.game);
@@ -141,7 +161,9 @@ impl Runner {
         }
 
         let started = Instant::now();
-        self.cancelled.store(false, Ordering::SeqCst);
+        if self.cancelled.load(Ordering::SeqCst) {
+            return Err("cancelled".to_owned());
+        }
         // Taken before the validator starts, so an edit made while it works shows as stale.
         let snapshot =
             mods::describe(args.mod_file).and_then(|info| projects::manifest_hash(&info.dir));
@@ -149,6 +171,11 @@ impl Runner {
         let mut stdout = child.stdout.take().ok_or("no output from the validator")?;
         let stderr = child.stderr.take().ok_or("no output from the validator")?;
         *self.child.lock().unwrap() = Some(child);
+        // A cancel that came in before the child was stored found nothing to end.
+        if self.cancelled.load(Ordering::SeqCst) {
+            self.cancel();
+            return Err("cancelled".to_owned());
+        }
 
         let out_thread = thread::spawn(move || {
             let mut text = String::new();

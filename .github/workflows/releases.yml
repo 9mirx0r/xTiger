@@ -108,6 +108,8 @@ jobs:
         run: |
           $version = (Get-Content xtiger-app/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
           if ("v$version" -ne "${{ github.ref_name }}") { throw "tauri.conf.json has version $version, the tag is ${{ github.ref_name }}" }
+          $cargo = (Select-String -Path xtiger-app/src-tauri/Cargo.toml -Pattern '^version = "(.*)"').Matches[0].Groups[1].Value
+          if ("v$cargo" -ne "${{ github.ref_name }}") { throw "xtiger-app/src-tauri/Cargo.toml has version $cargo, the tag is ${{ github.ref_name }}" }
 
       - name: Build the app, the setup and the portable zip
         shell: pwsh
@@ -141,6 +143,9 @@ jobs:
         id: notes
         run: |
           title=$(grep -m1 '^## ' CHANGELOG.md | sed 's/^## //')
+          case "$title" in
+            Unreleased*) echo "The newest CHANGELOG section is still 'Unreleased'; give it the release heading." >&2; exit 1 ;;
+          esac
           {
             echo '**Which file?** For the validator alone: `ck3-tiger-windows-*.zip` or `ck3-tiger-linux-*.tar.gz`.'
             echo 'For the desktop app: `xTiger_*_x64-setup.exe` (or the portable zip).'

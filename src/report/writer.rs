@@ -120,6 +120,7 @@ pub fn log_report_short<O: Write + Send>(
 pub fn log_summary_block<O: Write + Send>(
     output: &mut O,
     reports: &Vec<(&LogReportMetadata, Cow<'_, LogReportPointers>, usize)>,
+    hidden: usize,
 ) {
     let mut by_severity = [0usize; Severity::COUNT];
     let mut by_key: TigerHashMap<ErrorKey, (usize, Severity)> = TigerHashMap::default();
@@ -143,7 +144,11 @@ pub fn log_summary_block<O: Write + Send>(
         .rev()
         .map(|sev| format!("{sev}: {}", by_severity[sev as usize]))
         .join(", ");
-    _ = writeln!(output, "Summary: {total} reports ({counts})");
+    if hidden > 0 {
+        _ = writeln!(output, "Summary: {total} reports ({counts}); {hidden} more are not shown");
+    } else {
+        _ = writeln!(output, "Summary: {total} reports ({counts})");
+    }
 
     let mut keys: Vec<_> = by_key.into_iter().collect();
     keys.sort_unstable_by(|a, b| {

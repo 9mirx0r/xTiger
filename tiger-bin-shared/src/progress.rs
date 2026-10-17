@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use console::{Term, style};
+use console::{StyledObject, Term};
 
 const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SPINNER_ASCII: [&str; 4] = ["|", "/", "-", "\\"];
@@ -16,6 +16,12 @@ const SPINNER_ASCII: [&str; 4] = ["|", "/", "-", "\\"];
 /// the pictures in the documentation are made. Steps are then printed without a spinner.
 pub fn forced() -> bool {
     std::env::var_os("XTIGER_FORCE_TTY").is_some_and(|v| v == "1")
+}
+
+/// Style a piece of text for stderr, where everything here is written. The default would follow
+/// stdout, so `> file` would change the colors of the card.
+pub fn style<D>(value: D) -> StyledObject<D> {
+    console::style(value).for_stderr()
 }
 
 /// Whether the terminal is known to draw characters beyond ASCII properly.

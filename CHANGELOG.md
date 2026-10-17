@@ -26,6 +26,11 @@
   false matches for very short inputs. The MCP server refuses to run when the validator fails to
   start, ignores control characters in typed keys, and clamps `load_timeout`. The app no longer lets
   a cancelled check overwrite the next one. `update-versions.sh` also bumps the app and MCP versions.
+- More audit fixes: the next-step commands on the card keep the `--game`, `--paradox` and `--config`
+  you gave; `--path` accepts `./events` and a bare file name; `--summary` says how many reports are
+  not shown; the card and spinner colors follow `--no-color` and `NO_COLOR`; a crash in the validator
+  exits with status 2; a report whose occurrences are all ignored by `#tiger-ignore` is no longer
+  counted. The app refuses to start a second check while one runs.
 
 ## xTiger 1.6.4 alpha
 

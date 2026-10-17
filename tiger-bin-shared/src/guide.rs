@@ -2,10 +2,10 @@
 //! It is written for someone who does not know the report keys yet. It goes to stderr, so the
 //! reports on stdout stay clean for pipes and files.
 
-use console::{Term, style};
+use console::Term;
 use tiger_lib::{KeyCount, ReportStats, Severity, key_info};
 
-use crate::progress::{fancy_glyphs, tick};
+use crate::progress::{fancy_glyphs, style, tick};
 
 /// How many causes and files the card lists.
 const TOP_CAUSES: usize = 5;
@@ -16,7 +16,7 @@ pub struct Guide<'a> {
     pub stats: &'a ReportStats,
     /// How to start the program, for the commands in the next steps.
     pub command: &'a str,
-    /// The mod as the user can type it again.
+    /// The mod, and the folders the user gave, as they can type them again.
     pub modarg: &'a str,
     /// Reports below this severity were left out of the output.
     pub hidden_below: Option<Severity>,
@@ -24,6 +24,8 @@ pub struct Guide<'a> {
     pub filtered: bool,
     /// The user already asked for a failing exit status.
     pub has_fail_on: bool,
+    /// The keys the output is already limited to with `--only-key`.
+    pub only_keys: &'a [String],
 }
 
 fn plural(n: usize, one: &str, many: &str) -> String {
@@ -159,8 +161,10 @@ pub fn print(g: &Guide) {
     // The next things to type, with the cause that matters most.
     let top = keys.first().map(|k| k.key.to_string());
     let mut next: Vec<(&str, String)> = Vec::new();
-    if let Some(key) = &top {
+    if let Some(key) = top.as_ref().filter(|key| !g.only_keys.contains(key)) {
         next.push(("See only that cause", format!("{} {} --only-key {key}", g.command, g.modarg)));
+    }
+    if let Some(key) = &top {
         next.push(("What it means, how to fix it", format!("{} explain {key}", g.command)));
     }
     if !g.filtered

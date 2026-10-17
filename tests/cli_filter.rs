@@ -13,7 +13,7 @@ fn key_severity_and_path_filters_combine() {
         min_severity: Some(Severity::Warning),
         only_keys: vec![ErrorKey::MissingLocalization, ErrorKey::MissingFile],
         skip_keys: vec![ErrorKey::MissingFile],
-        paths: vec!["common/decisions".to_string(), "events/*.txt".to_string()],
+        paths: vec!["./common/decisions".to_string(), "events/*.txt".to_string()],
     };
     restrict_reports(&filter).unwrap();
 

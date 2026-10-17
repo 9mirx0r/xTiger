@@ -4,10 +4,10 @@ use std::fs::{read_dir, read_to_string};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
-use console::{Key, Term, style};
+use console::{Key, Term};
 use regex::Regex;
 
-use crate::progress::fancy_glyphs;
+use crate::progress::{fancy_glyphs, style};
 
 /// How many mods are listed at once.
 const VISIBLE: usize = 12;

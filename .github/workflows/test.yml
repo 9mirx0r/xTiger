@@ -21,20 +21,20 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Install toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Test CK3
-        run: cargo test -p tiger-lib
+        run: cargo test -p tiger-lib -p tiger-bin-shared
 
   fmt:
     name: rustfmt
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Install toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Install toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -58,6 +58,9 @@ jobs:
 
       - name: CK3 clippy
         run: cargo clippy -p ck3-tiger
+
+      - name: Shared command line clippy
+        run: cargo clippy -p tiger-bin-shared
 
       - name: utils clippy
         run: cargo clippy -p utils
@@ -77,7 +80,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Install toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -95,7 +98,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Install toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -108,7 +111,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Install toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1

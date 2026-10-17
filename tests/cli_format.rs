@@ -89,17 +89,32 @@ fn stats_know_the_keys_and_files() {
 fn hide_below_counts_but_does_not_print() {
     let _turn = take_turn();
     let (all, full) = run(OutputFormat::Short, false);
+    // mod1 has warnings, so hiding everything below error leaves something hidden.
     let options = EmitOptions {
         format: OutputFormat::Short,
-        hide_below: Some(Severity::Warning),
+        hide_below: Some(Severity::Error),
         ..EmitOptions::default()
     };
     let (text, stats) = run_with(options);
+    assert!(stats.hidden() > 0, "the fixture has reports below error");
     assert_eq!(stats.total() + stats.hidden(), full.total());
     assert_eq!(text.lines().count(), stats.total());
-    assert!(text.lines().count() <= all.lines().count());
-    assert_eq!(stats.at_least(Severity::Warning), stats.total(), "nothing below warning is shown");
-    assert!(!text.contains("tips "), "{text}");
+    assert!(text.lines().count() < all.lines().count());
+    assert_eq!(stats.at_least(Severity::Error), stats.total(), "nothing below error is shown");
+    assert!(!text.contains(": warning "), "{text}");
+}
+
+#[test]
+fn summary_says_how_many_are_not_shown() {
+    let _turn = take_turn();
+    let options = EmitOptions {
+        format: OutputFormat::Short,
+        summary_first: true,
+        hide_below: Some(Severity::Error),
+        ..EmitOptions::default()
+    };
+    let (text, stats) = run_with(options);
+    assert!(text.contains(&format!("{} more are not shown", stats.hidden())), "{text}");
 }
 
 /// Remove the color codes (an escape up to the letter m) from the output.

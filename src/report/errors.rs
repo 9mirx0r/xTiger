@@ -164,7 +164,12 @@ impl Errors<'_> {
                     LogReportStyle::Abbreviated => {
                         let mut pointers: Vec<_> = iterator.map(|o| o[0].clone()).collect();
                         pointers.sort_unstable_by_key(|p| p.loc);
-                        Box::new(once((report, Cow::Owned(pointers), 0)))
+                        if pointers.is_empty() {
+                            // Every occurrence was removed by a `#tiger-ignore`.
+                            Box::new(empty())
+                        } else {
+                            Box::new(once((report, Cow::Owned(pointers), 0)))
+                        }
                     }
                 }
             })
@@ -287,11 +292,11 @@ impl Errors<'_> {
                 );
             }
             OutputFormat::SummaryOnly => {
-                log_summary_block(output, &reports);
+                log_summary_block(output, &reports, stats.hidden);
             }
             OutputFormat::Full | OutputFormat::Short => {
                 if options.summary_first && !reports.is_empty() {
-                    log_summary_block(output, &reports);
+                    log_summary_block(output, &reports, stats.hidden);
                 }
                 for (report, pointers, additional) in &reports {
                     if options.format == OutputFormat::Short && options.pretty {
@@ -586,7 +591,14 @@ pub fn restrict_reports(filter: &CliFilter) -> Result<(), String> {
         let mut patterns = Vec::new();
         for path in &filter.paths {
             let path = path.replace(std::path::MAIN_SEPARATOR, "/");
-            let pattern = glob::Pattern::new(path.trim_end_matches('/'))
+            let mut path = path.trim_end_matches('/');
+            while let Some(rest) = path.strip_prefix("./") {
+                path = rest;
+            }
+            // A bare file name, as in `--path db_duel_events.txt`, means that file anywhere.
+            let bare_file = !path.contains(['/', '*', '?', '[']) && path.contains('.');
+            let path = if bare_file { format!("**/{path}") } else { path.to_string() };
+            let pattern = glob::Pattern::new(&path)
                 .map_err(|e| format!("`{path}` is not a valid path or glob: {}", e.msg))?;
             patterns.push(FilterRule::File(pattern));
         }
