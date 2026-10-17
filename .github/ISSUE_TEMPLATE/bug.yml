@@ -1,0 +1,25 @@
+name: Something is broken
+description: A crash, a wrong result, the app or the MCP server misbehaving
+labels: [bug]
+body:
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: xTiger version and CK3 version
+      placeholder: xTiger 1.6.4-alpha, CK3 1.20.0.4
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part
+      options: [Validator (ck3-tiger), Desktop app, MCP server]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true

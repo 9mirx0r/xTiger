@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Problem that also happens in upstream Tiger
+    url: https://github.com/amtep/tiger/issues
+    about: If the validator engine itself is at fault, report it to Tiger as well.

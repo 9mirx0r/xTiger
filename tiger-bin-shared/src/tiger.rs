@@ -94,7 +94,15 @@ pub fn run(
     let &GameConsts { name, name_short, version, app_id, signature_file, paradox_dir } =
         game_consts;
 
-    let matches = Cli::command().version(current_version).name(bin_name).get_matches();
+    let matches = Cli::command()
+        .version(current_version)
+        .name(bin_name)
+        .display_name("xTiger")
+        .about("xTiger: Tiger, the Crusader Kings III mod validator, updated for CK3 1.20")
+        .after_help(
+            "Based on Tiger by amtep. Source and releases: https://github.com/9mirx0r/xTiger",
+        )
+        .get_matches();
     let cli = Cli::from_arg_matches(&matches).map_err(|err| err.exit()).unwrap();
 
     #[allow(clippy::single_match_else)]
@@ -120,6 +128,8 @@ pub fn run(
                 let _ = ansiterm::enable_ansi_support()
                     .map_err(|_| eprintln!("Failed to enable ANSI support for Windows10 users. Continuing probably without colored output."));
             }
+
+            crate::brand::banner(bin_name, current_version, !args.no_color);
 
             if args.game.is_none() {
                 args.game = find_game_directory_steam(app_id).ok();

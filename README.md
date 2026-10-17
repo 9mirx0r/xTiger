@@ -1,111 +1,55 @@
+<h1 align="center">
+  <img src="assets/logo.png" alt="" width="72"><br>
+  xTiger
+</h1>
+
 <p align="center">
-  <img src="assets/hero.svg" alt="xTiger: Qubis, a small blue pixel creature with a magnifying glass, watches a beam scan a mod's script and flag three reports" width="100%">
+  <b>Tiger for Crusader Kings III 1.20</b><br>
+  A validator that finds the mistakes in your CK3 mod before the game does.
 </p>
 
 <p align="center">
-  <a href="https://github.com/9mirx0r/xTiger/releases/latest"><b>Download</b></a> ·
-  <a href="#the-app">The app</a> ·
-  <a href="#with-an-ai-assistant">With an AI assistant</a> ·
-  <a href="#the-command-line">Command line</a> ·
+  <a href="https://github.com/9mirx0r/xTiger/releases/latest">Download</a> ·
+  <a href="#usage">Usage</a> ·
+  <a href="#how-it-differs-from-tiger">What's different</a> ·
   <a href="CHANGELOG.md">Changelog</a> ·
-  <a href="ROADMAP.md">Roadmap</a>
+  <a href="https://github.com/9mirx0r/xTiger/issues">Issues</a>
 </p>
 
-xTiger finds the mistakes in your Crusader Kings III mod before the game does: typos, missing
-localization, broken references, effects used in the wrong scope, and a lot more.
+xTiger is a fork of [Tiger](https://github.com/amtep/tiger) by amtep, updated for CK3 1.20. It is
+the same command-line tool: the same options, the same `ck3-tiger.conf`, the same kind of reports.
+It checks typos, missing localization, broken references, effects used in the wrong scope and a lot
+more.
 
-It's a fork of [Tiger](https://github.com/amtep/tiger) by amtep, brought up to date for CK3
-1.20.0.4. On top of that it adds a desktop app, so you never need a terminal, and a way to let an
-AI assistant check and test your mod for you. Qubis, the little reviewer, keeps an eye on things.
+xTiger is for CK3 only. For the other Paradox games, use upstream Tiger.
 
-xTiger is for CK3 only. For other Paradox games, use upstream Tiger.
+<img src="example.png" alt="Sample output: reports with the file, the line and the broken code underlined" width="100%">
 
-<p align="center">
-  <img src="assets/features.svg" alt="What xTiger does: a validator you can trust, a desktop app with no terminal, an AI assistant that does the fixing, and following an update step by step" width="100%">
-</p>
+## Download
 
-## The app
+Get the validator for your system from the [latest release](https://github.com/9mirx0r/xTiger/releases/latest):
 
-<p align="center">
-  <img src="assets/app/results.png" alt="The results screen of the xTiger app: a severity bar, a summary of what was fixed and what is new, the list of reports and the broken line of the selected one" width="100%">
-</p>
+- **Windows:** `ck3-tiger-windows-v<version>.zip`
+- **Linux:** `ck3-tiger-linux-v<version>.tar.gz`
 
-Download `xTiger_<version>_x64-setup.exe` from the [releases](https://github.com/9mirx0r/xTiger/releases)
-and run it. No administrator rights needed. If you'd rather not install anything, grab the portable
-zip, unzip it anywhere and run `xTiger.exe`.
+Unzip it anywhere. There is nothing to install. The validator only goes online when you run
+`ck3-tiger update`.
 
-- It finds CK3 and all your mods on its own, local and Workshop alike.
-- Double-click a mod to check it.
-- The results open with a summary: a severity bar you can click to filter, what was fixed and what
-  is new since your last check, and the files with the most reports.
-- Reports come grouped by file, kind or severity. Each one shows the broken line, and one click
-  opens it in VS Code.
-- Follow a mod's update: a strip under the summary says what still blocks it, and a note on any
-  report records why it is fine or that it is still a defect. Notes never hide a report.
+If you prefer a window to a terminal, there is also a [desktop app](docs/app.md).
 
-<table>
-  <tr>
-    <td width="50%"><img src="assets/app/home.png" alt="The Home screen, with the Crusader Kings III card and a Stellaris strip marked as coming soon"></td>
-    <td width="50%"><img src="assets/app/mods.png" alt="The mods screen, with a card for each mod and its last result"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub><b>Home.</b> Pick a game and go.</sub></td>
-    <td align="center"><sub><b>Your mods.</b> Local, Workshop and added by hand.</sub></td>
-  </tr>
-</table>
+## Usage
 
-## With an AI assistant
+On Windows you can double-click `ck3-tiger-auto.exe`. It finds your mods, asks which one to check
+and writes a log to the CK3 `logs` folder.
 
-xTiger comes with an MCP server that lets an assistant such as Claude validate your mod, read the
-reports, start CK3, type console commands and look at screenshots of the game.
-
-<p align="center">
-  <img src="assets/flow.svg" alt="How a fix flows: validate, read the reports, ask your assistant, test it in the game, ship" width="100%">
-</p>
-
-So you can ask for a new event, and the assistant writes it, validates it, fixes what it broke,
-fires the event in the game and checks the window looks right. You get back something that works.
-
-To set it up, open the app's Settings and press **Connect** next to Claude Desktop, Claude Code,
-Codex, Cursor, VS Code or Windsurf. The server finds the game, your mods and the validator on its
-own. To set it up by hand, see [`xtiger-mcp/README.md`](xtiger-mcp/README.md).
-
-<table>
-  <tr>
-    <td width="50%"><img src="assets/app/activity.png" alt="The AI activity screen: an assistant validating a mod right now, the requests waiting for an assistant and today's calls grouped by job"></td>
-    <td width="50%"><img src="assets/app/settings.png" alt="The Settings screen with the AI assistants, each with its logo and a Connect or Disconnect button"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub><b>AI activity.</b> What the assistant is doing, and why.</sub></td>
-    <td align="center"><sub><b>AI assistants.</b> One click to connect.</sub></td>
-  </tr>
-</table>
-
-What the assistant can do:
-
-- Validate a mod, read the reports and see what is new since the last check, whoever ran it.
-- Search the base game's files and look up the game's own docs of triggers and effects.
-- Test your mod in the game with a launcher playset, **in the background** by default: the game
-  starts minimized and never takes your focus, so you can keep playing something else.
-- Follow a mod's update in a durable project record, with a ledger of what was preserved, changed,
-  removed or added, and a status that never calls a clean static check a tested update.
-
-From the app you can hand work over: **Ask AI to fix** on a report, or **Prepare update report**
-on the results of a mod that is behind the game, leaves a request the assistant picks up the next
-time you talk to it. The AI activity screen shows each request, who picked it up and how it ended.
-
-## The command line
-
-The release archives also include `ck3-tiger`, the validator itself. On Windows you can simply
-double-click `ck3-tiger-auto.exe`: it finds your mods, asks which one to check, and writes a log to
-the CK3 `logs` folder. From a terminal:
+From a terminal:
 
 ```bash
 ck3-tiger path/to/your_mod/descriptor.mod
 ```
 
-Add `--game "<CK3 install folder>"` if the game isn't where Steam usually puts it. A few options
-worth knowing:
+Add `--game "<CK3 install folder>"` if the game isn't where Steam usually puts it. Options worth
+knowing:
 
 - `--json` prints the reports as JSON.
 - `--suppress old.json` hides everything already in an earlier `--json` output, so you only see
@@ -120,38 +64,28 @@ the [annotations guide](annotations.md).
 
 ## How it differs from Tiger
 
-<p align="center">
-  <img src="assets/vanilla.svg" alt="Reports on the unmodded base game: about 144,000 with Tiger, about 15,000 with xTiger" width="100%">
-</p>
+- It knows CK3 1.20.0.4. Upstream Tiger is made for an earlier version, so on 1.20 it reports
+  things the game now accepts.
+- It is checked against the game itself. Run over the unmodded base game, xTiger reports
+  about **6,300** reports at warning level or above, fewer than **2,000** of them errors. Most of the rest
+  are flaws in the game's own files; [AUDIT.md](AUDIT.md) lists what is left and how we look for gaps
+  after a game update.
+- Nothing gets relaxed on a hunch. Before xTiger accepts a field, a small test mod uses it once
+  correctly and once with a typo, and the game's own `error.log` decides.
+- The same mod gives the same reports on every run.
+- It is not perfect. Some triggers and effects new in 1.20 are only partly checked. The
+  [changelog](CHANGELOG.md) says what changed in each release.
 
-| | Tiger | xTiger |
-|---|---|---|
-| CK3 version | 1.19 | 1.20.0.4 |
-| Reports on unmodded vanilla | about 144,000 | about 15,000 |
-| Same mod, same reports every run | not always | yes |
-| Desktop app and AI integration | no | yes |
-| Other Paradox games | yes | no |
+## More ways to use it
 
-The vanilla count matters more than it seems: when the base game alone makes thousands of
-warnings, the real mistakes in your mod get lost in the noise.
-
-Nothing gets relaxed on a hunch. Before xTiger accepts a field, a small test mod uses it once
-correctly and once with a typo, and the game's own `error.log` decides. The real field passes, the
-typo is still reported.
-
-It isn't perfect yet. Some triggers and effects new in 1.20 are only partly checked, and fewer
-reports doesn't automatically mean more accurate ones. The [changelog](CHANGELOG.md) has the
-details.
-
-## Roadmap
-
-<p align="center">
-  <img src="assets/roadmap.svg" alt="The xTiger roadmap: Frankokratia (released), Menorá (next), Vatican (later)" width="100%">
-</p>
-
-Next is **Menorá**, a mod updater that brings old mods, or a whole mod list, up to the current
-game without cutting their content. After that comes **Vatican**, with much more help for mod
-creators, by hand and through an AI assistant. The details are in [`ROADMAP.md`](ROADMAP.md).
+- **[The desktop app](docs/app.md)** checks your mods from a window: it finds the game and your
+  mods, groups the reports and opens the broken line in VS Code.
+- **[AI assistants](docs/ai-assistants.md)** can use xTiger through an MCP server, to validate and
+  test a mod in the game for you. It is optional and separate from the validator.
+- unLomTrois's [VS Code extension](https://github.com/unLomTrois/ck3tiger-for-vscode-2) shows the
+  reports in the Problems tab, and Bahmut's
+  [GitHub Action](https://github.com/kaiser-chris/tiger-action-public) runs the validator in your
+  workflows. Both were made for upstream Tiger and use the same `ck3-tiger` command.
 
 ## Building it yourself
 
@@ -160,30 +94,28 @@ You need Rust (stable).
 ```bash
 git clone https://github.com/9mirx0r/xTiger.git
 cd xTiger
-cargo build --release -p ck3-tiger -p xtiger-mcp
+cargo build --release -p ck3-tiger
 ```
 
-For the app you also need the Tauri CLI (`cargo install tauri-cli --version "^2"`). Then
-`xtiger-app/build-release.ps1` builds everything: the validator, the MCP server, the app, the
-installer and the portable zip.
+The binary is `target/release/ck3-tiger`. To build the app and the installer too, see
+[docs/app.md](docs/app.md#building-it).
 
-## Other tools
+## Contributing
 
-These were made for upstream Tiger and work with xTiger too:
-
-- unLomTrois's [VS Code extension](https://github.com/unLomTrois/ck3tiger-for-vscode-2) shows the
-  reports in the Problems tab.
-- Bahmut's [GitHub Action](https://github.com/kaiser-chris/tiger-action-public) runs the validator
-  in your workflows.
+Bug reports are welcome. If a problem also happens in upstream Tiger, report it there. Anything
+about CK3 1.20, the app or the MCP server belongs in this repository's
+[issues](https://github.com/9mirx0r/xTiger/issues). The most useful report is a false positive on
+vanilla files, or a mistake the game rejects that xTiger accepts. See
+[CONTRIBUTING.md](CONTRIBUTING.md). The plans are in the [roadmap](ROADMAP.md).
 
 ## Credits and license
 
 xTiger stands on [Tiger](https://github.com/amtep/tiger) by amtep and its contributors. The
-validation engine is their work. This fork updates the CK3 tables and validators and adds the app
-and the MCP server. Copyright of the xTiger changes (C) 2026 Qubis and the original copyright
-of Tiger stays with its authors. Everything is under the [GNU GPL v3](LICENSE), and the git
-history records what changed. The app bundles the fonts Geist, Geist Mono and Pixelify Sans, under the SIL Open
-Font License (see [`xtiger-app/ui/fonts`](xtiger-app/ui/fonts)).
+validation engine is their work, and the [contributors list](CONTRIBUTORS.md) keeps their names.
+This fork updates the CK3 tables and validators and adds the app and the MCP server.
 
-If a bug also happens in upstream Tiger, report it there. Anything about CK3 1.20, the app or the
-MCP server belongs in this repository's [issues](https://github.com/9mirx0r/xTiger/issues).
+Everything is under the [GNU GPL v3](LICENSE). Copyright of the xTiger changes (C) 2026 Qubis; the
+original copyright of Tiger stays with its authors. The git history records what changed.
+
+xTiger is developed with the help of AI tools, under the direction of its maintainer. Every
+validator rule comes with a test fixture, and the results are checked against the game's own files.

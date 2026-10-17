@@ -1,0 +1,26 @@
+name: False positive or missed mistake
+description: xTiger reports something the game accepts, or misses something the game rejects
+labels: [validator]
+body:
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `ck3-tiger --version`, and your CK3 version
+      placeholder: xTiger 1.6.4-alpha, CK3 1.20.0.4
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: The report
+      description: Paste the report from xTiger, or the line from the game's error.log
+    validations:
+      required: true
+  - type: textarea
+    id: script
+    attributes:
+      label: The script
+      description: The few lines the report points at, and what the game does with them
+    validations:
+      required: true

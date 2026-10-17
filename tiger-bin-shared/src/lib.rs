@@ -1,4 +1,5 @@
 mod auto;
+mod brand;
 mod gamedir;
 mod tiger;
 mod update;
