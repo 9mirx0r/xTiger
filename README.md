@@ -23,6 +23,13 @@ more.
 
 xTiger is for CK3 only. For the other Paradox games, use upstream Tiger.
 
+**Prefer to work by hand and keep AI out of it?** The command-line validator is made for you. It is a
+plain program: no AI, no account, and it only goes online when you run `ck3-tiger update`. Since 1.6.5 it
+is friendlier and easier to steer: it shows what it is doing, ends with a short card that says what to
+fix first and which command to type next, lets you pick your mod from a list, and can narrow the
+reports down, summarise them or fail a script with a single option. See [Usage](#usage). The desktop
+app and the AI assistants below are optional extras.
+
 <img src="example.png" alt="Sample output: reports with the file, the line and the broken code underlined" width="100%">
 
 ## Download
