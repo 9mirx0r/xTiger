@@ -11,6 +11,38 @@
 - The old `add = holder` and `add = { type = ... limit = ... }` forms are reported as removed in 1.20,
   with the new form in the info text, instead of being accepted silently. Thanks to shalola-author.
 
+### Vanilla self-check fixes (1.20)
+
+The first run of the vanilla self-check found about 2,700 reports in the game's own files. These
+false positives are fixed, 2,735 reports down to 2,180 so far, with no new group in any run:
+
+- Enums and types the game accepts now: `disable_regnal_numbers = never|auto|always`,
+  `royal_court = landed`, `attacker_wargoal_percentage` above 1, doctrine `divergence` with decimals,
+  law `faith = same_rite`, pool `gender = male|female`, domicile `map_pin_anchor = left`,
+  trait `inheritance_blocker = secular`, situation `window = christian_church`, great project
+  `province_filter = clerical_region_theocracy_capitals` and `owner =
+  province_clerical_region_or_theocracy_holder`, candidate types `clerical_region_clergy` and
+  `clerical_region_clergy_councilor`, province filter `anointment_candidates`.
+- `is_in_list = x` before the first `add_to_list = x` no longer reports an unknown list: the usual way to
+  avoid duplicates, which the game treats as an empty list.
+- Situation catalysts accept script values with calculations (dynamic values are fine since 1.20).
+- New scripted rules for the Rites DLC (`can_edit_rite`, `can_create_title`, `can_destroy_title`,
+  `is_grant_government_valid` and others), and lists of a scripted rule are now defined for its scripts.
+- `random_traits_list` accepts `trait = { weight = 30 }` with a plain number, `culture != x`,
+  `faith != x` and `government_type != x` are accepted in `any_ruler`-style lists next to the filter, and
+  `hex { 50779b }` colors parse (fog colors of the map environment).
+- No more false reports for `look_at`, `radius` and `falloff` on any light kind (tips now), the `effect`
+  of tutorial lessons in any chain, an interaction category with `favorite_interactions` and no `desc`,
+  `change_struggle_phase` without `with_transition`, `create_legend_seed` with a chronicle that has no
+  properties, and `special = holder` on a flavorization title.
+- Named scopes the game supplies are now known (strict-scopes reports 509 down to 332): the effects of a
+  scheme type (`on_start`, `on_monthly`, `on_invalidated`, ...) see `scope:scheme`, `scope:owner`,
+  `scope:target` and, for title schemes, `scope:target_title`, which also fixes the events they fire; the
+  modifiers of a council task see `scope:councillor` and `scope:councillor_liege`; the DNA modifier values
+  of a portrait modifier see `scope:weight_for_portrait`, `scope:prowess` and the rest; artifact visuals
+  see `scope:owner`, and scripted animations and artifact visuals no longer insist on a fixed set of
+  names because the caller supplies the others.
+
 ### Audit tools
 
 - `tools/audit_info.py` compares the structure files the game ships (`common/**/_*.info`) with what the

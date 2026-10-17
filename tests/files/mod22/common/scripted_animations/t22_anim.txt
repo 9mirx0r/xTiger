@@ -1,0 +1,10 @@
+﻿# The caller supplies the scopes, so scope:character and scope:host are not unknown here.
+t22_animation = {
+	triggered_animation = {
+		trigger = {
+			scope:character = { opinion(scope:host) >= 50 }
+		}
+		animation = personality_bold
+	}
+	animation = personality_bold
+}

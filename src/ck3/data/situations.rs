@@ -8,7 +8,7 @@ use crate::modif::validate_modifs;
 use crate::pdxfile::PdxEncoding;
 use crate::report::{ErrorKey, err, warn};
 use crate::scopes::Scopes;
-use crate::script_value::validate_non_dynamic_script_value;
+use crate::script_value::validate_script_value;
 use crate::token::Token;
 use crate::tooltipped::Tooltipped;
 use crate::validate::{validate_duration, validate_possibly_named_color};
@@ -121,7 +121,15 @@ impl DbKind for Situation {
 
         vd.field_choice(
             "window",
-            &["situation", "the_great_steppe", "silk_road", "dynastic_cycle"],
+            &[
+                "situation",
+                "the_great_steppe",
+                "silk_road",
+                "dynastic_cycle",
+                "the_christian_church",
+                // the name vanilla actually uses; _situations.info says the_christian_church
+                "christian_church",
+            ],
         );
         if let Some(token) = vd.field_value("gui_window_name") {
             let pathname = format!("gui/{token}.gui");
@@ -331,7 +339,8 @@ fn validate_phase(key: &Token, block: &Block, data: &Everything, situation: &Tok
 
                 vd.unknown_fields(|key, bv| {
                     data.verify_exists(Item::SituationCatalyst, key);
-                    validate_non_dynamic_script_value(bv, data);
+                    // Dynamic values are fine since 1.20, vanilla uses a calculation here.
+                    validate_script_value(bv, data, &mut sc_builder2(key));
                 });
             });
         });

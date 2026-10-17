@@ -8,6 +8,7 @@ use crate::everything::Everything;
 use crate::item::Item;
 use crate::report::{ErrorKey, err, fatal};
 use crate::scopes::Scopes;
+use crate::script_value::validate_script_value;
 use crate::tooltipped::Tooltipped;
 use crate::trigger::{validate_target, validate_target_ok_this};
 use crate::validate::{validate_color, validate_modifiers_with_base, validate_scope_chain};
@@ -245,7 +246,11 @@ pub fn validate_random_traits_list(block: &Block, data: &Everything, sc: &mut Sc
     vd.unknown_block_fields(|key, block| {
         data.verify_exists(Item::Trait, key);
         let mut vd = Validator::new(block, data);
-        vd.field_validated_block_sc("weight", sc, validate_modifiers_with_base);
+        // Plain `weight = 30` is what vanilla templates use.
+        vd.field_validated_sc("weight", sc, |bv, data, sc| match bv {
+            BV::Value(_) => validate_script_value(bv, data, sc),
+            BV::Block(block) => validate_modifiers_with_base(block, data, sc),
+        });
         vd.field_trigger("trigger", Tooltipped::No, sc);
     });
 }

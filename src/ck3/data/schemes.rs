@@ -49,6 +49,11 @@ impl DbKind for Scheme {
         sc.define_name("target", target_scopes, key);
         sc.define_name("owner", Scopes::Character, key);
         sc.define_name("exposed", Scopes::Bool, key);
+        // `scope:target_title` exists when the scheme targets a title
+        let targets_title = block.get_field_value("target_type").is_some_and(|t| t.is("title"));
+        if targets_title {
+            sc.define_name("target_title", Scopes::LandedTitle, key);
+        }
 
         // let modif = format!("max_{key}_schemes_add");
         // data.verify_exists_implied(Item::ModifierFormat, &modif, key);
@@ -165,7 +170,15 @@ impl DbKind for Scheme {
             "on_semiyearly",
             "on_invalidated",
         ] {
-            vd.field_effect_rooted(field, Tooltipped::No, Scopes::Scheme);
+            // The effects run in the scheme scope and see the scheme's own event targets
+            let mut effect_sc = ScopeContext::new(Scopes::Scheme, key);
+            effect_sc.define_name("scheme", Scopes::Scheme, key);
+            effect_sc.define_name("target", target_scopes, key);
+            effect_sc.define_name("owner", Scopes::Character, key);
+            if targets_title {
+                effect_sc.define_name("target_title", Scopes::LandedTitle, key);
+            }
+            vd.field_effect(field, Tooltipped::No, &mut effect_sc);
         }
         vd.advice_field("on_ready", "Replaced with `on_phase_completed`");
         vd.advice_field("on_agent_join", "Removed in 1.13");

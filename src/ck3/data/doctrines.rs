@@ -140,7 +140,7 @@ impl DbKind for Doctrine {
         vd.req_field("doctrine_group_type");
         vd.field_item("doctrine_group_type", Item::DoctrineGroup);
         vd.field_integer("index");
-        vd.field_integer("divergence");
+        vd.field_numeric("divergence");
 
         let icon = vd.field_value("icon").unwrap_or(key);
         data.verify_icon("NGameIcons|DOCTRINE_TYPE_ICON_PATH", icon, ".dds");

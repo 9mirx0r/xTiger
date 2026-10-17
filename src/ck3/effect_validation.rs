@@ -446,7 +446,6 @@ pub fn validate_change_struggle_phase(
             let mut vd = Validator::new(block, data);
             vd.set_case_sensitive(false);
             vd.req_field("struggle_phase");
-            vd.req_field("with_transition");
             vd.field_item("struggle_phase", Item::StrugglePhase);
             vd.field_bool("with_transition");
         }
@@ -2035,7 +2034,6 @@ pub fn validate_create_legend(
     vd.req_field("quality");
     vd.field_choice("quality", LEGEND_QUALITY);
     vd.req_field("chronicle");
-    vd.req_field("properties");
     vd.field_item("chronicle", Item::LegendChronicle);
     if let Some(chronicle_token) = vd.field_value("chronicle").cloned() {
         data.verify_exists(Item::LegendChronicle, &chronicle_token);
@@ -2043,6 +2041,10 @@ pub fn validate_create_legend(
         if let Some((_, _, chronicle)) =
             data.get_item::<LegendChronicle>(Item::LegendChronicle, chronicle_token.as_str())
         {
+            // A chronicle without properties needs no `properties` block.
+            if !chronicle.properties.is_empty() {
+                vd.req_field("properties");
+            }
             vd.field_validated_key_block("properties", |key, block, data| {
                 let mut found_properties = TigerHashSet::default();
                 let mut vd = Validator::new(block, data);

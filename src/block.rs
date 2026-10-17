@@ -88,6 +88,7 @@ impl Block {
             if let Some(BlockItem::Field(Field(key, cmp, BV::Value(value)))) = self.v.last()
                 && (value.is("hsv")
                     || value.is("rgb")
+                    || value.is("hex")
                     || value.is("hsv360")
                     || value.is("cylindrical")
                     || value.is("cartesian"))

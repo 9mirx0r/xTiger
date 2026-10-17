@@ -135,6 +135,9 @@ impl DbKind for ArtifactVisual {
         let mut vd = Validator::new(block, data);
         let mut sc = ScopeContext::new(Scopes::Character, key);
         sc.define_name("artifact", Scopes::Artifact, key);
+        sc.define_name("owner", Scopes::Character, key);
+        // The scopes saved by the effect that creates or reforges the artifact are passed in
+        sc.set_strict_scopes(false);
 
         vd.field_value("default_type"); // unused
 

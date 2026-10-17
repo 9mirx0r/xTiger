@@ -1,0 +1,7 @@
+﻿# The ruler filter names double as triggers, with any comparator.
+t21_trigger = {
+	any_ruler = {
+		culture = prev
+		culture != liege.culture
+	}
+}

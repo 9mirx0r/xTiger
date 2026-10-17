@@ -202,7 +202,7 @@ impl DbKind for Law {
                 "gender_law",
                 &["male_only", "male_preference", "equal", "female_preference", "female_only"],
             );
-            vd.field_choice("faith", &["same_faith", "same_religion", "same_family"]);
+            vd.field_choice("faith", &["same_faith", "same_religion", "same_family", "same_rite"]);
             vd.field_bool("create_primary_tier_titles");
             vd.field_numeric("primary_heir_minimum_share");
             vd.field_bool("exclude_rulers");

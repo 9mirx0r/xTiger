@@ -128,6 +128,7 @@ impl DbKind for GreatProjectType {
                 "province_owner",
                 "founder_primary_title_owner",
                 "founder_top_liege_title_owner",
+                "province_clerical_region_or_theocracy_holder",
             ],
         );
         vd.field_trigger_builder("is_valid", Tooltipped::No, |key| {

@@ -1,0 +1,19 @@
+﻿# The value scripts of DNA modifiers see the same named scopes as the weights.
+t22_group = {
+	usage = game
+	t22_overweight = {
+		dna_modifiers = {
+			morph = {
+				mode = modify
+				gene = gene_bs_body_type
+				value = {
+					value = scope:weight_for_portrait
+					multiply = 0.5
+				}
+			}
+		}
+		weight = {
+			base = 1
+		}
+	}
+}

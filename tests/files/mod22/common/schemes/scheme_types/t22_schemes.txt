@@ -1,0 +1,14 @@
+﻿# Scheme effects see the scheme's own event targets (scope:scheme, scope:owner, scope:target,
+# scope:target_title when the scheme targets a title); an unknown name is still reported.
+t22_scheme = {
+	target_type = title
+	on_start = {
+		scope:scheme = { save_scope_as = t22_saved }
+		scope:owner = { save_scope_as = t22_saved_owner }
+		scope:target = { save_scope_as = t22_saved_target }
+		scope:target_title = { save_scope_as = t22_saved_title }
+	}
+	on_invalidated = {
+		scope:t22_never_defined = { save_scope_as = t22_saved_unknown }
+	}
+}

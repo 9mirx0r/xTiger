@@ -24,6 +24,8 @@ impl ScriptedAnimation {
 impl DbKind for ScriptedAnimation {
     fn validate(&self, key: &Token, block: &Block, data: &Everything) {
         let mut sc = ScopeContext::new(Scopes::Character, key);
+        // The caller (an event portrait, a scheme, an activity) supplies the other scopes
+        sc.set_strict_scopes(false);
         validate_scripted_animation(&BV::Block(block.clone()), data, &mut sc);
     }
 }

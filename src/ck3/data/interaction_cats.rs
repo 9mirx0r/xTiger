@@ -101,7 +101,10 @@ impl Category {
     pub fn validate(&self, data: &Everything) {
         let mut vd = Validator::new(&self.block, data);
         vd.req_field("index");
-        vd.req_field("desc");
+        // The favorites category is filled by the player and has no description.
+        if !self.block.field_value_is("favorite_interactions", "yes") {
+            vd.req_field("desc");
+        }
         vd.field_integer("index");
         vd.field_item("desc", Item::Localization);
         vd.field_bool("default");

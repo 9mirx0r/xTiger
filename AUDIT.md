@@ -41,18 +41,20 @@ Run `xtiger_validate` and then a play-test over installed workshop mods: the old
 previous version) are the negative corpus, the updated ones the positive corpus. Reports that come up in an
 updated mod that loads cleanly in the game are false positives.
 
-## Open backlog from the vanilla self-check (1.20, error and fatal)
+## Backlog from the vanilla self-check (1.20, error and fatal)
 
-Known groups, none fixed yet unless marked. Counts are from the run of 2026-10-16.
+Counts are from the runs of 2026-10-16: 2,735 error reports at the start, 2,180 after the fixes (the
+changelog lists them). What is left:
 
-- `common/succession_election`: fixed (issue #8).
-- 134 `strict-scopes` for `scope:target` and 100+ for other scopes: scopes saved by the engine for a
-  character interaction, on_action, scheme or activity that Tiger does not list.
-- 107 `unknown-list`: `is_in_list` of lists that vanilla fills in a way Tiger does not see.
-- 30 `dynamic script values are not allowed here` in script values.
-- Rites (PAM): `clerical_region_holder`, `rite_has_doctrine`, `rite_can_choose_tenet`, scripted rule
-  `can_edit_rite`, `faith = same_rite`, doctrine `divergence = 2.5` (accepts integers only).
-- Smaller format gaps: `disable_regnal_numbers = never|always`, `royal_court = landed`,
-  `attacker_wargoal_percentage = 1.5`, pool selector `gender = female|male`, `owner` values for great
-  projects, `look_at` and light fields in portrait environments, `fog_color = hex{ ... }`,
-  `adjacencies.csv` with 9 fields.
+- 332 `strict-scopes`, almost all in events (`events/dlc`, `events/activities`, ...): the scopes of an
+  event depend on who fires it, and Tiger follows the call only through the paths it understands. These are
+  inference limits, not gaps, except where a caller is still missing its own scopes: check a group by
+  looking for the common caller (the 134 `scope:target` reports were scheme effects and are fixed).
+- About 30 `unknown-list`: lists that vanilla fills in a way Tiger cannot follow (inference limits).
+- 30 `dynamic script values are not allowed here` in some script values.
+- Rites (PAM): missing items (`rite_has_doctrine`, `rite_can_choose_tenet` and the DLC's own items).
+- Small format gaps still open: `look_at = { 0 0 }` with two numbers in the ep3 portrait environments,
+  `adjacencies.csv` with 9 fields, `faith = scope:x.faith` as a filter inside a script value iterator,
+  `value < script_value` inside a `piety = { }` trigger, `is_target_in_variable_list` without `target`,
+  `domicile ?= { }` in character history, the tutorial and flavorization typos that vanilla has.
+- Reports about history, bookmarks and map data are mostly flaws of the data, not of Tiger.

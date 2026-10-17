@@ -1103,7 +1103,14 @@ fn match_trigger_bv(
                 }
             } else if name.is("is_in_list") {
                 if let Some(value) = bv.expect_value() {
-                    sc.expect_list(value, data);
+                    // `if = { limit = { NOT = { is_in_list = x } } add_to_list = x }` is the usual way
+                    // to avoid duplicates, and the game treats a list that is not there yet as empty.
+                    // So an unknown list is not an error here; it is defined as the current scope.
+                    if sc.is_list_defined(value) {
+                        sc.expect_list(value, data);
+                    } else {
+                        sc.define_or_expect_list_this(value, data, Temporary::No);
+                    }
                 }
             } else if name.is("is_researching_technology") {
             }

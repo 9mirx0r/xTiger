@@ -1,0 +1,17 @@
+﻿# The modifiers of a council task see scope:councillor and scope:councillor_liege.
+t22_task = {
+	task_type = task_type_general
+	default_task = no
+	councillor_modifier = {
+		name = t22_modifier
+		scale = {
+			value = scope:councillor_liege.ai_greed
+		}
+	}
+	council_owner_modifier = {
+		name = t22_modifier
+		scale = {
+			value = scope:councillor.prowess
+		}
+	}
+}

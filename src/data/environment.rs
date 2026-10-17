@@ -42,14 +42,22 @@ impl DbKind for PortraitEnvironment {
                         vd.field_validated_block("color", validate_camera_color);
 
                         vd.field_list_precise_numeric_exactly("position", 3);
+                        // Vanilla sets look_at, radius and falloff on every kind of light and the game
+                        // does not mind; they only matter for the kinds named in the advice.
                         if block.field_value_is("type", "spot_light")
                             || block.field_value_is("type", "directional_light")
                         {
                             vd.field_list_precise_numeric_exactly("look_at", 3);
                             vd.field_block("look_at_node"); // TODO
                         } else {
-                            vd.ban_field("look_at", || "spot_light or directional_light");
-                            vd.ban_field("look_at_node", || "spot_light or directional_light");
+                            vd.advice_field(
+                                "look_at",
+                                "look_at is only for spot_light or directional_light",
+                            );
+                            vd.advice_field(
+                                "look_at_node",
+                                "look_at_node is only for spot_light or directional_light",
+                            );
                         }
                         vd.field_block("position_node"); // TODO
 
@@ -59,8 +67,14 @@ impl DbKind for PortraitEnvironment {
                             vd.field_precise_numeric("radius");
                             vd.field_precise_numeric("falloff");
                         } else {
-                            vd.ban_field("radius", || "spot_light or point_light");
-                            vd.ban_field("falloff", || "spot_light or point_light");
+                            vd.advice_field(
+                                "radius",
+                                "radius is only for spot_light or point_light",
+                            );
+                            vd.advice_field(
+                                "falloff",
+                                "falloff is only for spot_light or point_light",
+                            );
                         }
                         // Cone angles shape a spot light's beam. Vanilla sets them on spot lights
                         // and sometimes copies them onto other lights, where they do nothing.

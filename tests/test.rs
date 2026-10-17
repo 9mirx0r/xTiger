@@ -1188,3 +1188,56 @@ fn test_mod20_succession_election_uses_character_sets() {
     let added: Vec<_> = seen.iter().filter(|(_, m)| m.contains("`add` is not a")).collect();
     assert_eq!(added.len(), 4, "four old `add` fields: {seen:?}");
 }
+
+#[test]
+fn test_mod21_vanilla_self_check_formats() {
+    let reports = check_mod_helper("mod21");
+    let mut seen: Vec<(String, u32, String)> = Vec::new();
+    for (meta, occurrences) in &reports {
+        for p in occurrences {
+            let name = p[0].loc.pathname().to_string_lossy().to_string();
+            if name.contains("t21_") {
+                seen.push((name, p[0].loc.line, meta.msg.clone()));
+            }
+        }
+    }
+    seen.sort();
+    // Each of these shapes is used by vanilla and the game accepts it, so none may be reported
+    // as a format problem. Missing traits and the like are noise of the test setup.
+    for (name, line, msg) in &seen {
+        for bad in ["expected block", "expected `culture =`", "unknown list", "list `"] {
+            assert!(!msg.contains(bad), "{name}:{line}: {msg}\nall: {seen:?}");
+        }
+    }
+    // Guard against a vacuous pass: the template file was really read (its traits are unknown).
+    assert!(
+        seen.iter().any(|(_, _, m)| m.contains("t21_trait_a")),
+        "the t21 template was not validated: {seen:?}"
+    );
+}
+
+#[test]
+fn test_mod22_vanilla_self_check_scopes() {
+    let reports = check_mod_helper("mod22");
+    let mut unknown: Vec<(String, String)> = Vec::new();
+    for (meta, occurrences) in &reports {
+        for p in occurrences {
+            let name = p[0].loc.pathname().to_string_lossy().to_string();
+            if name.contains("t22_") && meta.msg.contains("might not be available") {
+                unknown.push((name, meta.msg.clone()));
+            }
+        }
+    }
+    unknown.sort();
+    // The scopes the game gives to scheme effects, scripted animations, artifact visuals,
+    // portrait modifiers and council tasks are known. Only the made-up name is reported.
+    assert_eq!(
+        unknown,
+        vec![(
+            "common/schemes/scheme_types/t22_schemes.txt"
+                .replace('/', std::path::MAIN_SEPARATOR_STR),
+            "scope:t22_never_defined might not be available here".to_string()
+        )],
+        "unexpected scope reports: {unknown:?}"
+    );
+}

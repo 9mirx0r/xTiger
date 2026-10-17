@@ -679,6 +679,11 @@ impl ScopeContext {
         }
     }
 
+    /// Whether a list of this name is already known in this context.
+    pub fn is_list_defined(&self, name: &Token) -> bool {
+        self.scope_list_names.contains_key(name.as_str())
+    }
+
     /// Expect list `name` to be known and (with strict scopes) warn if it isn't.
     /// Narrow the type of `this` down to the list's type.
     pub fn expect_list(&mut self, name: &Token, data: &Everything) {

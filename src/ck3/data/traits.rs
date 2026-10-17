@@ -296,8 +296,8 @@ impl Trait {
         }
         vd.field_bool("shown_in_encyclopedia");
 
-        vd.field_choice("inheritance_blocker", &["none", "dynasty", "all"]);
-        vd.field_choice("claim_inheritance_blocker", &["none", "dynasty", "all"]);
+        vd.field_choice("inheritance_blocker", &["none", "dynasty", "secular", "all"]);
+        vd.field_choice("claim_inheritance_blocker", &["none", "dynasty", "secular", "all"]);
         vd.field_choice("bastard", &["none", "illegitimate", "legitimate"]);
 
         // The ethnicity files refer to these

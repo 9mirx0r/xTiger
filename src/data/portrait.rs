@@ -25,23 +25,29 @@ impl PortraitModifierGroup {
     }
 }
 
+/// The scope context that the game gives to the scripts of portrait modifiers.
+fn portrait_sc(key: &Token) -> ScopeContext {
+    // TODO: could the root be Scopes::None here?
+    let mut sc = ScopeContext::new(Scopes::Character, key);
+    sc.define_name("age", Scopes::Value, key);
+    sc.define_name("culture", Scopes::Culture, key);
+    sc.define_name("current_weight", Scopes::Value, key);
+    sc.define_name("highest_held_title_tier", Scopes::Value, key);
+    sc.define_name("faith", Scopes::Faith, key);
+    sc.define_name("government", Scopes::GovernmentType, key);
+    sc.define_name("prowess", Scopes::Value, key);
+    sc.define_name("ruler_designer", Scopes::Bool, key);
+    sc.define_name("female", Scopes::Bool, key);
+    sc.define_name("weight_for_portrait", Scopes::Value, key);
+    sc.define_name("year_of_birth", Scopes::Value, key);
+    sc
+}
+
 impl DbKind for PortraitModifierGroup {
     fn validate(&self, key: &Token, block: &Block, data: &Everything) {
         let mut vd = Validator::new(block, data);
 
-        // TODO: could the root be Scopes::None here?
-        let mut sc = ScopeContext::new(Scopes::Character, key);
-        sc.define_name("age", Scopes::Value, key);
-        sc.define_name("culture", Scopes::Culture, key);
-        sc.define_name("current_weight", Scopes::Value, key);
-        sc.define_name("highest_held_title_tier", Scopes::Value, key);
-        sc.define_name("faith", Scopes::Faith, key);
-        sc.define_name("government", Scopes::GovernmentType, key);
-        sc.define_name("prowess", Scopes::Value, key);
-        sc.define_name("ruler_designer", Scopes::Bool, key);
-        sc.define_name("female", Scopes::Bool, key);
-        sc.define_name("weight_for_portrait", Scopes::Value, key);
-        sc.define_name("year_of_birth", Scopes::Value, key);
+        let mut sc = portrait_sc(key);
 
         vd.field_choice("usage", &["customization", "game", "both", "none"]);
         vd.field_integer("interface_position");
@@ -348,7 +354,7 @@ pub fn validate_dna_modifiers(block: &Block, data: &Everything) {
         {
             Gene::verify_has_template(category.as_str(), template, data);
         }
-        vd.field_script_value_no_breakdown_rooted("value", Scopes::Character);
+        vd.field_script_value_no_breakdown_builder("value", portrait_sc);
         vd.field_validated_block("range", |block, data| {
             validate_numeric_range(block, data, 0.0, 1.0, Severity::Warning, Confidence::Weak);
         });
@@ -357,8 +363,8 @@ pub fn validate_dna_modifiers(block: &Block, data: &Everything) {
         let mut vd = Validator::new(block, data);
         vd.field_choice("mode", modes);
         vd.field_item("gene", Item::GeneCategory);
-        vd.field_script_value_rooted("x", Scopes::Character);
-        vd.field_script_value_rooted("y", Scopes::Character);
+        vd.field_script_value_builder("x", portrait_sc);
+        vd.field_script_value_builder("y", portrait_sc);
     });
     vd.multi_field_validated_block("accessory", |block, data| {
         let mut vd = Validator::new(block, data);
@@ -369,7 +375,7 @@ pub fn validate_dna_modifiers(block: &Block, data: &Everything) {
         {
             Gene::verify_has_template(category.as_str(), template, data);
         }
-        vd.field_script_value_no_breakdown_rooted("value", Scopes::Character);
+        vd.field_script_value_no_breakdown_builder("value", portrait_sc);
         vd.field_validated_block("range", |block, data| {
             validate_numeric_range(block, data, 0.0, 1.0, Severity::Warning, Confidence::Weak);
         });

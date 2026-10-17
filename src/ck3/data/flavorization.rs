@@ -38,11 +38,18 @@ impl DbKind for Flavorization {
                     "head_of_faith",
                     "councillor",
                     "domicile",
+                    "clerical_region_holder",
+                    "saint",
                 ],
             );
         } else {
             vd.ban_field("gender", || "type = character");
-            vd.ban_field("special", || "type = character");
+            if flavor_type == "title" {
+                // Vanilla Japan flavorization uses it on a title.
+                vd.field_choice("special", &["holder"]);
+            } else {
+                vd.ban_field("special", || "type = character");
+            }
         }
         if flavor_type == "character" || flavor_type == "title" {
             vd.field_choice(

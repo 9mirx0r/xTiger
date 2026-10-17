@@ -20,12 +20,12 @@ use crate::scopes::{scope_prefix, scope_to_scope};
 use crate::script_value::{validate_non_dynamic_script_value, validate_script_value};
 use crate::token::Token;
 use crate::tooltipped::Tooltipped;
-use crate::trigger::validate_target_ok_this;
 use crate::trigger::validate_trigger;
 use crate::trigger::{
     Part, PartFlags, is_character_token, partition, validate_argument, validate_argument_scope,
     validate_inscopes, validate_trigger_internal, warn_not_first,
 };
+use crate::trigger::{validate_target, validate_target_ok_this};
 use crate::validator::Validator;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -153,7 +153,28 @@ pub fn validate_optional_duration(vd: &mut Validator, sc: &mut ScopeContext) {
 }
 
 // Does not accept script values (per the documentation)
+/// Check the body of `hex { 50779b }`. Returns false if the block is not a hex color.
+fn validate_hex_color(block: &Block) -> bool {
+    if block.tag.as_deref().map(Token::as_str) != Some("hex") {
+        return false;
+    }
+    let values: Vec<_> = block.iter_values().collect();
+    if let [token] = values.as_slice() {
+        let digits = token.as_str();
+        if !matches!(digits.len(), 6 | 8) || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
+            let msg = "expected 6 or 8 hexadecimal digits";
+            warn(ErrorKey::Colors).msg(msg).loc(*token).push();
+        }
+    } else {
+        warn(ErrorKey::Colors).msg("expected one hexadecimal value").loc(block).push();
+    }
+    true
+}
+
 pub fn validate_color(block: &Block, _data: &Everything) {
+    if validate_hex_color(block) {
+        return;
+    }
     // Reports in this function are `warn` level because a bad color is just an UI issue,
     // and normal confidence level because I'm not 100% sure of the color formats.
     let mut count = 0;
@@ -520,11 +541,21 @@ pub fn validate_inside_iterator(
 
     if name == "ruler" {
         // TODO: if an iterator has a limit checking one of these, suggest using the filter.
-        vd.field_target("government_type", sc, Scopes::GovernmentType);
+        // These double as ordinary triggers in the same block, so `culture != liege.culture`
+        // is fine; vanilla uses it next to `culture = prev`.
+        for (field, scope) in [
+            ("government_type", Scopes::GovernmentType),
+            ("faith", Scopes::Faith),
+            ("culture", Scopes::Culture),
+        ] {
+            vd.multi_field_validated_any_cmp(field, |bv, data| {
+                if let Some(token) = bv.expect_value() {
+                    validate_target(token, data, sc, scope);
+                }
+            });
+        }
         vd.field_bool("only_independent");
         vd.field_choice("tier", &["county", "duchy", "kingdom", "empire", "hegemony"]);
-        vd.field_target("faith", sc, Scopes::Faith);
-        vd.field_target("culture", sc, Scopes::Culture);
         // 1.20 filter names
         vd.field_target("government_type_filter", sc, Scopes::GovernmentType);
         vd.field_target("faith_filter", sc, Scopes::Faith);
@@ -871,6 +902,9 @@ pub fn validate_identifier(token: &Token, kind: &str, sev: Severity) {
 
 /// Camera colors must be hsv, and value can be > 1
 pub fn validate_camera_color(block: &Block, data: &Everything) {
+    if validate_hex_color(block) {
+        return;
+    }
     let mut count = 0;
     // Get the color tag, as in color = hsv { 0.5 1.0 1.0 }
     let tag = block.tag.as_deref().map_or("rgb", Token::as_str);

@@ -202,37 +202,29 @@ impl DbKind for CouncilTask {
 
         vd.multi_field_validated_block_sc("asset", &mut sc, validate_asset);
 
-        vd.multi_field_validated_block_rooted(
-            "councillor_modifier",
-            Scopes::Character,
-            |block, data, sc| {
-                let mut vd = Validator::new(block, data);
-                vd.field_item("name", Item::Localization);
-                vd.field_script_value("scale", sc);
-                validate_modifs(block, data, ModifKinds::Character, vd);
-            },
-        );
-        vd.multi_field_validated_block_rooted(
-            "council_owner_modifier",
-            Scopes::Character,
-            |block, data, sc| {
-                let mut vd = Validator::new(block, data);
-                vd.field_item("name", Item::Localization);
-                vd.field_script_value("scale", sc);
-                validate_modifs(block, data, ModifKinds::Character, vd);
-            },
-        );
+        // The scopes are those of the task: root and scope:councillor are the councillor and
+        // scope:councillor_liege is the council owner (see _council_tasks.info).
+        vd.multi_field_validated_block_sc("councillor_modifier", &mut sc, |block, data, sc| {
+            let mut vd = Validator::new(block, data);
+            vd.field_item("name", Item::Localization);
+            vd.field_script_value("scale", sc);
+            validate_modifs(block, data, ModifKinds::Character, vd);
+        });
+        // The scopes are those of the task: root and scope:councillor are the councillor and
+        // scope:councillor_liege is the council owner (see _council_tasks.info).
+        vd.multi_field_validated_block_sc("council_owner_modifier", &mut sc, |block, data, sc| {
+            let mut vd = Validator::new(block, data);
+            vd.field_item("name", Item::Localization);
+            vd.field_script_value("scale", sc);
+            validate_modifs(block, data, ModifKinds::Character, vd);
+        });
         if block.field_value_is("task_type", "task_type_county") {
-            vd.multi_field_validated_block_rooted(
-                "county_modifier",
-                Scopes::Character,
-                |block, data, sc| {
-                    let mut vd = Validator::new(block, data);
-                    vd.field_item("name", Item::Localization);
-                    vd.field_script_value("scale", sc);
-                    validate_modifs(block, data, ModifKinds::County, vd);
-                },
-            );
+            vd.multi_field_validated_block_sc("county_modifier", &mut sc, |block, data, sc| {
+                let mut vd = Validator::new(block, data);
+                vd.field_item("name", Item::Localization);
+                vd.field_script_value("scale", sc);
+                validate_modifs(block, data, ModifKinds::County, vd);
+            });
         } else {
             vd.ban_field("county_modifier", || "task_type_county");
         }

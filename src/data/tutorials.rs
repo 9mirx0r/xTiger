@@ -181,12 +181,12 @@ impl DbKind for TutorialLessonStep {
         }) {
             vd.field_bool("pause_game");
             vd.field_bool("force_pause_game");
-            vd.field_effect_rooted("effect", Tooltipped::No, game_tutorial_scope());
         } else {
             vd.ban_field("pause_game", || "gamestate tutorial chains");
             vd.ban_field("force_pause_game", || "gamestate tutorial chains");
-            vd.ban_field("effect", || "gamestate tutorial chains");
         }
+        // Vanilla uses `effect` in lessons of non-gamestate chains too (close_all_views).
+        vd.field_effect_rooted("effect", Tooltipped::No, game_tutorial_scope());
 
         vd.field_validated_block("highlight_widget_with_index", |block, data| {
             let mut vd = Validator::new(block, data);

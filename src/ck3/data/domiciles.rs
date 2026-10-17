@@ -39,7 +39,7 @@ impl DbKind for DomicileType {
         vd.field_item("illustration", Item::File);
         vd.field_item("icon", Item::File);
         vd.field_item("map_pin_texture", Item::File);
-        vd.field_choice("map_pin_anchor", &["up", "right"]);
+        vd.field_choice("map_pin_anchor", &["up", "right", "left"]);
         vd.field_bool("map_pin_lobby");
         vd.field_bool("provisions");
         vd.field_bool("travel");

@@ -487,6 +487,8 @@ pub const PROVINCE_FILTERS: &[&str] = &[
     "top_liege_border_outer",
     "landed_title",
     "geographical_region",
+    "anointment_candidates",
+    "clerical_region_theocracy_capitals",
     "all",
 ];
 

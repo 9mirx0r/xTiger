@@ -1,0 +1,10 @@
+﻿# scope:owner is the root, other scopes come from the effect that makes the artifact.
+t22_visual = {
+	asset = {
+		trigger = {
+			scope:owner = { is_alive = yes }
+			scope:quality >= 50
+		}
+		reference = t22_entity
+	}
+}

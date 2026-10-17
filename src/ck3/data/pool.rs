@@ -44,7 +44,10 @@ impl DbKind for PoolSelector {
         // undocumented
 
         vd.field_value("pool");
-        vd.field_choice("gender", &["commander", "clergy", "gender_law", "random"]);
+        vd.field_choice(
+            "gender",
+            &["commander", "clergy", "gender_law", "random", "male", "female"],
+        );
         vd.field_value("culture");
         vd.field_bool("court");
     }

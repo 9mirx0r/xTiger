@@ -1,0 +1,11 @@
+﻿# A list that is only filled after the check for it, the usual way to avoid duplicates.
+t21_collect_effect = {
+	every_vassal = {
+		if = {
+			limit = {
+				NOT = { is_in_list = t21_seen }
+			}
+			add_to_list = t21_seen
+		}
+	}
+}

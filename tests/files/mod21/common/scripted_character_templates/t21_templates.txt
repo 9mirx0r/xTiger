@@ -1,0 +1,9 @@
+﻿# 1.20 formats that Tiger rejected: a plain weight in random_traits_list.
+t21_template = {
+	age = { 18 50 }
+	random_traits_list = {
+		count = 1
+		t21_trait_a = { weight = 30 }
+		t21_trait_b = { weight = 5 }
+	}
+}

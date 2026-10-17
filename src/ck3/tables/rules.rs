@@ -353,4 +353,77 @@ pub const SCRIPTED_RULES: &str = "
 	can_build_in_same_realm = {
 		root = character
 	}
+
+	can_edit_rite = {
+		tooltipped = yes
+		root = character
+	}
+
+	can_create_rite = {
+		tooltipped = yes
+		root = character
+	}
+
+	rite_conversion = {
+		tooltipped = yes
+		root = character
+		new_rite = rite
+	}
+
+	can_create_title = {
+		tooltipped = yes
+		root = character
+		title = landed_title
+	}
+
+	can_destroy_title = {
+		tooltipped = yes
+		root = character
+		title = landed_title
+	}
+
+	is_grant_government_shown = {
+		tooltipped = no
+		root = character
+		landed_title = landed_title
+		government_type = government_type
+		list = {
+			target_titles = landed_title
+		}
+	}
+
+	is_grant_government_valid = {
+		tooltipped = yes
+		root = character
+		recipient = character
+		landed_title = landed_title
+		government_type = government_type
+		list = {
+			target_titles = landed_title
+		}
+	}
+
+	can_enshrine_artifact = {
+		tooltipped = yes
+		root = artifact
+		actor = character
+		holy_site = holy_site
+		replacing = artifact
+	}
+
+	can_create_dynamic_holy_site = {
+		tooltipped = yes
+		root = character
+		title = landed_title
+		holy_site_type = holy_site_type
+		faith = faith
+	}
+
+	can_remove_enshrined_artifact = {
+		tooltipped = yes
+		root = artifact
+		holy_site = holy_site
+		actor = character
+		replacing = artifact
+	}
 ";
