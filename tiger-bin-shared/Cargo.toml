@@ -1,6 +1,6 @@
 [package]
 name = "tiger-bin-shared"
-version = "1.6.5-alpha"
+version = "1.6.6-alpha"
 edition = "2024"
 license = "GPL-3.0-or-later"
 description = "Shared binary library for ck3-tiger."
@@ -10,17 +10,21 @@ readme = "../README.md"
 rust-version = "1.88"
 
 [dependencies]
-tiger-lib = { path = "..", version = "1.6.5-alpha" }
+tiger-lib = { path = "..", version = "1.6.6-alpha" }
 
 anyhow = "1"
-cfg-if = "1"
 clap = { version = "4.5", features = ["derive"] }
 console = "0.16"
 # held back because of msrv
 home = "0.5"
 regex = "1.10"
+semver = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
 steamlocate = "2.0"
 thiserror = "2.0"
+ureq = { version = "3", features = ["json"] }
 
 [target.'cfg(windows)'.dependencies]
 ansiterm = "0.12.2"

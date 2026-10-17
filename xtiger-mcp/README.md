@@ -7,8 +7,8 @@
 - start CK3 and type console commands;
 - look at screenshots of the game.
 
-It's a single program with nothing else to install. It comes with the xTiger app and the release
-archives, next to `ck3-tiger`.
+It's a single program with nothing else to install. It comes with the xTiger app. To use it
+without the app, build it as shown at the end of this page.
 
 ## Connect an assistant
 

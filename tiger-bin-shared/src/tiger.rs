@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::io::{IsTerminal, Write, stderr, stdin, stdout};
 use std::{mem::forget, path::PathBuf};
 
@@ -21,7 +22,7 @@ use crate::gamedir::{
 use crate::guide::{self, Guide};
 use crate::pick::{choose, local_mods};
 use crate::progress::{Stage, forced, header};
-use crate::update::update;
+use crate::update::{notice, set_notices, update};
 use crate::version::warn_versions;
 
 #[derive(Parser)]
@@ -34,13 +35,25 @@ struct Cli {
     validate_args: Option<ValidateArgs>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Switch {
+    On,
+    Off,
+}
+
 #[derive(Subcommand)]
 enum Commands {
-    /// Update the binary. If no version is specified, the latest release is pulled from GitHub and
+    /// Update the binary. If no version is specified, the newest release is pulled from GitHub and
     /// installed over the current binary.
     Update {
-        /// release version (e.g. 0.9.3)
+        /// release version (e.g. 1.6.5-alpha)
         version: Option<String>,
+        /// only say whether a newer version exists; install nothing
+        #[clap(long, conflicts_with_all = ["version", "notices"])]
+        check: bool,
+        /// turn the "a new version is available" line at the end of a validation on or off
+        #[clap(long, value_name = "on|off", conflicts_with = "version")]
+        notices: Option<Switch>,
     },
     /// Explain a report key: what it means, how to fix it and how to silence it.
     /// Without a key, list all of them.
@@ -225,8 +238,12 @@ pub fn run(
 
     #[allow(clippy::single_match_else)]
     match cli.command {
-        Some(Commands::Update { version: target_version }) => {
-            update(current_version, target_version.as_deref())?;
+        Some(Commands::Update { version: target_version, check, notices }) => {
+            if let Some(switch) = notices {
+                set_notices(switch == Switch::On)?;
+            } else {
+                update(current_version, target_version.as_deref(), check)?;
+            }
             Ok(())
         }
         Some(Commands::Explain { key }) => explain(key.as_deref()),
@@ -274,7 +291,7 @@ pub fn run(
                 ("--config", &args.config),
             ] {
                 if let Some(path) = value {
-                    given.push_str(&format!(" {flag} {}", quoted(path)));
+                    _ = write!(given, " {flag} {}", quoted(path));
                 }
             }
             let can_choose = stderr().is_terminal() && stdin().is_terminal();
@@ -535,12 +552,12 @@ pub fn run(
             let stats = emit_reports_with(&mut output, options);
             _ = output.flush();
 
+            // The commands in the card are typed as they are called, whatever the file is named.
+            let command = std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.file_stem().map(|s| s.to_string_lossy().to_string()))
+                .unwrap_or_else(|| bin_name.to_string());
             if human && matches!(args.format, Format::Full | Format::Short) {
-                // The commands in the card are typed as they are called, whatever the file is named.
-                let command = std::env::current_exe()
-                    .ok()
-                    .and_then(|exe| exe.file_stem().map(|s| s.to_string_lossy().to_string()))
-                    .unwrap_or_else(|| bin_name.to_string());
                 guide::print(&Guide {
                     stats: &stats,
                     command: &command,
@@ -556,6 +573,10 @@ pub fn run(
                 } else {
                     eprintln!("No problems found.");
                 }
+            }
+
+            if terminal_view && matches!(args.format, Format::Full | Format::Short) {
+                notice(current_version, &command);
             }
 
             // Properly dropping `everything` takes a noticeable amount of time, and we're exiting anyway.

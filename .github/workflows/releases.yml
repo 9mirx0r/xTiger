@@ -36,10 +36,8 @@ jobs:
         run: |
           version=v$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "ck3-tiger") | .version')
           ck3_pkgdir="ck3-tiger-${{ matrix.name }}-$version"
-          mcp_pkgdir="xtiger-mcp-${{ matrix.name }}-$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "ck3_pkgdir=$ck3_pkgdir" >> "$GITHUB_OUTPUT"
-          echo "mcp_pkgdir=$mcp_pkgdir" >> "$GITHUB_OUTPUT"
 
       - name: Verify version against tag
         shell: bash
@@ -47,7 +45,7 @@ jobs:
           test "${{ github.ref_name }}" = "${{ steps.version.outputs.version }}"
 
       - name: Build CK3
-        run: cargo build --release -p ck3-tiger -p xtiger-mcp
+        run: cargo build --release -p ck3-tiger
 
       # The validator archive keeps its name and layout: `ck3-tiger update` looks for
       # ck3-tiger-<os>-v<version>/ck3-tiger inside it.
@@ -56,21 +54,17 @@ jobs:
         run: |
           mkdir ${{ steps.version.outputs.ck3_pkgdir }}
           cp -p README.md filter.md annotations.md CONTRIBUTORS.md LICENSE ck3-tiger.conf target/release/ck3-tiger${{ matrix.extension }} target/release/ck3-tiger-auto${{ matrix.extension }} ${{ steps.version.outputs.ck3_pkgdir }}
-          mkdir ${{ steps.version.outputs.mcp_pkgdir }}
-          cp -p LICENSE xtiger-mcp/README.md target/release/xtiger-mcp${{ matrix.extension }} ${{ steps.version.outputs.mcp_pkgdir }}
 
       - name: Archive .zip
         if: ${{ matrix.archive == 'zip' }}
         shell: pwsh
         run: |
           Compress-Archive -Path "${{ steps.version.outputs.ck3_pkgdir }}" -DestinationPath "${{ steps.version.outputs.ck3_pkgdir }}.zip"
-          Compress-Archive -Path "${{ steps.version.outputs.mcp_pkgdir }}" -DestinationPath "${{ steps.version.outputs.mcp_pkgdir }}.zip"
 
       - name: Archive .tar.gz
         if: ${{ matrix.archive == 'tar.gz' }}
         run: |
           tar cfvz ${{ steps.version.outputs.ck3_pkgdir }}.tar.gz ${{ steps.version.outputs.ck3_pkgdir }}/
-          tar cfvz ${{ steps.version.outputs.mcp_pkgdir }}.tar.gz ${{ steps.version.outputs.mcp_pkgdir }}/
 
       - name: Upload archives
         uses: actions/upload-artifact@v4
@@ -78,7 +72,6 @@ jobs:
           name: archives-ck3-${{ matrix.name }}
           path: |
             ${{ steps.version.outputs.ck3_pkgdir }}.${{ matrix.archive }}
-            ${{ steps.version.outputs.mcp_pkgdir }}.${{ matrix.archive }}
           if-no-files-found: error
 
   app:
@@ -147,9 +140,9 @@ jobs:
             Unreleased*) echo "The newest CHANGELOG section is still 'Unreleased'; give it the release heading." >&2; exit 1 ;;
           esac
           {
-            echo '**Which file?** For the validator alone: `ck3-tiger-windows-*.zip` or `ck3-tiger-linux-*.tar.gz`.'
-            echo 'For the desktop app: `xTiger_*_x64-setup.exe` (or the portable zip).'
-            echo 'For the MCP server only, to use with an AI assistant: `xtiger-mcp-*`.'
+            echo '**Which file?** Pick one; both do the same validation.'
+            echo '- **Desktop app, a window:** `xTiger_*_x64-setup.exe`, or `xTiger_*_x64_portable.zip` to run it without installing.'
+            echo '- **Command line, the validator:** `ck3-tiger-windows-*.zip` or `ck3-tiger-linux-*.tar.gz`.'
             echo
             awk '/^## /{n++; next} n==1' CHANGELOG.md
           } > release-notes.md

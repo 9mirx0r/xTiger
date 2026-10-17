@@ -23,26 +23,35 @@ more.
 
 xTiger is for CK3 only. For the other Paradox games, use upstream Tiger.
 
-**Prefer to work by hand and keep AI out of it?** The command-line validator is made for you. It is a
-plain program: no AI, no account, and it only goes online when you run `ck3-tiger update`. Since 1.6.5 it
-is friendlier and easier to steer: it shows what it is doing, ends with a short card that says what to
-fix first and which command to type next, lets you pick your mod from a list, and can narrow the
-reports down, summarise them or fail a script with a single option. See [Usage](#usage). The desktop
-app and the AI assistants below are optional extras.
+xTiger comes in two forms, and both do the same validation:
 
-<img src="example.png" alt="Sample output: reports with the file, the line and the broken code underlined" width="100%">
+- **The command line** is for people who prefer to work by hand and keep AI out of it. It is a plain
+  program: no AI, no account, and it stays offline unless you ask it to check for updates. Since
+  1.6.5 it is friendlier and easier to steer: it shows what it is doing, ends with a card that says
+  what to fix first and which command to type next, lets you pick your mod from a list, and can narrow
+  the reports down, summarise them or fail a script with a single option. See [Usage](#usage).
+- **[The desktop app](docs/app.md)** does it from a window, with your real mods in front of you.
+  The AI assistants below are optional extras.
+
+<p align="center">
+  <img src="assets/cli/validate.png" alt="The command line checking a real mod: Qubis, the game and the mod it found, one line per stage, the first reports and a closing card with what to look at first and the commands to try next" width="62%">
+</p>
+<p align="center"><sub><b>The command line.</b> A real run over a Workshop mod.</sub></p>
+
+<p align="center">
+  <img src="assets/app/results.png" alt="The results screen of the desktop app checking the same mod: a severity bar, the list of reports grouped by severity and the broken line of the selected one" width="100%">
+</p>
+<p align="center"><sub><b>The desktop app.</b> The same mod, with the reports grouped by severity and one click to open the line in VS Code.</sub></p>
 
 ## Download
 
-Get the validator for your system from the [latest release](https://github.com/9mirx0r/xTiger/releases):
+Every [release](https://github.com/9mirx0r/xTiger/releases) has two things to pick from, and they do
+the same validation. You need only one.
 
-- **Windows:** `ck3-tiger-windows-v<version>.zip`
-- **Linux:** `ck3-tiger-linux-v<version>.tar.gz`
-
-Unzip it anywhere. There is nothing to install. The validator only goes online when you run
-`ck3-tiger update`.
-
-If you prefer a window to a terminal, there is also a [desktop app](docs/app.md).
+| You want | Download | Notes |
+| --- | --- | --- |
+| **A window** (the desktop app) | `xTiger_<version>_x64-setup.exe`, or `xTiger_<version>_x64_portable.zip` | Windows. The app updates itself. See [the app](docs/app.md). |
+| **A terminal** (the command-line validator) | `ck3-tiger-windows-v<version>.zip` or `ck3-tiger-linux-v<version>.tar.gz` | Unzip it anywhere, nothing to install. `ck3-tiger update` keeps it up to date (see [Updating](#updating)). |
 
 ## Usage
 
@@ -80,7 +89,29 @@ your mod folder to choose from. All of this is written to the terminal's message
 when that is redirected, or in CI, none of it appears and the output is the same as before. Set
 `XTIGER_FORCE_TTY=1` to get the terminal view in a captured output.
 
-`ck3-tiger --help` lists the rest, and `ck3-tiger update` fetches the latest release.
+`ck3-tiger --help` lists the rest.
+
+<p align="center">
+  <img src="example.png" alt="Sample output: reports with the file, the line and the broken code underlined" width="100%">
+</p>
+
+### Updating
+
+`ck3-tiger update` downloads the newest release, checks its SHA-256, unpacks it and replaces the
+program, showing each step as it goes and the release notes when it is done. Nothing is installed
+until the download has been checked.
+
+<p align="center">
+  <img src="assets/cli/update.png" alt="Updating from the command line: the new-version line at the end of a validation, ck3-tiger update --check, and a full ck3-tiger update with its stages and what is new" width="62%">
+</p>
+
+- `ck3-tiger update --check` only says whether a newer version exists.
+- `ck3-tiger update 1.6.5-alpha` installs a particular release, older ones included.
+- The validator never goes online by itself. The first time you run it at a terminal it asks once
+  whether to tell you when a new version is out. Say yes and it asks GitHub at most once a day and
+  prints one line after a validation; say no and it stays offline. Change it at any time with
+  `ck3-tiger update --notices on` or `--notices off`. In CI, scripts and redirected output it never
+  asks and never prints the line. `XTIGER_NO_UPDATE_CHECK=1` turns it off for good.
 
 To choose languages, load parent mods for a submod or silence reports you don't care about, put a
 [`ck3-tiger.conf`](ck3-tiger.conf) in your mod folder. See also the [filter guide](filter.md) and

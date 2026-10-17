@@ -1,5 +1,45 @@
 # Changelog
 
+## xTiger 1.6.6 alpha
+
+`ck3-tiger update` works again, and it now looks like the rest of the validator: a line per step with
+its time, a progress bar while it downloads, and the release notes at the end. It can also tell you,
+if you want, when a new version is out.
+
+### The updater
+
+- The old updater asked GitHub for the "latest" release, and GitHub answers 404 while every release is
+  marked as a pre-release, so `ck3-tiger update` said it was up to date or failed. The new one reads
+  the list of releases itself, picks the newest that is not a draft, and compares versions properly.
+  **If you are on 1.6.5 or older, download this release once by hand; from then on `ck3-tiger update`
+  does the rest.**
+- Steps are shown as they happen: looking for the newest version, downloading (with a bar, the size and
+  the speed), checking the download, unpacking and replacing the program. The SHA-256 that GitHub
+  publishes for each file is checked before anything is unpacked, and the archive is refused if it is
+  not from the xTiger releases or is bigger than 200 MB.
+- When it is done it shows what is new, taken from the release notes, and the link to the full notes.
+- `ck3-tiger update --check` only says whether a newer version exists. `ck3-tiger update 1.6.5-alpha`
+  installs a particular one, including an older one.
+- Everything is plain text when the output is not a terminal, as in the rest of the validator.
+
+### The "new version available" line
+
+- Off until you say so. The first time you run the validator at a terminal it asks once. If you say
+  yes, it asks GitHub at most once a day and prints one line after a validation when a newer version is
+  out. If you say no, it never goes online by itself.
+- `ck3-tiger update --notices on|off` changes it later. It never asks and never prints in CI, in
+  scripts or with redirected output, and `XTIGER_NO_UPDATE_CHECK=1` turns it off for good.
+- The choice is kept in the validator's own settings folder; `XTIGER_CONFIG_DIR` points it somewhere
+  else.
+
+### Documents
+
+- The release page now has two downloads, the desktop app and the command-line validator. The separate
+  `xtiger-mcp` archives are gone: the app already includes the MCP server, and it can still be built
+  from source (see `xtiger-mcp/README.md`).
+- The README shows the real command line and the real desktop app, with real mods, and explains the
+  updater. The images of the app in `docs/app.md` were taken again from the current version.
+
 ## xTiger 1.6.5 alpha
 
 The validator is now the front door: it is easier to read at a terminal, easier to use in a script or a
