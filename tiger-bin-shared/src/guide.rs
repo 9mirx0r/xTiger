@@ -26,6 +26,8 @@ pub struct Guide<'a> {
     pub has_fail_on: bool,
     /// The keys the output is already limited to with `--only-key`.
     pub only_keys: &'a [String],
+    /// Leave out the commands to type next, for the program that has no command line.
+    pub show_next: bool,
 }
 
 fn plural(n: usize, one: &str, many: &str) -> String {
@@ -56,7 +58,7 @@ fn cut(text: &str, max: usize) -> String {
 }
 
 /// The most important causes first: the worst severity, then the most reports.
-fn causes(stats: &ReportStats) -> Vec<KeyCount> {
+pub(crate) fn causes(stats: &ReportStats) -> Vec<KeyCount> {
     let mut keys = stats.keys().to_vec();
     keys.sort_by(|a, b| b.severity.cmp(&a.severity).then(b.count.cmp(&a.count)));
     keys
@@ -179,7 +181,7 @@ pub fn print(g: &Guide) {
             format!("{} {} --fail-on error", g.command, g.modarg),
         ));
     }
-    if !next.is_empty() {
+    if g.show_next && !next.is_empty() {
         eprintln!();
         eprintln!("{}", style("Next").bold());
         let label_width = next.iter().map(|(l, _)| l.len()).max().unwrap_or(0);

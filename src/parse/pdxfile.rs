@@ -39,7 +39,7 @@ pub fn parse_pdx_macro(inputs: &[Token], global: &PdxfileMemory, local: &Pdxfile
     match FILE_PARSER.parse(inputs, &mut combined, Lexer::new(inputs)) {
         Ok(block) => block,
         Err(e) => {
-            eprintln!("Internal error: re-parsing macro failed.\n{e}");
+            crate::note(&format!("Internal error: re-parsing macro failed.\n{e}"));
             Block::new(inputs[0].loc)
         }
     }
@@ -59,7 +59,10 @@ fn parse_pdx(entry: &FileEntry, content: &'static str, memory: &ParserMemory) ->
             block
         }
         Err(e) => {
-            eprintln!("Internal error: parsing file {} failed.\n{e}", entry.path().display());
+            crate::note(&format!(
+                "Internal error: parsing file {} failed.\n{e}",
+                entry.path().display()
+            ));
             Block::new(inputs[0].loc)
         }
     }
@@ -97,7 +100,10 @@ pub fn parse_reader_export(
             global.merge(combined.into_local());
         }
         Err(e) => {
-            eprintln!("Internal error: parsing file {} failed.\n{e}", entry.path().display());
+            crate::note(&format!(
+                "Internal error: parsing file {} failed.\n{e}",
+                entry.path().display()
+            ));
         }
     }
 }

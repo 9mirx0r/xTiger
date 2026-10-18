@@ -13,6 +13,7 @@ use crate::progress::{fancy_glyphs, style};
 const VISIBLE: usize = 12;
 
 /// A mod found in the game's mod folder.
+#[derive(Debug)]
 pub struct LocalMod {
     /// The `.mod` file.
     pub path: PathBuf,
@@ -48,6 +49,20 @@ pub fn local_mods(paradox: &Path) -> Vec<LocalMod> {
         .collect();
     mods.sort_by_key(|m| m.name.to_lowercase());
     mods
+}
+
+/// The `.mod` file for what a person typed or pasted: the file itself, or a mod folder that has a
+/// `descriptor.mod`. Quotes around the path are dropped, as Explorer adds them.
+pub fn mod_from_path(text: &str) -> Option<PathBuf> {
+    let text = text.trim().trim_matches(|c| c == '"' || c == '\'').trim();
+    if text.is_empty() {
+        return None;
+    }
+    let mut path = PathBuf::from(text);
+    if path.is_dir() {
+        path.push("descriptor.mod");
+    }
+    path.is_file().then_some(path)
 }
 
 /// Let the user pick one with the arrow keys. Needs a terminal on stdin and stderr.

@@ -1,11 +1,15 @@
 mod auto;
 mod brand;
 mod explain;
+mod firstrun;
 mod gamedir;
 mod guide;
+mod menu;
+mod pause;
 mod pick;
 mod progress;
 mod tiger;
+mod tui;
 mod update;
 mod version;
 
@@ -28,4 +32,5 @@ pub struct GameConsts {
 }
 
 pub use auto::run as auto;
+pub use pause::before_closing;
 pub use tiger::run as tiger;

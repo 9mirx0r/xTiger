@@ -333,11 +333,11 @@ impl Fileset {
                         modfile.modpath().display()
                     );
                 }
-                eprintln!(
+                crate::note(&format!(
                     "Loading secondary mod {label} from: {}{}",
                     modfile.modpath().display(),
                     modfile.display_name().map_or_else(String::new, |name| format!(" \"{name}\"")),
-                );
+                ));
                 let kind = FileKind::LoadedMod(mod_idx);
                 let loaded_mod = LoadedMod::new(
                     kind,
@@ -739,7 +739,7 @@ fn get_modfile(
         if modfile_path.exists() {
             path = Some(modfile_path);
         } else {
-            eprintln!("Could not find mod {label} at: {}", modfile_path.display());
+            crate::note(&format!("Could not find mod {label} at: {}", modfile_path.display()));
         }
     }
     if path.is_none()
@@ -751,7 +751,7 @@ fn get_modfile(
                     p.join(format!("mod/ugc_{workshop_id}.mod")),
                 ));
             }
-            None => eprintln!("workshop_id defined, but could not find paradox directory"),
+            None => crate::note("workshop_id defined, but could not find paradox directory"),
         }
     }
     path

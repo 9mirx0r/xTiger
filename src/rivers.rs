@@ -217,7 +217,7 @@ impl Rivers {
 
         let Some(entry) = self.entry.as_ref() else {
             // Shouldn't happen, it should come from vanilla if not from the mod
-            eprintln!("{} is missing?!?", river_image_path());
+            crate::note(&format!("{} is missing?!?", river_image_path()));
             return;
         };
 

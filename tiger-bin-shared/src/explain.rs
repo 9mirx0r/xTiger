@@ -9,6 +9,12 @@ const WIDTH: usize = 78;
 
 /// Print the description of `key`, or the list of all keys when there is none.
 pub fn explain(key: Option<&str>) -> Result<()> {
+    explain_for(key, true)
+}
+
+/// The same as [`explain`]. Without `cli`, the lines about command line options are left out, for
+/// the menu of the automatic program.
+pub fn explain_for(key: Option<&str>, cli: bool) -> Result<()> {
     let Some(name) = key else {
         list_keys();
         return Ok(());
@@ -38,19 +44,26 @@ pub fn explain(key: Option<&str>) -> Result<()> {
     print_wrapped(info.fix);
     println!();
     println!("How to silence it");
-    print_wrapped(&format!(
+    print_wrapped(&silence(key));
+    if cli {
+        print_wrapped(&format!("This run only: add `--skip-key {key}`."));
+        print_wrapped(&format!(
+            "Every run: in ck3-tiger.conf, inside `filter = {{ trigger = {{ ... }} }}`, add \
+             `NOT = {{ key = {key} }}`."
+        ));
+        println!();
+        println!("To see only this key, run with `--only-key {key}`.");
+    }
+    Ok(())
+}
+
+/// How to silence one key at the place it is reported.
+pub(crate) fn silence(key: ErrorKey) -> String {
+    format!(
         "One place: put `#tiger-ignore(key={key})` on the line before it. Use \
          `#tiger-ignore(block, key={key})` for a whole block or `#tiger-ignore(file, key={key})` \
          for a whole file (see annotations.md)."
-    ));
-    print_wrapped(&format!("This run only: add `--skip-key {key}`."));
-    print_wrapped(&format!(
-        "Every run: in ck3-tiger.conf, inside `filter = {{ trigger = {{ ... }} }}`, add \
-         `NOT = {{ key = {key} }}`."
-    ));
-    println!();
-    println!("To see only this key, run with `--only-key {key}`.");
-    Ok(())
+    )
 }
 
 fn list_keys() {

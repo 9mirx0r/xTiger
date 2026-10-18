@@ -317,7 +317,9 @@ impl Errors<'_> {
                 }
             }
         }
-        self.storage.clear();
+        if !options.keep {
+            self.storage.clear();
+        }
         stats
     }
 
@@ -504,6 +506,9 @@ pub struct EmitOptions {
     pub pretty: bool,
     /// Do not print reports below this severity. They are only counted in [`ReportStats::hidden`].
     pub hide_below: Option<Severity>,
+    /// Keep the reports stored after printing them, so that they can be printed again. Without it
+    /// the store is emptied.
+    pub keep: bool,
 }
 
 /// Number of printed reports for each severity.
@@ -657,6 +662,11 @@ where
 /// Override the default `OutputStyle`. (Controls ansi colors)
 pub fn set_output_style(style: OutputStyle) {
     Errors::get_mut().styles = style;
+}
+
+/// Use the default colors in the output again, after [`disable_ansi_colors`].
+pub fn enable_ansi_colors() {
+    Errors::get_mut().styles = OutputStyle::default();
 }
 
 /// Disable color in the output.

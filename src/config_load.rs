@@ -39,20 +39,20 @@ pub fn validate_config_file(config: Option<PathBuf>) -> Option<PathBuf> {
         Some(config) => {
             if config.is_file() {
                 if config.extension().is_some_and(|s| s != "conf") {
-                    eprintln!(
+                    crate::note(&format!(
                         "{} is not a valid .conf file. Using the default conf file instead.",
                         config.display()
-                    );
+                    ));
                     None
                 } else {
-                    eprintln!("Using conf file: {}", config.display());
+                    crate::note(&format!("Using conf file: {}", config.display()));
                     Some(config)
                 }
             } else {
-                eprintln!(
+                crate::note(&format!(
                     "{} is not a valid file. Using the default conf file instead.",
                     config.display()
-                );
+                ));
                 None
             }
         }

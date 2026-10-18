@@ -2,8 +2,8 @@
 //! step with a spinner and the time it took. Everything here goes to stderr and is only meant for
 //! a person at a terminal; when stderr is redirected the steps are plain lines.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -11,6 +11,47 @@ use console::{StyledObject, Term};
 
 const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SPINNER_ASCII: [&str; 4] = ["|", "/", "-", "\\"];
+
+/// Held while a line is written, so a note from the library never lands in the middle of a spinner.
+static SCREEN: Mutex<()> = Mutex::new(());
+
+/// Where notes go while a full-screen display owns the terminal. `None` prints them as usual.
+static CAPTURED: Mutex<Option<Vec<String>>> = Mutex::new(None);
+
+/// Keep the notes instead of printing them, until [`take_notes`] hands them over.
+pub fn capture_notes() {
+    if let Ok(mut held) = CAPTURED.lock() {
+        held.get_or_insert_with(Vec::new);
+    }
+}
+
+/// The notes kept since the last call.
+pub fn take_notes() -> Vec<String> {
+    CAPTURED.lock().ok().and_then(|mut held| held.as_mut().map(std::mem::take)).unwrap_or_default()
+}
+
+/// Stop keeping notes: they are printed again.
+pub fn release_notes() {
+    if let Ok(mut held) = CAPTURED.lock() {
+        *held = None;
+    }
+}
+
+/// Say something while a step is running: it gets a line of its own above the spinner.
+pub fn note(message: &str) {
+    if let Ok(mut held) = CAPTURED.lock()
+        && let Some(kept) = held.as_mut()
+    {
+        kept.push(message.to_string());
+        return;
+    }
+    let _held = SCREEN.lock();
+    let term = Term::stderr();
+    if term.is_term() {
+        _ = term.clear_line();
+    }
+    eprintln!("{}", style(message).dim());
+}
 
 /// `XTIGER_FORCE_TTY=1` gives the terminal experience when the output is captured, which is how
 /// the pictures in the documentation are made. Steps are then printed without a spinner.
@@ -26,7 +67,17 @@ pub fn style<D>(value: D) -> StyledObject<D> {
 
 /// Whether the terminal is known to draw characters beyond ASCII properly.
 pub fn fancy_glyphs() -> bool {
-    forced() || Term::stderr().features().wants_emoji()
+    forced() || Term::stderr().features().wants_emoji() || modern_windows_console()
+}
+
+/// The `console` crate only trusts Windows Terminal (`WT_SESSION`). Every console since Windows 10
+/// draws these glyphs with a fallback font, so a person at one is not sent to the plain version.
+/// `XTIGER_ASCII=1` asks for the plain one anyway.
+fn modern_windows_console() -> bool {
+    cfg!(windows)
+        && Term::stderr().features().is_attended()
+        && std::env::var_os("XTIGER_ASCII").is_none()
+        && std::env::var("TERM").map_or(true, |term| term != "dumb")
 }
 
 /// The glyph in front of a finished step.
@@ -67,8 +118,11 @@ impl Stage {
                         style(frames[i % frames.len()]).cyan(),
                         style(format!("{}s", started.elapsed().as_secs())).dim()
                     );
-                    _ = term.clear_line();
-                    _ = term.write_str(&line);
+                    {
+                        let _held = SCREEN.lock();
+                        _ = term.clear_line();
+                        _ = term.write_str(&line);
+                    }
                     i += 1;
                     thread::sleep(Duration::from_millis(90));
                 }

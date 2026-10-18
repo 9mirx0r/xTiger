@@ -1,4 +1,4 @@
-use strum::VariantNames;
+use strum::VariantNames as _;
 use strum_macros::{Display, FromRepr, IntoStaticStr, VariantNames};
 use thiserror::Error;
 

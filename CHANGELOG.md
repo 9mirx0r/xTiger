@@ -1,5 +1,48 @@
 # Changelog
 
+## xTiger 1.6.8 alpha
+
+### New
+
+- **A full-screen display for `ck3-tiger-auto.exe`.** It now opens a real screen instead of
+  scrolling text: the list of your mods on the left (type to search, or paste a folder or a
+  `.mod` file) and what it found about your setup on the right; a screen that shows each step of
+  the check as it runs; and a result you can move through. The result has three views (Causes,
+  Files, Reports), a panel on the right that explains the selected cause and how to fix it, or
+  shows the report with the line of code it is about, a filter by severity, and keys to open the
+  full report or the file in your editor, check another mod, change the game folder or the folder
+  of your files, or update. F1 lists the keys (so does `?` on the result). A mod with no problems gets a short "nothing to fix" screen. A window
+  smaller than 64x18 asks to be made bigger.
+  Where a full screen is not possible (output sent to a file, `TERM=dumb`), or when you ask for
+  the plain menu with `--plain` or `XTIGER_ASCII=1`, the arrow-key menu is used as before.
+  `ck3-tiger.exe` and its commands keep printing text.
+
+### Fixes
+
+- **The command-line programs no longer vanish.** Double-clicking `ck3-tiger.exe` or
+  `ck3-tiger-auto.exe` opened a window that closed the moment the program ended, so an error, or
+  the result of a check, could not be read. The window now waits for Enter when it was opened by a
+  double-click. Started from a terminal, nothing changes.
+- **A first-run screen for the command-line programs.** `ck3-tiger-auto.exe` (and `ck3-tiger.exe`
+  when it is opened without a mod) now starts by looking for your files and shows what it found: the
+  game, your Paradox user folder, the Workshop. When the game is not in a Steam library, for
+  example a copy you downloaded or installed elsewhere, it says so and asks you to paste the
+  folder, no command needed. It checks that the folder is really the game (a path to the `game`
+  folder, to a file inside it, or to the folder around it also works), remembers it for next time,
+  and goes on to the list of mods. A user folder moved to OneDrive is found too.
+- **`ck3-tiger-auto.exe` stays open with a menu.** After the result it no longer says "Press Enter
+  to close". It shows the result card and a menu you move through with the arrow keys (or a
+  number): look at the causes and what each one means, read the errors page by page, open the full
+  report, check another mod, change the game folder, look for a newer xTiger, or quit. Mods are
+  also picked with the arrow keys.
+- **A cleaner screen.** Each phase starts on a fresh screen, so the logo is no longer pushed out of
+  view, and there is a single prompt where there were two. A note from the library ("Loading
+  secondary mod ...") gets its own line instead of being written over the progress spinner.
+- **`ck3_run` no longer looks stuck.** A play-test takes minutes, and some assistants (VS Code, for
+  one) show a call that long as hanging. `ck3_run` now runs the game as a job and waits up to 150
+  seconds; if the run is still going, it answers with the job id and `ck3_job` follows it. A run that
+  ends sooner is answered exactly as before.
+
 ## xTiger 1.6.7 alpha
 
 A hardening release: an outside audit of 1.6.6 found six problems, all of them real, and all are fixed

@@ -112,7 +112,7 @@ impl ModFile {
         let modpath = if let Some(path) = &self.path {
             fix_slashes_for_target_platform(dirpath.join(path.as_str()))
         } else {
-            eprintln!("No mod path found in modfile {}", modpathname.display());
+            crate::note(&format!("No mod path found in modfile {}", modpathname.display()));
             dirpath.to_path_buf()
         };
 
@@ -120,7 +120,7 @@ impl ModFile {
         // message. Falling back to the folder of the .mod file would check the wrong tree and
         // report a mod with nothing wrong in it.
         if !modpath.exists() {
-            eprintln!("Deduced mod path not found: {}", modpath.display());
+            crate::note(&format!("Deduced mod path not found: {}", modpath.display()));
         }
         modpath
     }

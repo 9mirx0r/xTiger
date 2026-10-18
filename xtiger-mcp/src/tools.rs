@@ -2,7 +2,7 @@
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -98,6 +98,8 @@ impl From<&str> for CallError {
     }
 }
 
+/// How long `ck3_run` waits for its play-test before it answers that the job is still running.
+const RUN_WAIT: Duration = Duration::from_secs(150);
 const READ_ONLY: &str = "readOnly";
 const LOCAL: &str = "local";
 /// Rewrites files the user owns: the client should ask first.
@@ -399,7 +401,7 @@ fn base_tools() -> Vec<Tool> {
                           screenshot. Every requested command must be confirmed in debug.log. A run that tested nothing (stopped, failed, or a mod the game did not \
                           load) is an error, with the report in its message. Earlier logs are moved to \
                           logs/xtiger-archive. Input stops if another \
-                          window takes focus; use background to leave the user's screen alone. Windows only; takes a few minutes. The mod must be enabled in the \
+                          window takes focus; use background to leave the user's screen alone. Windows only; takes a few minutes: the call waits up to 150 s, and a longer run is answered with a job id, still running in the server, which ck3_job follows. The mod must be enabled in the \
                           launcher playset or a playset of xTiger, or passed in mods or playset.",
             params: run_params(),
             required: &[],
@@ -2435,14 +2437,54 @@ pub fn call(
         "ck3_run" => {
             let prepared = prepare_run(&args, loc, ctx)?;
             let run = prepared.run();
-            let mut progress = |line: &str| (ctx.progress)(line);
-            let mut control = game::Control {
-                cancelled: ctx.cancelled,
-                progress: &mut progress,
-                tick: &mut || {},
+            // The game runs as a job of this server, and this call waits for it for a while. A
+            // client that gives up on a call that lasts minutes would otherwise look stuck.
+            let meta = jobs::Meta {
+                mod_ref: prepared.working.clone(),
+                mod_dir: prepared.mod_dir.clone(),
+                ..jobs::Meta::default()
             };
-            let (text, shot) = game::run_game(loc, &run, &mut control)?;
-            let text = format!("{}{text}", prepared.playset_note);
+            let record = jobs::start(loc, &run, meta)?;
+            let id = record.id.clone();
+            let waited = Instant::now();
+            let mut record = record;
+            while !record.state.is_over() && waited.elapsed() < RUN_WAIT {
+                if (ctx.cancelled)() {
+                    jobs::cancel(&loc.state_dir, &id)?;
+                    return Err(CallError::Failed("Cancelled.".to_owned()));
+                }
+                record = jobs::status(&loc.state_dir, &id, Duration::from_secs(2), ctx.cancelled)?;
+                if let Some(line) = &record.progress {
+                    (ctx.progress)(line);
+                }
+            }
+            if !record.state.is_over() {
+                let (budget, waited_secs) = (record.budget_secs, RUN_WAIT.as_secs());
+                let text = format!(
+                    "{}The play-test is still running as job {id} (up to {budget} s in all). This call \
+                     stopped waiting after {waited_secs} s so that it does not look stuck; the game \
+                     keeps running in this server. ck3_job with action status (wait up to 30 s) \
+                     follows it, and action result gives the report once it is over.\n\n{}",
+                    prepared.playset_note,
+                    serde_json::to_string_pretty(&jobs::View::new(record, false))
+                        .unwrap_or_default()
+                );
+                return Ok(Done {
+                    content: vec![Content::Text(text)],
+                    note: Note {
+                        summary: format!("Job {id} still running"),
+                        mod_ref: prepared.working,
+                        run_id: None,
+                        found: None,
+                    },
+                });
+            }
+            let report = jobs::result_text(&loc.state_dir, &id).unwrap_or_default();
+            let text = format!("{}{report}", prepared.playset_note);
+            if record.state != jobs::State::Finished {
+                return Err(CallError::Failed(text));
+            }
+            let shot = record.screenshot.clone().filter(|path| path.is_file());
             let mut summary = if run.background {
                 format!("Played as {} in the background", prepared.play)
             } else {
@@ -2472,6 +2514,7 @@ pub fn call(
                 client: ctx.client.map(str::to_owned),
                 session: ctx.session.to_owned(),
                 args: journal::brief_args(arguments),
+                journal: true,
             };
             let record = jobs::start(loc, &run, meta)?;
             let id = record.id.clone();

@@ -337,7 +337,7 @@ impl FileHandler<FileContent> for Ck3Provinces {
     fn finalize(&mut self) {
         if self.definition_csv.is_none() {
             // Shouldn't happen, it should come from vanilla if not from the mod
-            eprintln!("map_data/definition.csv is missing?!?");
+            crate::note("map_data/definition.csv is missing?!?");
             return;
         }
         let definition_csv = self.definition_csv.as_ref().unwrap();

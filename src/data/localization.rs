@@ -16,7 +16,7 @@ use bitvec::{BitArr, bitarr};
 use murmur3::murmur3_32;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rayon::scope;
-use strum::{EnumCount, IntoEnumIterator};
+use strum::{EnumCount as _, IntoEnumIterator};
 use strum_macros::{Display, EnumCount, EnumIter, EnumString, FromRepr, IntoStaticStr};
 
 use crate::block::Block;

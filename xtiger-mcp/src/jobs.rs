@@ -97,6 +97,8 @@ pub struct Meta {
     pub session: String,
     /// The arguments, shortened, for the journal.
     pub args: Map<String, Value>,
+    /// Whether the job is a journal entry of its own. A call that waits for its own job is already one.
+    pub journal: bool,
 }
 
 fn dir(state_dir: &Path) -> PathBuf {
@@ -252,7 +254,7 @@ fn note_line(record: &mut Record, line: &str) {
 /// The part of a job that changes while it runs, and what keeps it on disk and in the journal.
 struct Live {
     record: Record,
-    running: journal::Running,
+    running: Option<journal::Running>,
     saved: Instant,
 }
 
@@ -265,7 +267,9 @@ impl Live {
         self.record.updated_at = now_ms();
         save(state_dir, &self.record);
         let progress = self.record.progress.clone();
-        self.running.touch(progress.as_deref());
+        if let Some(running) = &mut self.running {
+            running.touch(progress.as_deref());
+        }
     }
 }
 
@@ -318,7 +322,7 @@ pub fn start(loc: &Locations, run: &RunGame, meta: Meta) -> Result<Record, Strin
         found: None,
         session: Some(meta.session),
     };
-    let running = journal::Running::start(&loc.state_dir, entry);
+    let running = meta.journal.then(|| journal::Running::start(&loc.state_dir, entry));
     let cancel = Arc::new(AtomicBool::new(false));
     let handle = {
         let loc = loc.clone();
@@ -379,7 +383,9 @@ fn work(loc: &Locations, started: Started, live: Live, cancel: &AtomicBool) {
     let _ = fs::write(result_path(&loc.state_dir, &record.id), &text);
     let summary = record.summary.clone().unwrap_or_default();
     live.write(&loc.state_dir, true);
-    live.running.finish(outcome, &summary);
+    if let Some(running) = live.running.take() {
+        running.finish(outcome, &summary);
+    }
 }
 
 /// A job as it is shown: its record, how long it has run, and, when asked, whether the mod's files

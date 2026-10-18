@@ -14,10 +14,26 @@ pub use crate::report::{
     CliFilter, Confidence, EmitOptions, ErrorKey, KeyCount, KeyInfo, LogReportMetadata,
     LogReportPointers, OutputFormat, PointedMessage, ReportStats, Severity, add_loaded_mod_root,
     all_keys, config_reports_pending, disable_ansi_colors, emit_reports, emit_reports_with,
-    key_info, log, restrict_reports, set_output_style, set_show_loaded_mods, set_show_vanilla,
-    suppress_from_json, take_reports,
+    enable_ansi_colors, key_info, log, restrict_reports, set_output_style, set_show_loaded_mods,
+    set_show_vanilla, suppress_from_json, take_reports,
 };
 pub use crate::token::{Loc, Token};
+
+static NOTE_HOOK: std::sync::OnceLock<fn(&str)> = std::sync::OnceLock::new();
+
+/// Let the program decide how a progress note from the library is shown, for example so that it
+/// does not land in the middle of a spinner line. Without a hook, notes go to the error output.
+pub fn set_note_hook(hook: fn(&str)) {
+    _ = NOTE_HOOK.set(hook);
+}
+
+/// Say something about what is being loaded, as one line.
+pub(crate) fn note(message: &str) {
+    match NOTE_HOOK.get() {
+        Some(hook) => hook(message),
+        None => eprintln!("{message}"),
+    }
+}
 
 #[cfg(feature = "internal_benches")]
 mod benches;

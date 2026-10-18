@@ -16,12 +16,10 @@ use tiger_lib::{
 
 use crate::GameConsts;
 use crate::explain::explain;
-use crate::gamedir::{
-    find_game_directory_steam, find_paradox_directory, find_workshop_directory_steam,
-};
+use crate::firstrun::{ask_game, ask_paradox, find_game, find_paradox, find_workshop, welcome};
 use crate::guide::{self, Guide};
 use crate::pick::{choose, local_mods};
-use crate::progress::{Stage, forced, header};
+use crate::progress::{Stage, forced, header, note};
 use crate::update::{notice, set_notices, update};
 use crate::version::warn_versions;
 
@@ -230,8 +228,7 @@ pub fn run(
 ) -> Result<()> {
     use clap::FromArgMatches;
 
-    let &GameConsts { name, name_short, version, app_id, signature_file, paradox_dir } =
-        game_consts;
+    let &GameConsts { name, name_short, version, signature_file, .. } = game_consts;
 
     let matches = command(current_version).get_matches();
     let cli = Cli::from_arg_matches(&matches).map_err(|err| err.exit()).unwrap();
@@ -259,6 +256,7 @@ pub fn run(
             let default_hook = std::panic::take_hook();
             std::panic::set_hook(Box::new(move |info| {
                 default_hook(info);
+                crate::pause::before_closing();
                 std::process::exit(EXIT_FAILURE);
             }));
 
@@ -315,14 +313,34 @@ pub fn run(
 
             crate::brand::banner(current_version, !args.no_color);
 
+            // Opened without a mod and without folders, as with a double-click: show what was
+            // found, and ask for what was not, before the list of mods.
+            if args.modpath.is_none()
+                && can_choose
+                && args.game.is_none()
+                && args.paradox.is_none()
+                && args.workshop.is_none()
+            {
+                let folders = welcome(game_consts)?;
+                args.game = Some(folders.game);
+                args.workshop = folders.workshop;
+                args.paradox = Some(folders.paradox);
+                eprintln!();
+            }
             if args.game.is_none() {
-                args.game = find_game_directory_steam(app_id).ok();
+                args.game = match find_game(game_consts) {
+                    Some((game, _)) => Some(game),
+                    // At a terminal the user can tell us where the game is.
+                    None if can_choose => Some(ask_game(game_consts)?),
+                    None => None,
+                };
             }
             if args.workshop.is_none() {
-                args.workshop = find_workshop_directory_steam(app_id).ok();
+                args.workshop =
+                    args.game.as_deref().and_then(|game| find_workshop(game_consts, game));
             }
             if args.paradox.is_none() {
-                args.paradox = find_paradox_directory(&PathBuf::from(paradox_dir));
+                args.paradox = find_paradox(game_consts).map(|(paradox, _)| paradox);
             }
             if let Some(ref mut game) = args.game {
                 if !human {
@@ -406,12 +424,11 @@ pub fn run(
                 let mut modfile_path = match args.modpath.take() {
                     Some(path) => path,
                     None => {
-                        let Some(paradox) = args.paradox.as_deref() else {
-                            bail!(
-                                "Could not find your Paradox folder to list the mods. Use --paradox <folder>, or give the path of a .mod file."
-                            );
+                        let paradox = match args.paradox.take() {
+                            Some(paradox) => paradox,
+                            None => ask_paradox(game_consts)?,
                         };
-                        let mods = local_mods(paradox);
+                        let mods = local_mods(&paradox);
                         choose(&mods)?
                     }
                 };
@@ -450,6 +467,9 @@ pub fn run(
                     eprintln!("Using mod directory: {}", modpath.display());
                 }
 
+                if human {
+                    tiger_lib::set_note_hook(note);
+                }
                 let reading = step(human, "Reading the game files and your mod");
                 everything = Everything::new(
                     args.config.as_deref(),
@@ -545,6 +565,7 @@ pub fn run(
                 summary_last: args.format == Format::Full && !terminal_view,
                 pretty: tty_out,
                 hide_below: fold.then_some(Severity::Warning),
+                keep: false,
             };
             if human {
                 eprintln!();
@@ -566,6 +587,7 @@ pub fn run(
                     filtered: narrowed,
                     has_fail_on: args.fail_on != FailOn::Never,
                     only_keys: &args.only_key.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                    show_next: true,
                 });
             } else if args.format != Format::Json && stats.total() == 0 {
                 if narrowed {
