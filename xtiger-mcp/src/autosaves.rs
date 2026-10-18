@@ -65,13 +65,15 @@ pub fn restore(user: &Path) -> Result<bool, String> {
         }
         let saves = user.join("save games");
         fs::create_dir_all(&saves).map_err(|error| error.to_string())?;
-        for name in &names {
-            fs::copy(backup.join(name), saves.join(name)).map_err(|error| error.to_string())?;
-        }
+        // Remove test files before restoring: on Windows a copy over a differently cased
+        // name can retain that casing, so later cleanup would remove the restored original.
         for path in files(&saves)? {
             if !names.iter().any(|name| path.file_name() == Some(std::ffi::OsStr::new(name))) {
                 fs::remove_file(path).map_err(|error| error.to_string())?;
             }
+        }
+        for name in &names {
+            fs::copy(backup.join(name), saves.join(name)).map_err(|error| error.to_string())?;
         }
         for name in &names {
             fs::remove_file(backup.join(name)).map_err(|error| error.to_string())?;
@@ -104,6 +106,22 @@ mod tests {
         assert_eq!(fs::read(saves.join("autosave.ck3")).unwrap(), b"original");
         assert_eq!(fs::read(saves.join("campaign.ck3")).unwrap(), b"manual save");
         assert!(!saves.join("autosave_1.ck3").exists());
+        assert!(!tmp.join(BACKUP).exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn restores_an_original_when_the_game_recreates_its_name_in_lowercase() {
+        let tmp = TempDir::new();
+        let saves = tmp.join("save games");
+        fs::create_dir(&saves).unwrap();
+        fs::write(saves.join("Autosave.ck3"), b"original").unwrap();
+        preserve(&tmp).unwrap();
+        fs::remove_file(saves.join("Autosave.ck3")).unwrap();
+        fs::write(saves.join("autosave.ck3"), b"test game").unwrap();
+        restore(&tmp).unwrap();
+        assert_eq!(fs::read(saves.join("autosave.ck3")).unwrap(), b"original");
+        assert_eq!(files(&saves).unwrap()[0].file_name().unwrap(), "Autosave.ck3");
         assert!(!tmp.join(BACKUP).exists());
     }
 

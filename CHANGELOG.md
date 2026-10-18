@@ -9,6 +9,7 @@
 - Add `observe_years` and `simulation_timeout` to `ck3_run` and `ck3_run_start`: run in observer
   mode at speed 5, wait for the game's completion log, and retain the raw logs beside the report.
   Observer tests preserve the player's rotating autosaves, including on cancellation.
+  Restoration handles filename casing changes on Windows.
   Jobs expose the simulation phase; timeouts and early exits fail. Console input waits for the
   console to become visible before typing.
 
