@@ -1,0 +1,4 @@
+# Custom trait names do not replace the engine's separate group labels.
+t27_localized = { group = t27_complete name = t27_name desc = t27_desc icon = brave }
+t27_partial = { group = t27_partial name = t27_name desc = t27_desc icon = brave }
+t27_equivalent = { group_equivalence = t27_absent name = t27_name desc = t27_desc icon = brave }

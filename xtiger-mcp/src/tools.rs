@@ -184,6 +184,16 @@ fn run_params() -> Vec<(&'static str, Value)> {
         ),
         ("load_timeout", integer("Seconds to wait for the game to load.", 300, 30)),
         (
+            "observe_years",
+            json!({"type": "integer", "minimum": 0, "maximum": 1000, "default": 0,
+            "description": "After commands, enter observer mode and simulate this many in-game years at speed 5, then pause and read the logs. Zero disables it. Requires screen access (background false in the app). Use ck3_run_start for long runs."}),
+        ),
+        (
+            "simulation_timeout",
+            json!({"type": "integer", "minimum": 30, "maximum": 7200, "default": 1800,
+            "description": "Wall-clock seconds allowed for the simulation, separately from load_timeout. Reaching this deadline is a failure, never a completed simulation."}),
+        ),
+        (
             "typing",
             json!({"type": "string", "enum": ["unicode", "scancode"], "default": "unicode",
                        "description": "unicode works on any keyboard layout. scancode is a fallback that \
@@ -1786,6 +1796,8 @@ struct PreparedRun {
     screenshot: bool,
     keep_open: bool,
     load_timeout: u64,
+    observe_years: u64,
+    simulation_timeout: u64,
     background: bool,
     /// The first mod asked for, and its folder.
     working: Option<ModRef>,
@@ -1802,6 +1814,8 @@ impl PreparedRun {
             keep_open: self.keep_open,
             mods: &self.mods,
             load_timeout: self.load_timeout,
+            observe_years: self.observe_years,
+            simulation_timeout: self.simulation_timeout,
             typing: &self.typing,
             background: self.background,
         }
@@ -1864,6 +1878,8 @@ fn prepare_run(args: &Args, loc: &Locations, ctx: &mut Context) -> Result<Prepar
         screenshot: args.boolean("screenshot", true)?,
         keep_open: args.boolean("keep_open", false)?,
         load_timeout: args.integer("load_timeout", 300)?.clamp(30, 3600),
+        observe_years: args.integer("observe_years", 0)?,
+        simulation_timeout: args.integer("simulation_timeout", 1800)?,
         background: loc.game_tests_background || args.boolean("background", false)?,
         working,
         mod_dir,
@@ -2527,7 +2543,7 @@ pub fn call(
                 if run.background {
                     "background run".to_owned()
                 } else {
-                    format!("{} console commands", run.commands.len())
+                    format!("{} console commands", record.commands_total)
                 },
                 budget,
                 serde_json::to_string_pretty(&jobs::View::new(record, false)).unwrap_or_default()

@@ -103,6 +103,23 @@ fn build_on_action_hashmap(
 mod tests {
     use super::*;
 
+    #[test]
+    fn faith_creation_and_conversion_have_distinct_contracts() {
+        let created = &ON_ACTION_SCOPES_MAP["on_faith_created"];
+        assert_eq!(created.root, Scopes::Faith);
+        for (name, scope) in [
+            ("founder", Scopes::Character),
+            ("old_faith", Scopes::Faith),
+            ("old_rite", Scopes::Rite),
+            ("diverged", Scopes::Bool),
+        ] {
+            assert!(created.names.iter().any(|entry| entry == &(name.to_owned(), scope)));
+        }
+        for name in ["on_faith_conversion", "on_character_faith_change"] {
+            assert_eq!(ON_ACTION_SCOPES_MAP[name].root, Scopes::Character, "{name}");
+        }
+    }
+
     /// The table is parsed on first use, and a misspelled scope type in it would panic then.
     #[test]
     fn the_builtin_table_parses() {

@@ -1,0 +1,15 @@
+t26_spiritual_effect = {
+    create_character = {
+        age = 30
+        location = capital_province
+        gender_female_chance = t26_clergy_gender
+    }
+}
+t26_fixed_spiritual_effect = {
+    save_scope_as = t26_creator
+    create_character = {
+        age = 30
+        location = capital_province
+        gender_female_chance = t26_fixed_gender
+    }
+}

@@ -1,0 +1,4 @@
+t25_valid = { group = t25_localized level = 1 icon = brave }
+t25_missing = { group = t25_missing_group level = 1 icon = brave }
+t25_missing_second = { group = t25_missing_group level = 2 icon = brave }
+t25_equivalent = { group_equivalence = t25_missing_equivalent icon = brave }

@@ -13,6 +13,8 @@ param(
     [string]$Bookmark = "bm_867_carolingians",
     [string]$Play = "k_france",
     [int]$LoadTimeout = 300,
+    [ValidateRange(0,1000)][int]$ObserveYears = 0,
+    [ValidateRange(30,7200)][int]$SimulationTimeout = 1800,
     [string]$ShotDir = "",
     [string[]]$Mod = @(),
     [string]$Report = "",
@@ -41,12 +43,14 @@ trap { Restore-DlcLoad; break }
 if (-not $GameDir) { throw "Pass -GameDir or set CK3_GAME_DIR to the CK3 install folder (the one with binaries\ck3.exe)." }
 if (-not $UserDir) { $UserDir = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "Paradox Interactive\Crusader Kings III" }
 . (Join-Path $PSScriptRoot "ck3-input.ps1")
+. (Join-Path $PSScriptRoot "ck3-simulation.ps1")
 # -CmdFile holds one console command per line, which avoids quoting trouble when called from other tools.
 if ($CmdFile) { $Cmd += @(Get-Content $CmdFile -Encoding utf8 | Where-Object { $_.Trim() }) }
 $exe  = Join-Path $GameDir "binaries\ck3.exe"
 $logs = Join-Path $UserDir "logs"
 if (-not (Test-Path $exe)) { throw "ck3.exe not found at $exe" }
 if (Get-Process ck3 -ErrorAction SilentlyContinue) { throw "CK3 is already running; close it first so the logs belong to this run." }
+if ($Background -and $ObserveYears) { throw "Observer simulations need screen access to enter observer mode and start the simulation." }
 if ($Background -and $Cmd) { throw "A background run types nothing, so it cannot send console commands. Let the mod trigger its events from an on_action instead." }
 if ($Background) { $Shot = ""; $ShotDir = "" }
 # Refuse untypeable commands before launching, instead of silently dropping characters.
@@ -110,7 +114,7 @@ if ($modFiles) {
 
 # Move the previous logs aside so the report only covers this run, and keep them for later comparison.
 $archive = Join-Path $logs "xtiger-archive\$runId"
-foreach ($f in "error.log","game.log","exceptions.log","debug.log") {
+foreach ($f in "error.log","game.log","exceptions.log","debug.log","timed_performance_test.log") {
     $src = Join-Path $logs $f
     if (Test-Path $src) { New-Item -ItemType Directory -Force $archive | Out-Null; Move-Item $src $archive }
 }
@@ -187,7 +191,16 @@ try {
     # Open the console once. The game can still be streaming assets, and keys typed before the
     # console takes text are lost (a run once lost the first three letters of a command).
     Mark $(if ($Background) { "settle" } else { "focus" })
-    if ($Cmd) { Send-Tap $p 0x29; Start-Sleep -Milliseconds 2000; Mark "open console" }
+    if ($Cmd) {
+        $consoleDeadline = (Get-Date).AddSeconds(60)
+        while (-not (Test-ConsoleOpen $p)) {
+            if ($p.HasExited) { throw "game exited before its console became ready" }
+            if ((Get-Date) -ge $consoleDeadline) { throw "the game console did not become ready within 60 s" }
+            Send-Tap $p 0x29
+            Start-Sleep 2
+        }
+        Mark "open console"
+    }
     foreach ($c in $Cmd) {
         # Typing stops with an error when another window takes focus. The command was not sent then
         # (Enter is the last key), so it is safe to clear the line and type it again. A command that was
@@ -230,6 +243,15 @@ try {
         $sent += $c; Write-Host ("sent: $c" + $(if ($seen) { " (confirmed)" } else { " (not logged yet)" }))
     }
     if ($Cmd) { Send-Tap $p 0x29; Start-Sleep -Milliseconds 400 }   # close the console
+    if ($ObserveYears -gt 0) {
+        # The benchmark starts the clock and pauses itself when the requested years have passed.
+        # Select speed 5 with the map shortcut, after the console has closed.
+        Send-Tap $p 0x06
+        $simulation = Wait-CK3Simulation $p (Join-Path $logs "timed_performance_test.log") $ObserveYears $SimulationTimeout
+        $out += $simulation
+        Write-Host $simulation
+        Mark "observer simulation"
+    }
     if ($Shot) { Save-WindowShot $p $Shot; Write-Host "screenshot $Shot" }
     Mark "close console + shot"
 } catch {
@@ -251,6 +273,7 @@ do {
 } while ((Get-Date) -lt $deadline -and -not $p.HasExited)
 $unconfirmed = $sent.Count -ne $Cmd.Count -or ($flags -contains $false)
 Mark "confirm in debug.log"
+Write-Host "commands confirmed: $(@($flags | Where-Object { $_ }).Count)"
 $out += "commands sent: $($sent.Count) of $($Cmd.Count), run by the game: $(@($flags | Where-Object { $_ }).Count)"
 for ($i = 0; $i -lt $sent.Count; $i++) {
     $out += if ($flags[$i]) { "  ran      > $($sent[$i])" } else { "  unconfirmed > $($sent[$i])  (not in debug.log: mistyped, unknown, or a command the game does not log; check its output)" }

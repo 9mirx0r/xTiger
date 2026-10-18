@@ -1,0 +1,22 @@
+t26_head_weight = {
+    value = 1
+    if = {
+        limit = { any_sub_realm_barony = { is_holy_site_of = root.faith } }
+        add = 40
+    }
+}
+t26_clergy_gender = {
+    if = { limit = { root.rite = { always = yes } } add = 0 }
+    else = { add = 50 }
+}
+t26_fixed_weight = {
+    value = 1
+    if = {
+        limit = { any_sub_realm_barony = { is_holy_site_of = prev.faith } }
+        add = 40
+    }
+}
+t26_fixed_gender = {
+    if = { limit = { scope:t26_creator.rite = { always = yes } } add = 0 }
+    else = { add = 50 }
+}

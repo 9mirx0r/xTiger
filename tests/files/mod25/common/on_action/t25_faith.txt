@@ -1,0 +1,21 @@
+on_faith_created = {
+    effect = {
+        remove_religious_head_title = yes
+        scope:founder ?= { add_gold = 1 }
+        scope:old_faith = { remove_religious_head_title = yes }
+        scope:old_rite = { save_scope_as = t25_old_rite }
+        if = { limit = { scope:diverged ?= yes } remove_religious_head_title = yes }
+        add_gold = 1
+    }
+}
+on_faith_conversion = {
+    effect = {
+        add_gold = 1
+        scope:founder ?= { add_gold = 1 }
+        scope:old_rite = { save_scope_as = t25_old_rite }
+        remove_religious_head_title = yes
+    }
+}
+on_character_faith_change = {
+    effect = { add_gold = 1 remove_religious_head_title = yes }
+}

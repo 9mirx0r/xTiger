@@ -1,5 +1,17 @@
 # Changelog
 
+## xTiger 1.6.10 alpha
+
+- Correct the CK3 1.20 `on_faith_created` contract: the new faith is the root, with `founder`,
+  `old_faith`, `old_rite` and `diverged` scopes. Conversion on-actions keep a character root.
+- Report missing `trait_<group>` localization for trait groups and equivalence groups, at the
+  group value in each trait. Group descriptions are not required.
+- Add `observe_years` and `simulation_timeout` to `ck3_run` and `ck3_run_start`: run in observer
+  mode at speed 5, wait for the game's completion log, and retain the raw logs beside the report.
+  Observer tests preserve the player's rotating autosaves, including on cancellation.
+  Jobs expose the simulation phase; timeouts and early exits fail. Console input waits for the
+  console to become visible before typing.
+
 ## xTiger 1.6.9 alpha
 
 ### Fixed

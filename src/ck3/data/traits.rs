@@ -259,8 +259,12 @@ impl Trait {
         vd.field_bool("immortal");
         vd.field_bool("can_have_children");
         vd.field_bool("enables_inbred");
-        vd.field_value("group");
-        vd.field_value("group_equivalence");
+        for field in ["group", "group_equivalence"] {
+            if let Some(group) = vd.field_value(field) {
+                let loca = format!("trait_{group}");
+                data.verify_exists_implied(Item::Localization, &loca, group);
+            }
+        }
         vd.field_numeric("same_opinion");
         vd.field_numeric("same_opinion_if_same_faith");
         vd.field_numeric("opposite_opinion");

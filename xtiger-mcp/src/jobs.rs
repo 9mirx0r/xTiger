@@ -57,7 +57,7 @@ impl State {
 pub struct Record {
     pub id: String,
     pub state: State,
-    /// What the run is doing: starting, loading, commands or finishing.
+    /// What the run is doing: starting, loading, commands, simulating or finishing.
     pub phase: String,
     /// The process id of the server that runs it.
     pub owner: u32,
@@ -72,6 +72,8 @@ pub struct Record {
     pub background: bool,
     pub play: String,
     pub bookmark: String,
+    #[serde(default)]
+    pub observe_years: u64,
     pub commands_total: usize,
     /// Commands typed so far, and how many of them the game had logged when typed.
     pub commands_sent: usize,
@@ -245,6 +247,12 @@ fn note_line(record: &mut Record, line: &str) {
         if rest.trim_end().ends_with("(confirmed)") {
             record.commands_seen += 1;
         }
+    } else if let Some(count) = line.strip_prefix("commands confirmed: ") {
+        if let Ok(count) = count.parse::<usize>() {
+            record.commands_seen = count.min(record.commands_sent);
+        }
+    } else if line.starts_with("simulation:") {
+        "simulating".clone_into(&mut record.phase);
     } else if line.starts_with("report ") || line.starts_with("game closed") {
         "finishing".clone_into(&mut record.phase);
     }
@@ -293,7 +301,8 @@ pub fn start(loc: &Locations, run: &RunGame, meta: Meta) -> Result<Record, Strin
         background: run.background,
         play: run.play.to_owned(),
         bookmark: run.bookmark.to_owned(),
-        commands_total: run.commands.len(),
+        observe_years: run.observe_years,
+        commands_total: started.command_count(),
         commands_sent: 0,
         commands_seen: 0,
         budget_secs: started.budget().as_secs(),
@@ -339,7 +348,9 @@ pub fn start(loc: &Locations, run: &RunGame, meta: Meta) -> Result<Record, Strin
 
 /// The summary a finished job leaves in the journal.
 fn summary_of(record: &Record) -> String {
-    if record.background {
+    if record.observe_years > 0 {
+        format!("Observed {} in-game years", record.observe_years)
+    } else if record.background {
         "Played in the background".to_owned()
     } else {
         format!(
@@ -496,6 +507,7 @@ mod tests {
             background: false,
             play: "k_france".to_owned(),
             bookmark: "bm_867_carolingians".to_owned(),
+            observe_years: 0,
             commands_total: 2,
             commands_sent: 0,
             commands_seen: 0,
@@ -522,6 +534,12 @@ mod tests {
         assert_eq!((job.commands_sent, job.commands_seen), (2, 1));
         assert_eq!(job.phase, "commands");
         assert_eq!(job.progress.as_deref(), Some("sent: event a.0002 (not logged yet)"));
+        note_line(&mut job, "commands confirmed: 2");
+        assert_eq!(job.commands_seen, 2);
+        note_line(&mut job, "commands confirmed: invalid");
+        assert_eq!(job.commands_seen, 2);
+        note_line(&mut job, "simulation: waiting for 10 years (30 s elapsed)");
+        assert_eq!(job.phase, "simulating");
         note_line(&mut job, "report C:\\x\\report.txt (80 lines)");
         assert_eq!(job.phase, "finishing");
     }

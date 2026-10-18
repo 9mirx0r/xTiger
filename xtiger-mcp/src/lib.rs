@@ -3,6 +3,7 @@
 //!
 //! The xTiger app uses [`locate`] and [`mods`] too, so both always find the same things.
 
+mod autosaves;
 pub mod docs;
 pub mod game;
 pub mod gap;

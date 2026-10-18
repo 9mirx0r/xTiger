@@ -17,13 +17,22 @@ use crate::helper::{self, Reply, Step, Trouble};
 use crate::locate::Locations;
 use crate::runs::{most_common, no_window};
 
-pub const LOGS: [&str; 6] = ["error", "game", "exceptions", "debug", "database_conflicts", "setup"];
+pub const LOGS: [&str; 7] = [
+    "error",
+    "game",
+    "exceptions",
+    "debug",
+    "database_conflicts",
+    "setup",
+    "timed_performance_test",
+];
 
-const SCRIPTS: [(&str, &str); 4] = [
+const SCRIPTS: [(&str, &str); 5] = [
     ("ck3-input.ps1", include_str!("../scripts/ck3-input.ps1")),
     ("ck3-helper.ps1", include_str!("../scripts/ck3-helper.ps1")),
     ("ck3-keys.ps1", include_str!("../scripts/ck3-keys.ps1")),
     ("ck3-run.ps1", include_str!("../scripts/ck3-run.ps1")),
+    ("ck3-simulation.ps1", include_str!("../scripts/ck3-simulation.ps1")),
 ];
 
 /// Write the scripts where PowerShell can run them. They are rewritten every time so they always
@@ -220,8 +229,8 @@ impl Drop for InThisServer {
 /// the game's user folder, with the process id of its owner. It goes when the run ends.
 const LOCK_FILE: &str = "xtiger-run.lock";
 /// A lock older than this is stale whatever its owner, in case the id was reused by another
-/// process. The longest run is far shorter.
-const LOCK_MAX_AGE: Duration = Duration::from_secs(3 * 60 * 60);
+/// process. Allow long observer tests as well as loading and console setup.
+const LOCK_MAX_AGE: Duration = Duration::from_secs(12 * 60 * 60);
 /// A lock with no readable id yet was only just created by another server.
 const LOCK_GRACE: Duration = Duration::from_secs(10);
 
@@ -444,6 +453,9 @@ pub struct RunGame<'a> {
     pub keep_open: bool,
     pub mods: &'a [PathBuf],
     pub load_timeout: u64,
+    /// Simulate this many years in observer mode after the requested commands (zero disables it).
+    pub observe_years: u64,
+    pub simulation_timeout: u64,
     pub typing: &'a str,
     /// Run without the user's screen: nothing typed, no screenshot, the game minimized.
     pub background: bool,
@@ -470,6 +482,34 @@ fn validate_commands(commands: &[String]) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Use the game's own benchmark: it runs real daily ticks and pauses at the requested year.
+/// A wall-clock deadline is separate from the loading deadline and never proves completion.
+fn simulation_commands(
+    commands: &[String],
+    years: u64,
+    timeout: u64,
+) -> Result<Vec<String>, String> {
+    if years > 1000 {
+        return Err("observe_years must be between 0 (disabled) and 1000.".to_owned());
+    }
+    let mut result = commands.to_vec();
+    if years > 0 {
+        if !(30..=7200).contains(&timeout) {
+            return Err("simulation_timeout must be between 30 and 7200 seconds.".to_owned());
+        }
+        if commands.iter().any(|command| {
+            command
+                .split_whitespace()
+                .next()
+                .is_some_and(|name| name.eq_ignore_ascii_case("performance_test"))
+        }) {
+            return Err("With observe_years, xTiger starts performance_test itself; remove it from commands.".to_owned());
+        }
+        result.extend(["observe".to_owned(), format!("performance_test years {years}")]);
+    }
+    Ok(result)
 }
 
 /// The title to play is handed to PowerShell and to the game's command line as it is, so it must be
@@ -514,6 +554,7 @@ pub struct Started {
     /// How many console commands the run was asked to send, and whether it types nothing.
     commands: usize,
     background: bool,
+    observe_years: u64,
     _locks: Locks,
 }
 
@@ -527,8 +568,9 @@ impl std::fmt::Debug for Started {
 /// any game starts.
 pub fn begin(loc: &Locations, run: &RunGame) -> Result<Started, String> {
     let game = loc.require_game()?;
-    validate_commands(run.commands)?;
-    if run.background && !run.commands.is_empty() {
+    let commands = simulation_commands(run.commands, run.observe_years, run.simulation_timeout)?;
+    validate_commands(&commands)?;
+    if run.background && !commands.is_empty() {
         return Err("A background run types nothing, so it cannot send console commands. \
                     Let the mod trigger its events from an on_action. To type commands, the user has to \
                     switch Game tests to \"Take over the screen\" in the xTiger app's settings."
@@ -570,9 +612,9 @@ pub fn begin(loc: &Locations, run: &RunGame) -> Result<Started, String> {
     .iter()
     .map(|arg| (*arg).to_owned())
     .collect();
-    if !run.commands.is_empty() {
+    if !commands.is_empty() {
         let file = work.join("commands.txt");
-        fs::write(&file, run.commands.join("\n")).map_err(|e| e.to_string())?;
+        fs::write(&file, commands.join("\n")).map_err(|e| e.to_string())?;
         args.extend(["-CmdFile".to_owned(), file.display().to_string()]);
     }
     if !run.mods.is_empty() {
@@ -590,15 +632,26 @@ pub fn begin(loc: &Locations, run: &RunGame) -> Result<Started, String> {
         settle = BACKGROUND_SETTLE_SECS;
         args.extend(["-Background".to_owned(), "-Settle".to_owned(), settle.to_string()]);
     }
-    let commands = u64::try_from(run.commands.len()).unwrap_or(u64::MAX);
-    let timeout = Duration::from_secs(run.load_timeout + 60 + settle + 30 * commands);
+    if run.observe_years > 0 {
+        args.extend([
+            "-ObserveYears".to_owned(),
+            run.observe_years.to_string(),
+            "-SimulationTimeout".to_owned(),
+            run.simulation_timeout.to_string(),
+        ]);
+    }
+    let command_count = u64::try_from(commands.len()).unwrap_or(u64::MAX);
+    let simulation = if run.observe_years > 0 { run.simulation_timeout } else { 0 };
+    let timeout =
+        Duration::from_secs(run.load_timeout + 120 + settle + 30 * command_count + simulation);
     Ok(Started {
         args,
         report,
         shot,
         timeout,
-        commands: run.commands.len(),
+        commands: commands.len(),
         background: run.background,
+        observe_years: run.observe_years,
         _locks: Locks { _in_this_server: in_this_server, _across_servers: across_servers },
     })
 }
@@ -638,6 +691,9 @@ fn confirmation(report: &str, commands: usize, background: bool) -> String {
     {
         let _ = write!(out, "\ncommands: {line}");
     }
+    if let Some(line) = find("simulation completed:") {
+        let _ = write!(out, "\nsimulation: {line}");
+    }
     out.push_str(if background {
         "\nnot confirmed: whether the mod behaved as intended. Nothing was typed; what the mod \
          tests has to come from its own on_actions and be read in the logs below or with ck3_logs."
@@ -649,6 +705,10 @@ fn confirmation(report: &str, commands: usize, background: bool) -> String {
 }
 
 impl Started {
+    pub fn command_count(&self) -> usize {
+        self.commands
+    }
+
     /// Where the full report will be written.
     pub fn report(&self) -> &Path {
         &self.report
@@ -669,10 +729,23 @@ impl Started {
         // A run that was killed earlier may have left the mod list changed; the script would take
         // that list for the user's own. Not while a game is running: the list is its own then, and
         // the script refuses to start anyway.
-        if !ck3_running() {
-            recover_dlc_load(&loc.user_dir);
+        if ck3_running() {
+            return Err("CK3 is already running; close it before starting another test.".to_owned());
         }
-        let mut outcome = powershell(loc, "ck3-run.ps1", &self.args, self.timeout, control)?;
+        recover_dlc_load(&loc.user_dir);
+        crate::autosaves::restore(&loc.user_dir)?;
+        if self.observe_years > 0 {
+            crate::autosaves::preserve(&loc.user_dir)?;
+        }
+        let result = powershell(loc, "ck3-run.ps1", &self.args, self.timeout, control);
+        // Even a cancelled script or a failure to start PowerShell must restore the originals.
+        let restored = if self.observe_years > 0 {
+            crate::autosaves::restore(&loc.user_dir).map(|_| ())
+        } else {
+            Ok(())
+        };
+        let mut outcome = result?;
+        let restore_error = restored.err();
         if outcome.code.is_none() {
             // The script was stopped together with the game, so it could not put the list back itself.
             outcome.stdout.push_str("\nThe script and the game it started were stopped.");
@@ -681,6 +754,22 @@ impl Started {
             }
         }
         let mut text = status(&outcome);
+        // Preserve raw evidence before another run archives the live logs, including failures
+        // and cancellation, for which the driver may not have written its report yet.
+        if outcome.stdout.lines().any(|line| line.starts_with("launched pid"))
+            && let Some(dir) = self.report.parent()
+        {
+            for name in ["error", "game", "debug", "exceptions", "timed_performance_test"] {
+                let name = format!("{name}.log");
+                let source = loc.user_dir.join("logs").join(&name);
+                if source.is_file()
+                    && let Err(error) = fs::copy(&source, dir.join(&name))
+                {
+                    let _ = write!(text, "\nCould not preserve {name}: {error}");
+                }
+            }
+            let _ = write!(text, "\nRaw logs: {}", dir.display());
+        }
         let report_bytes = fs::read(&self.report).ok();
         if let Some(bytes) = &report_bytes {
             let report = String::from_utf8_lossy(bytes);
@@ -697,6 +786,9 @@ impl Started {
         let shot = self.shot.filter(|path| path.is_file());
         // Nothing was tested when the script failed, was stopped, or a mod was not loaded: that is
         // an error for the caller, not a result, but what the run did find stays in the message.
+        if let Some(error) = restore_error {
+            return Err(format!("{error}\n{text}"));
+        }
         if let Some(lead) = failure_lead(outcome.code, report_bytes.is_some()) {
             if let Some(shot) = &shot {
                 let _ = write!(text, "\nScreenshot: {}", shot.display());
@@ -1240,6 +1332,70 @@ mod tests {
             validate_commands(&["gold 1".to_owned(), "a".repeat(256)])
                 .unwrap_err()
                 .contains("command 2")
+        );
+    }
+
+    #[test]
+    fn observer_simulation_has_a_bounded_budget_and_keeps_setup_commands() {
+        let setup = vec!["effect add_gold = 1".to_owned()];
+        assert_eq!(simulation_commands(&setup, 0, 0).unwrap(), setup);
+        assert_eq!(
+            simulation_commands(&setup, 10, 1800).unwrap(),
+            vec!["effect add_gold = 1", "observe", "performance_test years 10",]
+        );
+        assert!(simulation_commands(&[], 1001, 1800).is_err());
+        for timeout in [0, 29, 7201, u64::MAX] {
+            assert!(simulation_commands(&[], 10, timeout).is_err());
+        }
+        assert!(simulation_commands(&["PERFORMANCE_TEST 1 years".to_owned()], 10, 1800).is_err());
+        let confirmation =
+            confirmation("loaded after 60 s\nsimulation completed: 10 years", 2, false);
+        assert!(confirmation.contains("simulation: simulation completed: 10 years"));
+        assert!(
+            !super::confirmation("FAILED: simulation timeout", 2, false)
+                .contains("simulation completed")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn observer_wait_requires_the_games_completion_and_reports_early_exit_or_timeout() {
+        let tmp = TempDir::new();
+        let script = tmp.join("wait.ps1");
+        let helper = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/ck3-simulation.ps1");
+        let body = r"param($Helper, $Folder)
+. $Helper
+$log = Join-Path $Folder 'timed_performance_test.log'
+$alive = [pscustomobject]@{ HasExited = $false; ExitCode = 0 }
+$dead = [pscustomobject]@{ HasExited = $true; ExitCode = 7 }
+Set-Content -LiteralPath $log -Value @('Started timed performance test at in-game date 867.1.1.', 'Game ran 10 years in 0.500 minutes.')
+$result = Wait-CK3Simulation $alive $log 10 1
+if ($result -notmatch '^simulation completed: 10 years') { throw 'missing completion' }
+foreach ($lines in @(@('Game ran 10 years in 0.500 minutes.'), @('Started timed performance test at in-game date 867.1.1.', 'Game ran 1 years in 0.500 minutes.'))) {
+    Set-Content -LiteralPath $log -Value $lines
+    $failed = $false
+    try { Wait-CK3Simulation $alive $log 10 0 } catch { $failed = $_.Exception.Message -match 'simulation timeout' }
+    if (-not $failed) { throw 'accepted an incomplete or wrong-year simulation' }
+}
+$failed = $false
+try { Wait-CK3Simulation $dead $log 10 1 } catch { $failed = $_.Exception.Message -match 'game exited.*7' }
+if (-not $failed) { throw 'ignored early exit' }
+";
+        fs::write(&script, body).unwrap();
+        let output = no_window(
+            Command::new("powershell")
+                .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+                .arg(script)
+                .arg(helper)
+                .arg(&*tmp),
+        )
+        .output()
+        .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 

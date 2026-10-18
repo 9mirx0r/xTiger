@@ -1,0 +1,22 @@
+on_faith_created = { on_actions = { t27_created } }
+
+t27_created = {
+    on_actions = { t27_created_child }
+    effect = {
+        remove_religious_head_title = yes
+        scope:founder ?= { add_gold = 1 }
+        scope:old_faith = { remove_religious_head_title = yes }
+        scope:old_rite = { save_scope_as = t27_previous_rite }
+        if = { limit = { scope:diverged ?= yes } remove_religious_head_title = yes }
+    }
+}
+
+t27_created_child = { effect = { add_gold = 1 } }
+
+on_faith_conversion = { on_actions = { t27_converted } }
+t27_converted = {
+    effect = {
+        add_gold = 1
+        scope:old_rite = { save_scope_as = t27_previous_conversion_rite }
+    }
+}

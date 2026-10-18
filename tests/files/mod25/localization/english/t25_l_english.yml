@@ -1,0 +1,10 @@
+﻿l_english:
+ trait_t25_valid: "Trait"
+ trait_t25_valid_desc: "Trait description."
+ trait_t25_missing: "Trait"
+ trait_t25_missing_desc: "Trait description."
+ trait_t25_missing_second: "Trait"
+ trait_t25_missing_second_desc: "Trait description."
+ trait_t25_equivalent: "Trait"
+ trait_t25_equivalent_desc: "Trait description."
+ trait_t25_localized: "Localized group"

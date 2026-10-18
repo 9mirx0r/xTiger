@@ -1,0 +1,10 @@
+namespace = t26
+t26.1 = {
+    scope = faith
+    hidden = yes
+    orphan = yes
+    immediate = {
+        ordered_faith_character = { max = 1 order_by = t26_head_weight }
+        random_faith_character = { t26_spiritual_effect = yes }
+    }
+}

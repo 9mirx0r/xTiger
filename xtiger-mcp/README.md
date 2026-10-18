@@ -86,6 +86,26 @@ an error, never quietly ignored.
 | `ck3_vanilla` | Searches the base game's files: where a trigger, effect, event, decision, GUI type or localization key is defined, or the lines that match a regex |
 | `ck3_docs` | Looks up the game's own script docs: triggers, effects, event targets, `on_actions`, modifiers, scopes and custom localization |
 
+**Observer simulations.** To let a mod run for ten in-game years at speed 5:
+
+```json
+{"observe_years": 10, "simulation_timeout": 1800, "load_timeout": 480}
+```
+
+Pass those arguments to `ck3_run_start`, along with `mods` or `playset`, then follow the job with
+`ck3_job`. Setup `commands`, if any, run first. xTiger enters observer mode, starts the game's
+`performance_test`, closes the console and selects speed 5. It waits for the game's completion
+entry in `timed_performance_test.log`, then reads `error.log` and closes the game (or leaves it
+paused with `keep_open`). The job reports a `simulating` phase and elapsed time while it waits.
+`simulation_timeout` allows 30–7200 wall-clock seconds, separately from loading; reaching it or
+losing the game is a failure. `observe_years` defaults to zero (disabled), up to 1000.
+
+This needs **Take over the screen** in the app's Game tests setting. A background run cannot send
+the observer commands. Raw logs are copied beside the run's report, including on failure or
+cancellation. Rotating autosaves are backed up before observer tests and restored afterwards,
+including after cancellation; a later run recovers a backup left by an interrupted server. `ck3_logs` also accepts `name: "timed_performance_test"` for the current game's log.
+A completed simulation confirms that the years passed; inspect the errors to assess the mod.
+
 **Fixtures.** `ck3_script`, `ck3_cases` and `ck3_events` take `with`, a list of `kind:name` (or
 `kind:name=value`) that set up scopes before the effects, so an event that needs `scope:friend` gets one:
 `character:N` (a new character, age 30; `=age` sets it), `courtier:N` (employed by the player, age 30),

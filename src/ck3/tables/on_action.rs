@@ -376,11 +376,22 @@ pub const ON_ACTION_SCOPES: &str = "
 	on_release_from_prison = on_imprison
 
 	on_faith_created = {
+		root = faith
+		founder = character
+		old_faith = faith
+		old_rite = rite
+		diverged = bool
+	}
+	on_faith_conversion = {
+		root = character
+		founder = character
+		old_faith = faith
+		old_rite = rite
+	}
+	on_character_faith_change = {
 		root = character
 		old_faith = faith
 	}
-	on_faith_conversion = on_faith_created
-	on_character_faith_change = on_faith_created
 	on_faith_monthly = {
 		root = faith
 	}

@@ -1300,3 +1300,101 @@ fn test_mod24_descriptor_notes_are_not_config_errors() {
     assert!(take_report_contains(&mut reports, &descriptor, "Steam ignores picture").is_some());
     assert!(reports.is_empty(), "unexpected reports: {reports:?}");
 }
+
+#[test]
+fn test_mod25_trait_groups_and_faith_on_actions() {
+    let reports = check_mod_helper("mod25");
+    let mut missing = Vec::new();
+    let mut scopes = Vec::new();
+    for (meta, occurrences) in &reports {
+        for pointers in occurrences {
+            let path = pointers[0].loc.pathname().to_string_lossy().to_string();
+            if path.contains("t25_groups") && meta.msg.contains("localization key") {
+                missing.push((pointers[0].loc.line, meta.msg.clone()));
+            }
+            if path.contains("t25_faith")
+                && (meta.msg.contains("scope") || meta.msg.contains("not available"))
+            {
+                scopes.push((pointers[0].loc.line, meta.msg.clone()));
+            }
+        }
+    }
+    missing.sort();
+    assert_eq!(
+        missing,
+        vec![
+            (2, "missing english localization key trait_t25_missing_group".to_owned()),
+            (3, "missing english localization key trait_t25_missing_group".to_owned()),
+            (4, "missing english localization key trait_t25_missing_equivalent".to_owned()),
+        ]
+    );
+    scopes.sort();
+    assert_eq!(
+        scopes.iter().map(|(line, _)| *line).collect::<Vec<_>>(),
+        vec![8, 16, 20],
+        "{scopes:?}"
+    );
+    assert!(scopes[0].1.contains("`add_gold` is for character"), "{scopes:?}");
+    assert!(
+        scopes[1..]
+            .iter()
+            .all(|(_, message)| message.contains("`remove_religious_head_title` is for faith")),
+        "{scopes:?}"
+    );
+}
+
+#[test]
+fn test_mod26_religion_values_keep_the_callers_root() {
+    // CK3 preserves the event root in order_by and gender_female_chance. A faith root
+    // cannot supply root.faith or root.rite, even when the current scope is a character.
+    let reports = check_mod_helper("mod26");
+    let mut found = Vec::new();
+    for (meta, occurrences) in &reports {
+        for pointers in occurrences {
+            let path = pointers[0].loc.pathname().to_string_lossy().to_string();
+            if path.contains("t26_") && (meta.msg.contains("root") || meta.msg.contains("scope")) {
+                found.push((path, pointers[0].loc.line, meta.msg.clone()));
+            }
+        }
+    }
+    found.sort();
+    assert_eq!(found.len(), 2, "unexpected scope diagnostics: {found:?}");
+    assert!(
+        found.iter().all(|(path, _, message)| path.ends_with("t26_invalid.txt")
+            && message.contains("but root seems to be faith")),
+        "{found:?}"
+    );
+    assert!(found[0].2.starts_with("`t26_head_weight` expects root"), "{found:?}");
+    assert!(found[1].2.starts_with("`t26_spiritual_effect` expects root"), "{found:?}");
+}
+
+#[test]
+fn test_mod27_chained_faith_callbacks_and_translated_trait_groups() {
+    let reports = check_mod_helper("mod27");
+    let mut missing = Vec::new();
+    let mut callbacks = Vec::new();
+    for (meta, occurrences) in &reports {
+        for pointers in occurrences {
+            let path = pointers[0].loc.pathname().to_string_lossy();
+            if path.contains("t27_groups") && meta.msg.contains("localization key") {
+                missing.push(meta.msg.clone());
+            }
+            if path.contains("t27_callbacks")
+                && (meta.msg.contains("scope") || meta.msg.contains("not available"))
+            {
+                callbacks.push((meta.msg.clone(), pointers.clone()));
+            }
+        }
+    }
+    missing.sort();
+    assert_eq!(
+        missing,
+        vec![
+            "missing english and french localization key trait_t27_absent",
+            "missing french localization key trait_t27_partial",
+        ]
+    );
+    assert_eq!(callbacks.len(), 1, "unexpected callback diagnostics: {callbacks:?}");
+    assert!(callbacks[0].0.contains("faith"), "{callbacks:?}");
+    assert!(callbacks[0].0.contains("character"), "{callbacks:?}");
+}
