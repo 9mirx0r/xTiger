@@ -25,11 +25,23 @@ pub fn before_closing() {
 fn opened_by_double_click() -> bool {
     unsafe extern "system" {
         fn GetConsoleProcessList(list: *mut u32, count: u32) -> u32;
+        fn GetConsoleWindow() -> *mut core::ffi::c_void;
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn IsWindowVisible(window: *mut core::ffi::c_void) -> i32;
     }
     let mut list = [0_u32; 2];
     // SAFETY: the list is a writable array of the length that is passed along.
     let attached = unsafe { GetConsoleProcessList(list.as_mut_ptr(), 2) };
-    attached == 1
+    // A program started without a window (the desktop app starts the validator that way) also has
+    // its console to itself, but there is no window to close and nobody to press Enter.
+    // SAFETY: both calls only read the state of the console and of its window.
+    let visible = unsafe {
+        let window = GetConsoleWindow();
+        !window.is_null() && IsWindowVisible(window) != 0
+    };
+    attached == 1 && visible
 }
 
 #[cfg(not(windows))]

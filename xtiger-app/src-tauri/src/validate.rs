@@ -142,7 +142,11 @@ impl Runner {
                 generated = Some(conf);
             }
         }
-        command.arg(args.mod_file).stdout(Stdio::piped()).stderr(Stdio::piped());
+        command
+            .arg(args.mod_file)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         let command_line: Vec<String> = std::iter::once(validator.display().to_string())
             .chain(command.get_args().map(|arg| arg.to_string_lossy().into_owned()))
             .map(|arg| match &generated {

@@ -1,5 +1,15 @@
 # Changelog
 
+## xTiger 1.6.9 alpha
+
+### Fixed
+
+- **The app no longer hangs on "Press Enter to close this window".** Since 1.6.8 the validator
+  waited for Enter when it took itself for a double-clicked program. The desktop app starts it
+  without a window, which looks the same from the inside, so a check could stay on "Validating"
+  until it was cancelled, and the real result or error stayed hidden. It now waits only when its
+  console window is really on screen, and the app gives it no input to wait for.
+
 ## xTiger 1.6.8 alpha
 
 ### New
