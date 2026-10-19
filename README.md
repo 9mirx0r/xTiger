@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/9mirx0r/xTiger/releases">Download</a> ·
+  <a href="https://discord.gg/7ks9DAM4bY">Discord community</a> ·
   <a href="#usage">Usage</a> ·
   <a href="#how-it-differs-from-tiger">What's different</a> ·
   <a href="CHANGELOG.md">Changelog</a> ·
@@ -162,6 +163,8 @@ about CK3 1.20, the app or the MCP server belongs in this repository's
 [issues](https://github.com/9mirx0r/xTiger/issues). The most useful report is a false positive on
 vanilla files, or a mistake the game rejects that xTiger accepts. See
 [CONTRIBUTING.md](CONTRIBUTING.md). The plans are in the [roadmap](ROADMAP.md).
+
+For community chat, questions, feedback and release discussion, join the [xTiger Discord](https://discord.gg/7ks9DAM4bY).
 
 ## Credits and license
 
